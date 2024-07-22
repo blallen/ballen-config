@@ -1,0 +1,44 @@
+# see https://docs.astral.sh/ruff/configuration/ for more info
+
+# files to ignore
+exclude = [
+    ".git",
+    ".ruff_cache",
+    ".venv",
+    ".vscode",
+]
+
+# Same as black
+line-length = 88
+indent-width = 4
+
+# Assume python 3.11
+target-version = "py311"
+
+[lint]
+select = [
+    # pycodestyle
+    "E",
+    # pyflakes
+    "F",
+    # isort
+    "I",
+]
+ignore =["E501"]
+
+# Allow fix for all enabled rules (when `--fix`) is provided.
+fixable = ["ALL"]
+unfixable = []
+
+[format]
+# Like Black, use double quotes for strings.
+quote-style = "double"
+
+# Like Black, indent with spaces, rather than tabs.
+indent-style = "space"
+
+# Like Black, respect magic trailing commas.
+skip-magic-trailing-comma = false
+
+# Like Black, automatically detect the appropriate line ending.
+line-ending = "auto"

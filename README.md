@@ -56,7 +56,17 @@ ssh-keygen -t ed255519 -C "john.doe@example.com"
 
 # Python Setup
 
-Using `pyenv` and `poetry` to manage python environments is great.
+Using `pyenv` and `poetry` to manage python environments is great. `pipx` is nice to install global tools.
+
+## pipx
+
+Below is a OS independent way to install `pipx` if you already have a python installation. Otherwise, you can install `pipx` using the OS specific instructions [here](https://github.com/pypa/pipx?tab=readme-ov-file#install-pipx).
+
+```
+python3 -m pip install --user pipx
+python3 -m pipx ensurepath
+sudo pipx ensurepath --global # optional to allow pipx actions with --global argument
+```
 
 ## pyenv
 
@@ -97,7 +107,7 @@ pyenv versions
 pyenv install 3.11.7
 ```
 
-## Poetry
+## poetry
 
 1. Download and run the official installer.
 
@@ -108,7 +118,7 @@ curl -sSL https://install.python-poetry.org | python3 -
 a.  Need a different command on macOS because of [good old Mac Weirdness](https://github.com/python-poetry/install.python-poetry.org/issues/24#issuecomment-2016821135).
 
 ```
-curl -sSL https://install.python-poetry.org | sed 's/symlinks=False/symlinks=True/' | python3 
+curl -sSL https://install.python-poetry.org | sed 's/symlinks=False/symlinks=True/' | python3
 ```
 
 2. Add poetry to your path in `.zshrc`. (Not needed if you copied the `.zshrc` from earlier.)
@@ -135,4 +145,22 @@ poetry config virtualenvs.prefer-active-python true
 ```
 mkdir $ZSH_CUSTOM/plugins/poetry
 poetry completions zsh > $ZSH_CUSTOM/plugins/poetry/_poetry
+```
+
+## pre-commit and ruff
+
+Install both `pre-commit` and `ruff` using `pipx`.
+
+```
+pipx install pre-commit
+pipx install ruff
+```
+
+Copy over the `.pre-commit-config.yaml` and `ruff.toml` files to the root of your repository to enable pre-commit hooks and linting.
+
+Run the following commands to install the pre-commit hooks and run `ruff` on the existing files.
+
+```
+pre-commit install
+pre-commit run --all-files
 ```
