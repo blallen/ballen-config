@@ -1,6 +1,8 @@
 # ballen-config
 Files and instructions to set up computer's the way I like
 
+# Shell Setup
+
 ## Install zsh (Ubuntu only)
 
 Install using `apt`. MacOS has zsh pre-installed.
@@ -30,3 +32,26 @@ cp .zshrc ~/.zshrc
 cp .p10k.zsh ~/.p10k.zsh
 cp .zprofile ~/.zprofile
 ```
+
+# Git Setup
+
+When using git for the first time on a new machine, make sure to setup your local git config.
+
+```
+git config --global user.name "John Doe"
+git config --global user.email johndoe@example.com
+```
+
+Set up your default git text editor (vim is nice to avoid conflicts when using the built-in terminal in VSCode and Cursor).
+
+```
+git config --global core.editor "vim"
+```
+
+Create an ssh key for this machine.
+
+```
+ssh-keygen -t ed255519 -C "john.doe@example.com"
+```
+
+# Python Setup
