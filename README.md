@@ -25,7 +25,7 @@ git clone https://github.com/zsh-users/zsh-syntax-highlighting.git ${ZSH_CUSTOM:
 git clone https://github.com/wfxr/forgit ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/forgit
 ```
 
-After everything is installed, copy over settings to your home directory. (Not sure if `.zprofile` is needed, testing on two different machines.)
+After everything is installed, copy over settings to your home directory.
 
 ```
 cp .zshrc ~/.zshrc
@@ -76,7 +76,7 @@ sudo pipx ensurepath --global # optional to allow pipx actions with --global arg
 curl https://pyenv.run | bash
 ```
 
-2. Configure your zsh environment by adding the following lines near the end of your `.zshrc`. (Not necessary if you copied the `.zshrc` from earlie.)
+2. Configure your zsh environment by adding the following lines near the end of your `.zshrc`. (Not necessary if you copied the `.zshrc` from earlier.)
 
 ```
 export PYENV_ROOT="$HOME/.pyenv"
@@ -84,7 +84,7 @@ export PYENV_ROOT="$HOME/.pyenv"
 eval "$(pyenv init -)"
 ```
 
-3. Create a `.zprofile` with the following lines. (not sure if entirely necessary.)
+3. Create a `.zprofile` with the following lines.
 
 ```
 export PYENV_ROOT="$HOME/.pyenv"
