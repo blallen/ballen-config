@@ -12,8 +12,8 @@ exclude = [
 line-length = 88
 indent-width = 4
 
-# Assume python 3.11
-target-version = "py311"
+# Assume python 3.12
+target-version = "py312"
 
 [lint]
 select = [
