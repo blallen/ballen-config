@@ -1,0 +1,19 @@
+# Example: internal dev server
+# Host dev-server
+#     HostName <IP_ADDRESS>
+#     User ubuntu
+#     IdentityFile ~/.ssh/<keypair>.pem
+
+Host gitlab.com
+    HostName gitlab.com
+    User git
+    IdentityFile ~/.ssh/id_ed25519_2025
+    AddKeysToAgent yes
+    UseKeychain yes
+
+Host github.com
+    HostName github.com
+    User git
+    IdentityFile ~/.ssh/id_ed25519_2025
+    AddKeysToAgent yes
+    UseKeychain yes

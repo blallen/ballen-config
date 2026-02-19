@@ -1,0 +1,56 @@
+{
+    "editor.fontFamily": "MesloLGS Nerd Font Mono, Meslo, Menlo, Monaco, 'Courier New', monospace",
+    "terminal.integrated.fontFamily": "MesloLGS Nerd Font Mono",
+    "terminal.integrated.fontWeight": "normal",
+    "git.autofetch": true,
+    "git.confirmSync": false,
+    "git.rebaseWhenSync": true,
+    "git.replaceTagsWhenPull": true,
+    "diffEditor.ignoreTrimWhitespace": false,
+    "[yaml]": {
+        "diffEditor.ignoreTrimWhitespace": false
+    },
+    "explorer.confirmDragAndDrop": false,
+    "jupyter.askForKernelRestart": false,
+    "editor.wordWrapColumn": 100,
+    "editor.guides.bracketPairs": "active",
+    "editor.multiCursorModifier": "ctrlCmd",
+    "extensions.ignoreRecommendations": true,
+    "python.testing.pytestEnabled": true,
+    "python.analysis.cacheLSPData": true,
+    "python.analysis.diagnosticSeverityOverrides": {},
+    "mypy.debugLogging": true,
+    "mypy.runUsingActiveInterpreter": true,
+    "window.commandCenter": 1,
+    "cursor.cpp.enablePartialAccepts": true,
+    "cursor.terminal.usePreviewBox": true,
+    "cursor-retrieval.canAttemptGithubLogin": false,
+    "gitlens.graph.minimap.additionalTypes": [
+        "localBranches",
+        "stashes",
+        "remoteBranches",
+        "pullRequests"
+    ],
+    "visualjj.showSourceControlColocated": true,
+    "cursorpyright.analysis.diagnosticSeverityOverrides": {},
+    "makefile.configureOnOpen": true,
+    "[dockercompose]": {
+        "editor.insertSpaces": true,
+        "editor.tabSize": 2,
+        "editor.autoIndent": "advanced",
+        "editor.quickSuggestions": {
+            "other": true,
+            "comments": false,
+            "strings": true
+        },
+        "editor.defaultFormatter": "redhat.vscode-yaml"
+    },
+    "[github-actions-workflow]": {
+        "editor.defaultFormatter": "redhat.vscode-yaml"
+    },
+    "ruff.configurationPreference": "filesystemFirst",
+    "claudeCode.environmentVariables": [
+        "CLAUDE_CODE_USE_BEDROCK=1",
+        "AWS_REGION=us-east-1"
+    ]
+}

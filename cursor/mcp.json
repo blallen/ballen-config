@@ -1,0 +1,26 @@
+{
+  "mcpServers": {
+    "Playwright": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@playwright/mcp@latest"
+      ]
+    },
+    "gitlab-mr-mcp": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "gitlab-mr-mcp"
+      ],
+      "env": {
+        "MR_MCP_GITLAB_TOKEN": "<YOUR_GITLAB_TOKEN>",
+        "MR_MCP_GITLAB_HOST": "https://gitlab.com"
+      }
+    },
+    "Notion": {
+      "url": "https://mcp.notion.com/mcp",
+      "headers": {}
+    }
+  }
+}

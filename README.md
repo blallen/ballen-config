@@ -49,11 +49,22 @@ mkdir -p ~/.config/git
 cp .config/git/ignore ~/.config/git/ignore
 ```
 
-Create an SSH key for this machine.
+## SSH Setup
+
+Create an SSH key for this machine (or copy existing keys from your old machine).
 
 ```bash
 ssh-keygen -t ed25519 -C "your-email@example.com"
 ```
+
+Copy the SSH config template and update with your hosts.
+
+```bash
+cp ssh/config ~/.ssh/config
+chmod 600 ~/.ssh/config
+```
+
+Remember to add your new public key to GitHub and GitLab after generating it.
 
 # Jujutsu (jj) Setup
 
@@ -164,9 +175,52 @@ pre-commit install
 pre-commit run --all-files
 ```
 
-# Local-Only Configuration
+# Cursor IDE Setup
 
-After copying configs to a new machine, you may need to add machine-specific environment variables directly to `~/.zshrc`. These should NOT be committed to this repo.
+Copy the Cursor settings and keybindings to the Cursor config directory.
+
+```bash
+cp cursor/settings.json ~/Library/Application\ Support/Cursor/User/settings.json
+cp cursor/keybindings.json ~/Library/Application\ Support/Cursor/User/keybindings.json
+```
+
+Copy the MCP server config and update the placeholder tokens.
+
+```bash
+cp cursor/mcp.json ~/.cursor/mcp.json
+```
+
+Edit `~/.cursor/mcp.json` and replace `<YOUR_GITLAB_TOKEN>` with your actual token. Add any additional project-specific MCP servers as needed.
+
+Required font: [MesloLGS Nerd Font](https://github.com/romkatv/powerlevel10k#manual-font-installation) (also needed for Powerlevel10k).
+
+# Claude Code Setup
+
+Install [Claude Code](https://docs.anthropic.com/en/docs/claude-code) and copy the plugin settings.
+
+```bash
+mkdir -p ~/.claude
+cp claude-code/settings.json ~/.claude/settings.json
+```
+
+This enables the [superpowers](https://github.com/anthropics/claude-code-plugins) plugin. Claude Code will download plugins automatically on first run.
+
+Note: The Cursor `settings.json` includes `claudeCode.environmentVariables` for Bedrock — update these if your setup differs.
+
+# New Machine Migration Checklist
+
+## Credentials to port securely (not in this repo)
+
+These must be transferred securely (e.g., AirDrop, encrypted USB, or password manager):
+
+- `~/.ssh/id_ed25519_*` — SSH key pairs (private + public)
+- `~/.ssh/*.pem` — AWS keypairs
+- `~/.aws/credentials` — AWS credentials
+- `~/.aws/config` — AWS CLI config
+
+## Local-Only Configuration
+
+After copying configs to a new machine, add machine-specific environment variables directly to `~/.zshrc`. These should NOT be committed to this repo.
 
 Examples:
 
