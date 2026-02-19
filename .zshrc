@@ -87,25 +87,19 @@ plugins=(
   docker
   python
   pip
-  pyenv
-  virtualenv
-  poetry
+  uv
+  jj
 )
 
 source $ZSH/oh-my-zsh.sh
 
 # User configuration
 
-# starship
-# eval "$(starship init zsh)"
+# uv
+export PATH="$HOME/.local/bin:$PATH"
 
-# pyenv
-export PYENV_ROOT="$HOME/.pyenv"
-[[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"
-eval "$(pyenv init -)"
-
-# poetry
-export PATH="/$HOME/.local/bin:$PATH"
+# jj dynamic completions (richer than the omz plugin alone)
+source <(COMPLETE=zsh jj)
 
 # export MANPATH="/usr/local/man:$MANPATH"
 
