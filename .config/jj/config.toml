@@ -1,0 +1,62 @@
+"$schema" = "https://jj-vcs.github.io/jj/latest/config-schema.json"
+
+[user]
+name = "Brandon Allen"
+email = "brandon.leigh.allen@gmail.com"
+
+[ui]
+merge-editor = "nano"
+allow-init-native = true
+editor = "vim"
+
+# Selective pre-commit integration - gives you both speed and safety
+[aliases]
+# Quick versions (original commands)
+c = ["commit"]
+p = ["git", "push"]
+
+# Clean versions (with pre-commit checks)
+cc = ["util", "exec", "--", "bash", "-c", '''
+set -e
+echo "Running pre-commit checks..."
+CHANGED_FILES=$(jj diff --name-only --revision @)
+if [ -n "$CHANGED_FILES" ]; then
+    echo "Checking files: $CHANGED_FILES"
+    pre-commit run --files $CHANGED_FILES || {
+        echo "Pre-commit checks failed. Please fix the issues and try again."
+        exit 1
+    }
+else
+    echo "No files changed, skipping pre-commit checks."
+fi
+echo "Pre-commit checks passed!"
+jj commit "$@"
+''', ""]
+
+pp = ["util", "exec", "--", "bash", "-c", '''
+set -e
+echo "Running pre-commit checks on all files..."
+pre-commit run --all-files --show-diff-on-failure || {
+    echo "Pre-commit checks failed. Please fix the issues and try again."
+    exit 1
+}
+echo "Pre-commit checks passed! Pushing..."
+jj git push "$@"
+''', ""]
+
+# jj fix integration for running pre-commit across all mutable commits
+[fix.tools.pre-commit]
+command = ["pre-commit", "run", "--files"]
+patterns = ["**"]
+
+# Direct ruff integration for jj fix (alternative to pre-commit)
+[fix.tools.ruff]
+command = ["ruff", "check", "--fix", "--config", "ruff.toml"]
+patterns = ["**/*.py"]
+
+[fix.tools.ruff-format]
+command = ["ruff", "format", "--config", "ruff.toml"]
+patterns = ["**/*.py"]
+
+[remotes.origin]
+auto-track-bookmarks = "glob:*"
