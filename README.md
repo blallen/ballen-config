@@ -1,13 +1,14 @@
 # ballen-config
-Files and instructions to set up computer's the way I like
+
+Files and instructions to set up computers the way I like.
 
 # Shell Setup
 
 ## Install zsh (Ubuntu only)
 
-Install using `apt`. MacOS has zsh pre-installed.
+Install using `apt`. macOS has zsh pre-installed.
 
-```
+```bash
 sudo apt update
 sudo apt install zsh -y
 zsh --version
@@ -17,7 +18,7 @@ zsh --version
 
 Install Oh My Zsh and recommended plugins. Shortened version of the guide [here](https://github.com/magicdude4eva/iterm-oh-my-zsh-powerlevel10k).
 
-```
+```bash
 sh -c "$(curl -fsSL https://raw.github.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
 git clone https://github.com/zsh-users/zsh-autosuggestions ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autosuggestions
 git clone https://github.com/zsh-users/zsh-completions ${ZSH_CUSTOM:=~/.oh-my-zsh/custom}/plugins/zsh-completions
@@ -27,7 +28,7 @@ git clone https://github.com/wfxr/forgit ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plug
 
 After everything is installed, copy over settings to your home directory.
 
-```
+```bash
 cp .zshrc ~/.zshrc
 cp .p10k.zsh ~/.p10k.zsh
 cp .zprofile ~/.zprofile
@@ -35,132 +36,140 @@ cp .zprofile ~/.zprofile
 
 # Git Setup
 
-When using git for the first time on a new machine, make sure to setup your local git config.
+Copy the included `.gitconfig` to your home directory (or update the name/email to your own).
 
-```
-git config --global user.name "John Doe"
-git config --global user.email johndoe@example.com
-```
-
-Set up your default git text editor (vim is nice to avoid conflicts when using the built-in terminal in VSCode and Cursor).
-
-```
-git config --global core.editor "vim"
+```bash
+cp .gitconfig ~/.gitconfig
 ```
 
-Create an ssh key for this machine.
+Copy the global gitignore.
 
-```
-ssh-keygen -t ed255519 -C "john.doe@example.com"
-```
-
-# Python Setup
-
-Using `pyenv` and `poetry` to manage python environments is great. `pipx` is nice to install global tools.
-
-## pipx
-
-Below is a OS independent way to install `pipx` if you already have a python installation. Otherwise, you can install `pipx` using the OS specific instructions [here](https://github.com/pypa/pipx?tab=readme-ov-file#install-pipx).
-
-```
-python3 -m pip install --user pipx
-python3 -m pipx ensurepath
-sudo pipx ensurepath --global # optional to allow pipx actions with --global argument
+```bash
+mkdir -p ~/.config/git
+cp .config/git/ignore ~/.config/git/ignore
 ```
 
-## pyenv
+Create an SSH key for this machine.
 
-1. Download and run the official installer.
-
-```
-curl https://pyenv.run | bash
+```bash
+ssh-keygen -t ed25519 -C "your-email@example.com"
 ```
 
-2. Configure your zsh environment by adding the following lines near the end of your `.zshrc`. (Not necessary if you copied the `.zshrc` from earlier.)
+# Jujutsu (jj) Setup
 
-```
-export PYENV_ROOT="$HOME/.pyenv"
-[[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"
-eval "$(pyenv init -)"
-```
+[Jujutsu](https://github.com/jj-vcs/jj) is a modern VCS that works alongside git. Install it using your package manager.
 
-3. Create a `.zprofile` with the following lines.
+```bash
+# macOS
+brew install jj
 
-```
-export PYENV_ROOT="$HOME/.pyenv"
-export PATH="$PYENV_ROOT/bin:$PATH"
-eval "$(pyenv init --path)"
+# or via cargo
+cargo install --locked jj-cli
 ```
 
-4. Check that pyenv works and see what pythons you have installed.
+Copy the jj config to your home directory.
 
-```
-pyenv --version
-pyenv versions
-```
-
-5. Install python build dependencies. Follow [the instructions here](https://github.com/pyenv/pyenv/wiki#suggested-build-environment), really different based on OS and what package manager you are using.
-
-6. Install a new python version (change version number as necessary).
-
-```
-pyenv install 3.11.7
+```bash
+mkdir -p ~/.config/jj
+cp .config/jj/config.toml ~/.config/jj/config.toml
 ```
 
-## poetry
+The included config provides:
 
-1. Download and run the official installer.
+- **Quick aliases:** `jj c` (commit), `jj p` (push)
+- **Checked aliases:** `jj cc` (commit with pre-commit checks), `jj pp` (push with checks)
+- **`jj fix` integration:** Runs pre-commit, ruff lint, and ruff format across mutable commits
 
-```
-curl -sSL https://install.python-poetry.org | python3 -
-```
+# Python Setup (uv)
 
-a.  Need a different command on macOS because of [good old Mac Weirdness](https://github.com/python-poetry/install.python-poetry.org/issues/24#issuecomment-2016821135).
+[uv](https://docs.astral.sh/uv/) replaces pyenv, poetry, and pipx as a single tool for Python version management, dependency management, and CLI tool installation.
 
-```
-curl -sSL https://install.python-poetry.org | sed 's/symlinks=False/symlinks=True/' | python3
-```
+## Install uv
 
-2. Add poetry to your path in `.zshrc`. (Not needed if you copied the `.zshrc` from earlier.)
-
-```
-export PATH="$HOME/.local/bin:$PATH"
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-3. Check that poetry works.
+This installs uv to `~/.local/bin/` and updates your shell profile. The `.zshrc` and `.zprofile` in this repo already have the PATH configured.
 
-```
-poetry --version
-```
+## Install Python
 
-4. Setup poetry to create virtual environments in the repository directory and to use the python version you’ve selected using `pyenv`
+uv downloads pre-built Python binaries (no compilation needed).
 
-```
-poetry config virtualenvs.in-project true
-poetry config virtualenvs.prefer-active-python true
-```
+```bash
+# Install a Python version
+uv python install 3.12
 
-5. Add poetry completions to your Oh My Zsh plugins.
+# Make it the default (creates python3 and python symlinks in ~/.local/bin)
+uv python install --default 3.12
 
-```
-mkdir $ZSH_CUSTOM/plugins/poetry
-poetry completions zsh > $ZSH_CUSTOM/plugins/poetry/_poetry
-```
+# List installed versions
+uv python list
 
-## pre-commit and ruff
-
-Install both `pre-commit` and `ruff` using `pipx`.
-
-```
-pipx install pre-commit
-pipx install ruff
+# Pin a version for a specific project
+uv python pin 3.12
 ```
 
-Copy over the `.pre-commit-config.yaml` and `ruff.toml` files to the root of your repository to enable pre-commit hooks and linting.
+## Project workflow
 
-Run the following commands to install the pre-commit hooks and run `ruff` on the existing files.
+uv replaces poetry for dependency and project management.
 
+```bash
+# Create a new project
+uv init my-project
+cd my-project
+
+# Add dependencies
+uv add requests pandas
+
+# Add dev dependencies
+uv add --dev pytest ruff
+
+# Sync environment (install all deps)
+uv sync
+
+# Run commands in the project's virtual environment
+uv run python my_script.py
+uv run pytest
 ```
+
+## Global CLI tools
+
+uv replaces pipx for installing standalone CLI tools.
+
+```bash
+# Install global tools
+uv tool install pre-commit
+uv tool install ruff
+
+# Run a tool without installing
+uvx cowsay "hello"
+```
+
+# Pre-commit and Ruff
+
+Install both `pre-commit` and `ruff` as global tools using uv.
+
+```bash
+uv tool install pre-commit
+uv tool install ruff
+```
+
+Copy the `.pre-commit-config.yaml` and `ruff.toml` files to the root of your repository to enable pre-commit hooks and linting.
+
+Run the following commands to install the pre-commit hooks and run `ruff` on existing files.
+
+```bash
 pre-commit install
 pre-commit run --all-files
 ```
+
+# Local-Only Configuration
+
+After copying configs to a new machine, you may need to add machine-specific environment variables directly to `~/.zshrc`. These should NOT be committed to this repo.
+
+Examples:
+
+- API tokens and secrets (`GITLAB_TOKEN`, etc.)
+- Cloud provider settings (`AWS_REGION`, etc.)
+- Machine-specific PATH additions
