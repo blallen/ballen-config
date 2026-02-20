@@ -254,6 +254,16 @@ cat cursor/extensions.txt | xargs -L 1 code --install-extension
 
 Some extensions (Python, Ruff, Jupyter) may need to be installed from the Extensions panel inside the IDE if the CLI install fails. Cursor also bundles some extensions (cursorpyright, remote-ssh) that don't need separate install.
 
+### Manual VSIX install
+
+Some extensions are only on the VS Code Marketplace, not Cursor's Open VSX registry. Download the VSIX and install manually:
+
+```bash
+# JJ Graph (jj log visualizer) - not in Cursor marketplace
+curl -Lo /tmp/vscode-jj-graph.vsix "https://Velociraptor115.gallery.vsassets.io/_apis/public/gallery/publisher/Velociraptor115/extension/vscode-jj-graph/latest/assetbyname/Microsoft.VisualStudio.Services.VSIXPackage"
+cursor --install-extension /tmp/vscode-jj-graph.vsix
+```
+
 # Claude Code Setup
 
 Install [Claude Code](https://docs.anthropic.com/en/docs/claude-code) and copy the plugin settings.
