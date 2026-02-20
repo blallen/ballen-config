@@ -9,7 +9,7 @@ Clone this repo and run Claude Code from the repo root. Tell it to read the READ
 ### Setup order (dependency-aware)
 
 1. **Homebrew** — REQUIRES SUDO, cannot be automated without user present
-2. **Oh My Zsh + plugins** — no sudo needed, fully automatable
+2. **Oh My Zsh + Powerlevel10k + plugins** — no sudo needed, fully automatable
 3. **Shell configs** — copy `.zshrc`, `.p10k.zsh`, `.zprofile` to `~`
 4. **MesloLGS Nerd Font** — curl to `~/Library/Fonts`, fully automatable
 5. **Git configs** — copy `.gitconfig` and `.config/git/ignore`, fully automatable
@@ -25,7 +25,7 @@ Clone this repo and run Claude Code from the repo root. Tell it to read the READ
 
 Everything except steps that need sudo or secrets:
 
-- Install Oh My Zsh and all 4 plugins (autosuggestions, completions, syntax-highlighting, forgit)
+- Install Oh My Zsh, Powerlevel10k theme, and all 4 plugins (autosuggestions, completions, syntax-highlighting, forgit)
 - Copy all config files to their destinations
 - Install uv, Python 3.12, pre-commit, and ruff
 - Install MesloLGS Nerd Font via curl
@@ -46,3 +46,5 @@ Everything except steps that need sudo or secrets:
 - **uv not on PATH in current session**: After installing uv, use `~/.local/bin/uv` for the first commands until the shell profile is sourced.
 - **AirDrop rejects transfers silently**: If transferring credentials between Macs, check that the receiving machine has AirDrop set to "Everyone" in System Settings. If it still fails, use iCloud Drive or USB instead.
 - **Permissions after file transfer**: iCloud/AirDrop can loosen file permissions. Always run chmod after transferring SSH keys and AWS credentials.
+- **SSH key not loaded after transfer**: Transferred keys won't be in the SSH agent. Run `ssh-add --apple-use-keychain ~/.ssh/id_ed25519_2025` to add with Keychain persistence.
+- **Git remote uses HTTPS after clone**: If the repo was cloned via HTTPS, `git push` will fail with 401 after credential transfer. Switch to SSH: `git remote set-url origin git@github.com:blallen/ballen-config.git`.
