@@ -2,6 +2,22 @@
 
 Files and instructions to set up computers the way I like.
 
+See [CLAUDE.md](CLAUDE.md) for automated setup instructions using Claude Code.
+
+# Homebrew (macOS)
+
+Install [Homebrew](https://brew.sh/) first — it's needed for jj and other macOS tools.
+
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
+
+After installation, Homebrew is not on your PATH until you source the shell profile. The `.zprofile` in this repo already includes the `eval "$(/opt/homebrew/bin/brew shellenv zsh)"` line, but if you haven't copied it yet, run:
+
+```bash
+eval "$(/opt/homebrew/bin/brew shellenv zsh)"
+```
+
 # Shell Setup
 
 ## Install zsh (Ubuntu only)
@@ -34,6 +50,19 @@ cp .p10k.zsh ~/.p10k.zsh
 cp .zprofile ~/.zprofile
 ```
 
+## MesloLGS Nerd Font
+
+Required for Powerlevel10k and the Cursor terminal font. Install from CLI:
+
+```bash
+curl -Lo "$HOME/Library/Fonts/MesloLGS NF Regular.ttf" "https://github.com/romkatv/powerlevel10k-media/raw/master/MesloLGS%20NF%20Regular.ttf"
+curl -Lo "$HOME/Library/Fonts/MesloLGS NF Bold.ttf" "https://github.com/romkatv/powerlevel10k-media/raw/master/MesloLGS%20NF%20Bold.ttf"
+curl -Lo "$HOME/Library/Fonts/MesloLGS NF Italic.ttf" "https://github.com/romkatv/powerlevel10k-media/raw/master/MesloLGS%20NF%20Italic.ttf"
+curl -Lo "$HOME/Library/Fonts/MesloLGS NF Bold Italic.ttf" "https://github.com/romkatv/powerlevel10k-media/raw/master/MesloLGS%20NF%20Bold%20Italic.ttf"
+```
+
+macOS registers fonts in `~/Library/Fonts` automatically — no restart needed.
+
 # Git Setup
 
 Copy the included `.gitconfig` to your home directory (or update the name/email to your own).
@@ -51,27 +80,43 @@ cp .config/git/ignore ~/.config/git/ignore
 
 ## SSH Setup
 
-Create an SSH key for this machine (or copy existing keys from your old machine).
+### Option A: Transfer existing keys from old machine
+
+Copy your `~/.ssh` directory from the old machine via iCloud Drive, AirDrop, or USB. Then fix permissions:
+
+```bash
+chmod 700 ~/.ssh
+chmod 600 ~/.ssh/id_ed25519*
+chmod 600 ~/.ssh/*.pem 2>/dev/null
+chmod 644 ~/.ssh/*.pub
+chmod 600 ~/.ssh/config
+```
+
+SSH keys are not tied to a specific machine — transferring them works fine. You only need a new key if you want separate keys per machine.
+
+### Option B: Generate a new key
 
 ```bash
 ssh-keygen -t ed25519 -C "your-email@example.com"
 ```
 
-Copy the SSH config template and update with your hosts.
+Remember to add your new public key to GitHub and GitLab after generating it.
+
+### SSH config
+
+Copy the SSH config template (or skip if you transferred the whole `~/.ssh` directory).
 
 ```bash
 cp ssh/config ~/.ssh/config
 chmod 600 ~/.ssh/config
 ```
 
-Remember to add your new public key to GitHub and GitLab after generating it.
-
 # Jujutsu (jj) Setup
 
 [Jujutsu](https://github.com/jj-vcs/jj) is a modern VCS that works alongside git. Install it using your package manager.
 
 ```bash
-# macOS
+# macOS (requires Homebrew)
 brew install jj
 
 # or via cargo
@@ -192,7 +237,7 @@ cp cursor/mcp.json ~/.cursor/mcp.json
 
 Edit `~/.cursor/mcp.json` and replace `<YOUR_GITLAB_TOKEN>` with your actual token. Add any additional project-specific MCP servers as needed.
 
-Required font: [MesloLGS Nerd Font](https://github.com/romkatv/powerlevel10k#manual-font-installation) (also needed for Powerlevel10k).
+The MesloLGS Nerd Font (installed in the Shell Setup section above) is required for the terminal font setting.
 
 # Claude Code Setup
 
@@ -211,12 +256,21 @@ Note: The Cursor `settings.json` includes `claudeCode.environmentVariables` for 
 
 ## Credentials to port securely (not in this repo)
 
-These must be transferred securely (e.g., AirDrop, encrypted USB, or password manager):
+These must be transferred securely. iCloud Drive (manual drag-and-drop) is the most reliable method. AirDrop can be flaky with hidden directories. USB drive also works.
 
-- `~/.ssh/id_ed25519_*` — SSH key pairs (private + public)
-- `~/.ssh/*.pem` — AWS keypairs
+- `~/.ssh/` — entire directory (keys, config, known_hosts)
 - `~/.aws/credentials` — AWS credentials
 - `~/.aws/config` — AWS CLI config
+
+After transferring, fix permissions:
+
+```bash
+chmod 700 ~/.ssh
+chmod 600 ~/.ssh/id_ed25519* ~/.ssh/*.pem ~/.ssh/config 2>/dev/null
+chmod 644 ~/.ssh/*.pub
+mkdir -p ~/.aws
+chmod 600 ~/.aws/credentials ~/.aws/config 2>/dev/null
+```
 
 ## Local-Only Configuration
 
@@ -227,3 +281,4 @@ Examples:
 - API tokens and secrets (`GITLAB_TOKEN`, etc.)
 - Cloud provider settings (`AWS_REGION`, etc.)
 - Machine-specific PATH additions
+- Cursor MCP tokens — edit `~/.cursor/mcp.json` and replace `<YOUR_GITLAB_TOKEN>`
