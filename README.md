@@ -240,6 +240,20 @@ Edit `~/.cursor/mcp.json` and replace `<YOUR_GITLAB_TOKEN>` with your actual tok
 
 The MesloLGS Nerd Font (installed in the Shell Setup section above) is required for the terminal font setting.
 
+## Extensions
+
+Install extensions from the saved list. This works with both `cursor` and `code` CLIs:
+
+```bash
+# Cursor
+cat cursor/extensions.txt | xargs -L 1 cursor --install-extension
+
+# VS Code
+cat cursor/extensions.txt | xargs -L 1 code --install-extension
+```
+
+Some extensions (Python, Ruff, Jupyter) may need to be installed from the Extensions panel inside the IDE if the CLI install fails. Cursor also bundles some extensions (cursorpyright, remote-ssh) that don't need separate install.
+
 # Claude Code Setup
 
 Install [Claude Code](https://docs.anthropic.com/en/docs/claude-code) and copy the plugin settings.
