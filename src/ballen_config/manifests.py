@@ -51,12 +51,18 @@ class ManifestRepository:
             A validated manifest repository.
 
         Raises:
-            ValueError: If component identifiers are duplicated.
+            ValueError: If profile declarations or component profile
+                references are inconsistent, or component identifiers are
+                duplicated.
         """
-        profiles = {
-            path.stem: Profile.model_validate(_yaml(path))
-            for path in sorted((root / "profiles").glob("*.yaml"))
-        }
+        profiles: dict[str, Profile] = {}
+        for path in sorted((root / "profiles").glob("*.yaml")):
+            profile = Profile.model_validate(_yaml(path))
+            if profile.name != path.stem:
+                raise ValueError(
+                    f"profile name mismatch: {path.name} declares {profile.name!r}"
+                )
+            profiles[path.stem] = profile
         component_files = (
             ComponentFile.model_validate(_yaml(root / "packages.yaml")),
             ComponentFile.model_validate(_yaml(root / "applications.yaml")),
@@ -69,6 +75,13 @@ class ManifestRepository:
         component_ids = [component.id for component in components]
         if len(component_ids) != len(set(component_ids)):
             raise ValueError("component ids must be unique")
+        for component in sorted(components, key=lambda item: item.id):
+            unknown_profiles = sorted(set(component.profiles) - set(profiles))
+            if unknown_profiles:
+                raise ValueError(
+                    f"component {component.id} references unknown profiles: "
+                    f"{unknown_profiles}"
+                )
         return cls(root, profiles, components)
 
     def _profile_names(
@@ -126,9 +139,7 @@ class ManifestRepository:
             component = by_id[component_id]
             for dependency in sorted(component.depends_on):
                 if dependency not in by_id:
-                    raise ValueError(
-                        f"{component_id} requires unselected {dependency}"
-                    )
+                    raise ValueError(f"{component_id} requires unselected {dependency}")
                 visit(dependency)
             temporary.remove(component_id)
             permanent.add(component_id)
@@ -197,9 +208,7 @@ class ManifestRepository:
             if component.include_key
         }
         skips = {
-            component.skip_key
-            for component in self.components
-            if component.skip_key
+            component.skip_key for component in self.components if component.skip_key
         }
         return tuple(
             [f"profile {name}" for name in sorted(self.profiles)]

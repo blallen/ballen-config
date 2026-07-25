@@ -18,7 +18,7 @@ class Manager(StrEnum):
 class Component(BaseModel):
     """One intentional installable component."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
     id: str = Field(pattern=r"^[a-z0-9][a-z0-9-]*$")
     manager: Manager
@@ -51,13 +51,15 @@ class Component(BaseModel):
 class ComponentFile(BaseModel):
     """Manifest file containing components."""
 
+    model_config = ConfigDict(extra="forbid")
+
     components: tuple[Component, ...]
 
 
 class Profile(BaseModel):
     """Named additive profile."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
     name: str
     extends: tuple[str, ...] = ()
@@ -66,7 +68,7 @@ class Profile(BaseModel):
 class ResolutionRequest(BaseModel):
     """User selection supplied to all stages."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
     profile: str = "default"
     includes: tuple[str, ...] = ()
@@ -76,7 +78,7 @@ class ResolutionRequest(BaseModel):
 class ResolvedSetup(BaseModel):
     """Deterministic resolved component set."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
     profiles: tuple[str, ...]
     components: tuple[Component, ...]

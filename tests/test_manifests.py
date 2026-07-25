@@ -1,15 +1,34 @@
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from ballen_config.manifests import ManifestRepository
-from ballen_config.models import Profile, ResolutionRequest
+from ballen_config.models import Component, Profile, ResolutionRequest
 
 
 @pytest.fixture
 def repository(repo_root: Path) -> ManifestRepository:
     """Load the repository manifests."""
     return ManifestRepository.load(repo_root / "manifests")
+
+
+@pytest.fixture
+def minimal_manifest_root(tmp_path: Path) -> Path:
+    """Create a complete minimal manifest directory."""
+    root = tmp_path / "manifests"
+    profiles = root / "profiles"
+    profiles.mkdir(parents=True)
+    (profiles / "default.yaml").write_text(
+        "name: default\nextends: []\n",
+        encoding="utf-8",
+    )
+    (root / "packages.yaml").write_text("components: []\n", encoding="utf-8")
+    (root / "applications.yaml").write_text(
+        "components: []\n",
+        encoding="utf-8",
+    )
+    return root
 
 
 def ids(repository: ManifestRepository, request: ResolutionRequest) -> set[str]:
@@ -97,3 +116,47 @@ def test_interface_ids_match_manifests(repository: ManifestRepository) -> None:
     assert repository.interface_lines() == expected
     interface_path = repository.root / "component-ids.txt"
     assert tuple(interface_path.read_text().splitlines()) == expected
+
+
+def test_component_rejects_unknown_safety_field() -> None:
+    with pytest.raises(ValidationError, match="enabled_by_defualt"):
+        Component.model_validate(
+            {
+                "id": "signal",
+                "manager": "brew_cask",
+                "package": "signal",
+                "enabled_by_defualt": False,
+            }
+        )
+
+
+def test_profile_filename_must_match_declared_name(
+    minimal_manifest_root: Path,
+) -> None:
+    profile_path = minimal_manifest_root / "profiles/default.yaml"
+    profile_path.write_text("name: work\nextends: []\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="profile name mismatch"):
+        ManifestRepository.load(minimal_manifest_root)
+
+
+def test_component_profiles_must_exist(
+    minimal_manifest_root: Path,
+) -> None:
+    packages_path = minimal_manifest_root / "packages.yaml"
+    packages_path.write_text(
+        """
+components:
+  - id: uv
+    manager: brew_formula
+    package: uv
+    profiles: [missing]
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=r"component uv references unknown profiles: \['missing'\]",
+    ):
+        ManifestRepository.load(minimal_manifest_root)
