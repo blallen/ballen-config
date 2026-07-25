@@ -113,7 +113,7 @@ target-version = "py312"
 line-length = 88
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B", "SIM", "PTH", "RUF"]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 ignore = ["E501"]
 ```
 
@@ -1082,11 +1082,15 @@ def build_plan(
             ),
         )
     )
+    actions = install_actions + contributed_actions
+    action_ids = [action.component_id for action in actions]
+    if len(action_ids) != len(set(action_ids)):
+        raise ValueError("duplicate PlanAction.component_id")
     return SetupPlan(
         profile=request.profile,
         profiles=resolved.profiles,
         skipped=resolved.skipped,
-        actions=install_actions + contributed_actions,
+        actions=actions,
         expected_prompts=("confirm package and configuration changes",),
     )
 
@@ -1667,6 +1671,42 @@ def test_verified_download_rejects_unverified_payload_and_cleans(
     assert not (paths.state_root / "tmp").exists()
 
 
+@pytest.mark.parametrize(
+    ("size_delta", "digest"),
+    [(1, None), (0, "0" * 64)],
+)
+def test_optional_verified_download_failure_is_nonfatal(
+    fake_home: Path,
+    tmp_path: Path,
+    size_delta: int,
+    digest: str | None,
+) -> None:
+    """Normalize optional size and digest failures without running VSIX."""
+    payload = b"extension bytes"
+    downloader = FakeDownloader({"https://example.test/tool.vsix": payload})
+    runner = FakeRunner([])
+    paths = RuntimePaths.from_roots(repo_root=tmp_path, home=fake_home)
+    installer = Installer(
+        runner,
+        fake_home,
+        downloader=downloader,
+        private_temp_root=paths.state_root / "tmp",
+    )
+    action = InstallAction(
+        component_id="cursor-extension",
+        kind="verified-download",
+        argv=("cursor", "--install-extension", "{artifact}"),
+        required=False,
+        url="https://example.test/tool.vsix",
+        artifact_name="tool.vsix",
+        size_bytes=len(payload) + size_delta,
+        sha256=digest or hashlib.sha256(payload).hexdigest(),
+    )
+    assert installer.run_action(action).state == "optional-failure"
+    assert runner.commands == []
+    assert not (paths.state_root / "tmp").exists()
+
+
 def test_run_install_records_normalized_outcomes(
     fake_home: Path,
     tmp_path: Path,
@@ -1699,7 +1739,6 @@ import stat
 from pathlib import Path
 
 import pytest
-from pydantic import ValidationError
 
 from ballen_config.runtime import RuntimePaths
 from ballen_config.state import (
@@ -1868,7 +1907,6 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Literal
-import json
 import os
 import stat
 import tempfile
@@ -1876,7 +1914,6 @@ import tempfile
 from pydantic import BaseModel, ConfigDict, Field
 
 from ballen_config.paths import assert_contained, assert_no_symlink_components
-from ballen_config.planning import PlanAction
 from ballen_config.runtime import RuntimePaths
 
 
@@ -1949,7 +1986,7 @@ class StateStore:
         self._validate_paths()
         self.paths.state_root.mkdir(parents=True, mode=0o700, exist_ok=True)
         self._validate_paths()
-        os.chmod(self.paths.state_root, 0o700)
+        self.paths.state_root.chmod(0o700)
         payload = state.model_dump_json(indent=2) + "\n"
         descriptor, temporary_name = tempfile.mkstemp(
             dir=self.paths.state_root,
@@ -1963,7 +2000,7 @@ class StateStore:
                 stream.flush()
                 os.fsync(stream.fileno())
             self._validate_paths()
-            os.replace(temporary, self.path)
+            temporary.replace(self.path)
         finally:
             temporary.unlink(missing_ok=True)
 
@@ -1988,6 +2025,8 @@ contents.
 
 ```python
 # src/ballen_config/install.py
+from __future__ import annotations
+
 from collections.abc import Callable, Sequence
 import hashlib
 import os
@@ -2134,7 +2173,17 @@ class Installer:
     def run_action(self, action: InstallAction) -> InstallOutcome:
         """Execute a prevalidated extension action without exposing output."""
         if action.kind == "verified-download":
-            completed = self._run_verified_download(action)
+            try:
+                completed = self._run_verified_download(action)
+            except InstallError as error:
+                if action.required:
+                    raise InstallError(
+                        f"{error}: {action.component_id}"
+                    ) from error
+                return InstallOutcome(
+                    component_id=action.component_id,
+                    state="optional-failure",
+                )
         else:
             completed = self.runner.run(action.argv)
         if completed["returncode"] == 0:
@@ -2172,11 +2221,16 @@ class Installer:
         os.chmod(workspace, 0o700)
         artifact = workspace / action.artifact_name
         try:
-            self.downloader.download(
-                url=action.url,
-                destination=artifact,
-                maximum_bytes=action.size_bytes,
-            )
+            try:
+                self.downloader.download(
+                    url=action.url,
+                    destination=artifact,
+                    maximum_bytes=action.size_bytes,
+                )
+            except InstallError:
+                raise
+            except Exception as error:
+                raise InstallError("download failed") from error
             metadata = os.lstat(artifact)
             if not stat.S_ISREG(metadata.st_mode):
                 raise InstallError("download verification failed")
@@ -2379,6 +2433,7 @@ import stat
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from ballen_config.configure import (
     ApplyMethod,
@@ -2548,6 +2603,7 @@ import yaml
 
 from ballen_config.models import ResolvedSetup
 from ballen_config.paths import assert_contained, assert_no_symlink_components
+from ballen_config.planning import PlanAction
 from ballen_config.runtime import RuntimePaths
 from ballen_config.runner import Runner
 from ballen_config.state import ManagedRecord, StateStore
@@ -3632,11 +3688,15 @@ def build_resolved_plan(
             ),
         )
     )
+    actions = install_actions + contributed_actions
+    action_ids = [action.component_id for action in actions]
+    if len(action_ids) != len(set(action_ids)):
+        raise ValueError("duplicate PlanAction.component_id")
     return SetupPlan(
         profile=profile,
         profiles=resolved.profiles,
         skipped=resolved.skipped,
-        actions=install_actions + contributed_actions,
+        actions=actions,
         expected_prompts=("confirm package and configuration changes",),
     )
 ```
@@ -3883,6 +3943,14 @@ def run(
         )
         for supplier in doctor_check_suppliers:
             checks.extend(supplier(resolved, paths, runner))
+        finding_ids = [check.id for check in checks]
+        if len(finding_ids) != len(set(finding_ids)):
+            return RunResult(
+                exit_code=2,
+                report=StageReport(
+                    outcomes=("duplicate doctor finding IDs",)
+                ),
+            )
         report = run_doctor(checks)
         output(report.render())
         return RunResult(
@@ -3971,7 +4039,7 @@ class FakeRunner:
         self.commands.append(command)
         return next(
             self.results,
-            {"returncode": 127, "stdout": "", "stderr": ""},
+            {"returncode": 0, "stdout": "", "stderr": ""},
         )
 
 
@@ -4157,6 +4225,37 @@ def test_invalid_arguments_have_no_commands_or_files(
     assert result.exit_code == 2
     assert runner.commands == []
     assert tuple(fake_home.rglob("*")) == before
+
+
+def test_duplicate_doctor_ids_fail_closed(
+    repo_root: Path,
+    fake_home: Path,
+) -> None:
+    """Reject ambiguous IDs after core and extension checks are merged."""
+
+    def duplicates(*args: object) -> tuple[DoctorFinding, ...]:
+        del args
+        finding = DoctorFinding(
+            id="duplicate",
+            status=FindingStatus.READY,
+            severity=CheckSeverity.INFO,
+            message="ready",
+        )
+        return (finding, finding)
+
+    result = run(
+        ("doctor",),
+        repo_root=repo_root,
+        home=fake_home,
+        runner=FakeRunner([]),
+        downloader=FakeDownloader(),
+        confirm=lambda _: pytest.fail("doctor must not confirm"),
+        output=lambda _: None,
+        timestamp=lambda: "fixed",
+        doctor_check_suppliers=(duplicates,),
+    )
+    assert result.exit_code == 2
+    assert result.report.outcomes == ("duplicate doctor finding IDs",)
 ```
 
 ```python
@@ -4487,7 +4586,9 @@ rtk jj new
 # tests/test_policy.py
 from pathlib import Path
 
-from ballen_config.policy import scan_paths, scan_tree
+import pytest
+
+from ballen_config.policy import Violation, main, scan_paths, scan_tree
 
 
 def test_policy_rejects_secret_and_generated_state(tmp_path: Path) -> None:
@@ -4508,6 +4609,36 @@ def test_policy_rejects_secret_and_generated_state(tmp_path: Path) -> None:
 
 def test_repository_passes_policy(repo_root: Path) -> None:
     assert scan_tree(repo_root) == ()
+
+
+def test_policy_main_reports_rule_and_path_only(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Return one without echoing the matched secret-bearing content."""
+    monkeypatch.setattr(
+        "ballen_config.policy.scan_tree",
+        lambda root: (
+            Violation(rule="private-key", path="bad.pem"),
+        ),
+    )
+    assert main(tmp_path) == 1
+    assert capsys.readouterr().out == "private-key: bad.pem\n"
+
+
+def test_policy_main_returns_zero_for_clean_tree(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Return zero and print nothing for a clean tracked tree."""
+    monkeypatch.setattr(
+        "ballen_config.policy.scan_tree",
+        lambda root: (),
+    )
+    assert main(tmp_path) == 0
+    assert capsys.readouterr().out == ""
 ```
 
 - [ ] **Step 2: Run the tests and verify they fail**
@@ -4645,10 +4776,20 @@ def scan_paths(
 def scan_tree(root: Path) -> tuple[Violation, ...]:
     """Scan only files tracked by the current Jujutsu/Git checkout."""
     return scan_paths(root, tracked_paths(root))
-```
 
-Expose `python -m ballen_config.policy` with exit 1 and `rule: path` lines when
-violations exist.
+
+def main(root: Path | None = None) -> int:
+    """Scan the checkout, print only normalized violations, and return status."""
+    repository_root = root or Path(__file__).resolve().parents[2]
+    violations = scan_tree(repository_root)
+    for violation in violations:
+        print(f"{violation.rule}: {violation.path}")
+    return int(bool(violations))
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+```
 
 - [ ] **Step 4: Wire pre-commit and macOS CI**
 
@@ -4706,15 +4847,30 @@ The CI plan command must use a prepared `.venv` and must not install anything.
 
 ```python
 # tests/test_integration.py
+from collections.abc import Sequence
 import os
 import stat
 from hashlib import sha256
 from pathlib import Path
 
-from ballen_config.configure import ConfigEngine, configuration_specs
+from ballen_config.configure import (
+    ConfigEngine,
+    configuration_specs,
+    core_validators,
+)
 from ballen_config.manifests import ManifestRepository
 from ballen_config.models import ResolutionRequest
 from ballen_config.runtime import RuntimePaths
+from ballen_config.runner import CommandResult
+
+
+class SuccessfulRunner:
+    """Accept syntax-validation commands without invoking local tools."""
+
+    def run(self, command: Sequence[str]) -> CommandResult:
+        """Return one captured successful command result."""
+        del command
+        return {"returncode": 0, "stdout": "", "stderr": ""}
 
 
 def snapshot_tree(root: Path) -> dict[str, tuple[int, str]]:
@@ -4743,7 +4899,11 @@ def test_complete_configure_flow_is_idempotent(
         ResolutionRequest(profile="default")
     )
     specs = configuration_specs(repo_root, paths, resolved)
-    engine = ConfigEngine(paths=paths, timestamp=lambda: "20260725T120000Z")
+    engine = ConfigEngine(
+        paths=paths,
+        timestamp=lambda: "20260725T120000Z",
+        validators=core_validators(SuccessfulRunner()),
+    )
 
     first = tuple(engine.apply(spec) for spec in specs)
     assert first

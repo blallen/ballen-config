@@ -1801,6 +1801,7 @@ rtk jj new
 - Create: `src/ballen_config/assistants/hooks.py`
 - Create: `src/ballen_config/assistants/instructions.py`
 - Create: `tests/assistants/test_hooks.py`
+- Create: `tests/assistants/test_instructions.py`
 - Modify: `assistants/inventory.yaml`
 
 - [ ] **Step 1: Write adapter and rejection tests**
@@ -1928,7 +1929,7 @@ def test_hook_contribution_follows_supported_agent_selection(
 Run:
 
 ```bash
-rtk uv run pytest tests/assistants/test_hooks.py -q
+rtk uv run pytest tests/assistants/test_hooks.py tests/assistants/test_instructions.py -q
 ```
 
 Expected: import fails because `hooks.py` does not exist.
@@ -1973,6 +1974,12 @@ command patterns supported on a clean machine.
 Add `instructions.py` and tests proving native files consume canonical content:
 
 ```python
+# src/ballen_config/assistants/instructions.py
+from __future__ import annotations
+
+from pathlib import Path
+
+
 def render_native_instructions(
     *,
     engineering: str,
@@ -1990,13 +1997,78 @@ def render_native_instructions(
     return "\n\n".join(sections) + "\n"
 ```
 
-Use content reads from the three repository-owned source paths; do not read an
-existing native instruction destination. Assert Claude and the rendered Cursor
-User Rules contain the engineering and RTK rules verbatim. Assert Codex
-contains the engineering rules plus an injected absolute
-`@<home>/.codex/RTK.md` include, while its separately managed `RTK.md` is
-byte-identical to the canonical RTK source. Assert rendered output contains no
-template markers or plugin-cache paths.
+```python
+# tests/assistants/test_instructions.py
+from pathlib import Path
+
+from ballen_config.assistants.instructions import (
+    render_native_instructions,
+)
+
+
+def test_cursor_and_claude_embed_canonical_sections(
+    repo_root: Path,
+) -> None:
+    """Embed reviewed engineering and RTK text without transformations."""
+    engineering = (
+        repo_root / "assistants/shared/instructions/engineering.md"
+    ).read_text()
+    rtk = (
+        repo_root / "assistants/shared/instructions/rtk.md"
+    ).read_text()
+    for suffix in ("# Cursor additions\n", "# Claude additions\n"):
+        rendered = render_native_instructions(
+            engineering=engineering,
+            rtk=rtk,
+            agent_suffix=suffix,
+        )
+        assert engineering.rstrip() in rendered
+        assert rtk.rstrip() in rendered
+        assert suffix.rstrip() in rendered
+
+
+def test_codex_uses_absolute_rtk_include(
+    repo_root: Path,
+    temporary_home: Path,
+) -> None:
+    """Reference the separately managed Codex RTK file by absolute path."""
+    engineering_path = (
+        repo_root / "assistants/shared/instructions/engineering.md"
+    )
+    rtk_path = repo_root / "assistants/shared/instructions/rtk.md"
+    include = temporary_home / ".codex/RTK.md"
+    rendered = render_native_instructions(
+        engineering=engineering_path.read_text(),
+        rtk=rtk_path.read_text(),
+        agent_suffix="# Codex additions\n",
+        rtk_include=include,
+    )
+    assert engineering_path.read_text().rstrip() in rendered
+    assert f"@{include}" in rendered
+    assert rtk_path.read_text().rstrip() not in rendered
+
+
+def test_rendered_instructions_exclude_generated_state(
+    repo_root: Path,
+) -> None:
+    """Keep template markers and plugin-cache paths out of native output."""
+    rendered = render_native_instructions(
+        engineering=(
+            repo_root / "assistants/shared/instructions/engineering.md"
+        ).read_text(),
+        rtk=(
+            repo_root / "assistants/shared/instructions/rtk.md"
+        ).read_text(),
+        agent_suffix="# Agent additions\n",
+    )
+    assert "{{" not in rendered
+    assert "plugins/cache/" not in rendered
+```
+
+Use content reads only from these repository-owned paths; do not read an
+existing native instruction destination. Tasks 4-6 reuse this renderer and
+their adapter tests assert the same canonical sections reach Cursor, Claude,
+and Codex.
 
 Append the final shared entries to `assistants/inventory.yaml`:
 
@@ -2176,7 +2248,7 @@ Run:
 
 ```bash
 rtk zsh -n assistants/shared/hooks/rtk-hook
-rtk uv run pytest tests/assistants/test_hooks.py -q
+rtk uv run pytest tests/assistants/test_hooks.py tests/assistants/test_instructions.py -q
 rtk uv run python -m ballen_config.policy
 ```
 
@@ -2353,9 +2425,11 @@ from hashlib import sha256
 from ballen_config.assistants.cursor import (
     ExtensionState,
     plan_cursor_extension_actions,
+    read_bundled_extensions,
     resolve_extensions,
 )
 from ballen_config.install import InstallAction, Installer
+from tests.assistants.fakes import StatefulAssistantFake
 
 
 def test_agent_extensions_follow_agent_selection(repo_root: Path) -> None:
@@ -2691,18 +2765,37 @@ def plan_cursor_extension_actions(
     return tuple(actions)
 
 
-def _merge_json(base: object, overlay: object) -> object:
+def deep_merge(base: object, overlay: object) -> object:
     """Recursively merge objects and replace scalar or list values."""
     if not isinstance(base, dict) or not isinstance(overlay, dict):
         return overlay
     merged: dict[str, Any] = dict(base)
     for key, value in overlay.items():
         merged[key] = (
-            _merge_json(merged[key], value)
+            deep_merge(merged[key], value)
             if key in merged
             else value
         )
     return merged
+
+
+def render_settings(
+    repo_root: Path,
+    *,
+    profiles: tuple[str, ...],
+) -> dict[str, Any]:
+    """Load and merge reviewed Cursor settings for selected profiles."""
+    base_path = repo_root / "assistants/cursor/settings.base.json"
+    document = json.loads(base_path.read_text())
+    if "work" in profiles:
+        overlay_path = repo_root / "assistants/cursor/settings.work.json"
+        document = deep_merge(
+            document,
+            json.loads(overlay_path.read_text()),
+        )
+    if not isinstance(document, dict):
+        raise ValueError("Cursor settings must be a JSON object")
+    return document
 
 
 def cursor_settings_renderer(
@@ -2717,7 +2810,7 @@ def cursor_settings_renderer(
         del current
         document: object = json.loads(source)
         if work:
-            document = _merge_json(
+            document = deep_merge(
                 document,
                 json.loads(work_path.read_bytes()),
             )
@@ -3531,6 +3624,7 @@ from ballen_config.assistants.codex import (
     load_portable_overlay,
     plan_codex_plugins,
 )
+from ballen_config.configure import ApplyMethod
 from ballen_config.manifests import ManifestRepository
 from ballen_config.models import ResolutionRequest
 from ballen_config.runtime import RuntimePaths
@@ -3695,6 +3789,12 @@ def test_enabled_codex_configuration_has_no_rtk_hook(
         "codex.rtk",
     }
     assert all("hook" not in spec.id for spec in contribution.specs)
+    rtk = next(spec for spec in contribution.specs if spec.id == "codex.rtk")
+    assert rtk.source == (
+        repo_root / "assistants/shared/instructions/rtk.md"
+    )
+    assert rtk.destination == temporary_home / ".codex/RTK.md"
+    assert rtk.method is ApplyMethod.COPY
 ```
 
 - [ ] **Step 2: Run the focused test and confirm the red state**
@@ -4125,6 +4225,7 @@ from pathlib import Path
 import pytest
 
 from ballen_config.assistants.checks import assistant_checks
+from ballen_config.assistants.skills import hash_skill_tree
 from ballen_config.doctor import (
     CheckSeverity,
     FindingStatus,
@@ -4132,6 +4233,7 @@ from ballen_config.doctor import (
 )
 from ballen_config.install import InstallAction
 from ballen_config.runtime import RuntimePaths
+from ballen_config.state import ManagedRecord, StateStore
 from tests.assistants.fakes import StatefulAssistantFake
 
 
@@ -4162,11 +4264,11 @@ def test_secret_bearing_native_output_is_discarded(
     assert "Claude Code sign-in requires manual login" in rendered
 
 
-def test_skipped_agent_is_intentional_not_missing(
+def test_skipped_agent_is_left_to_core_without_duplicate_id(
     fake_runner: StatefulAssistantFake,
     temporary_home: Path,
 ) -> None:
-    """Do not penalize a whole-agent skip."""
+    """Let the core component check report selected or skipped agents."""
     report = run_doctor(
         assistant_checks(
             enabled=frozenset({"cursor", "claude-code"}),
@@ -4177,8 +4279,8 @@ def test_skipped_agent_is_intentional_not_missing(
             runner=fake_runner,
         )
     )
-    codex = report.finding("codex")
-    assert codex.status is FindingStatus.SKIPPED
+    assert "codex" not in {finding.id for finding in report.findings}
+    assert ("codex", "login", "status") not in fake_runner.commands
     assert report.exit_code == 0
 
 
@@ -4272,6 +4374,40 @@ def test_skill_collision_reports_names_only(
     assert collision.status is FindingStatus.MANUAL
     assert "Cursor version" not in collision.message
     assert "Claude version" not in collision.message
+
+
+def test_clean_managed_skill_is_not_reported_as_drift(
+    fake_runner: StatefulAssistantFake,
+    temporary_home: Path,
+) -> None:
+    """Resolve state-store destinations relative to the injected home."""
+    paths = RuntimePaths.from_roots(
+        repo_root=temporary_home / "repo",
+        home=temporary_home,
+    )
+    skill = temporary_home / ".cursor/skills/example"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text(
+        "---\nname: example\ndescription: Portable example.\n---\n"
+    )
+    digest = hash_skill_tree(skill)
+    StateStore(paths).record_managed(
+        ManagedRecord(
+            resource_id="skill:example:cursor",
+            source_digest=digest,
+            destination_digest=digest,
+            destination=".cursor/skills/example",
+        )
+    )
+    findings = assistant_checks(
+        enabled=frozenset({"cursor"}),
+        paths=paths,
+        runner=fake_runner,
+    )
+    assert not any(
+        finding.id.startswith("skills.drift.")
+        for finding in findings
+    )
 
 
 def test_cursor_worktree_check_is_count_only_and_non_mutating(
@@ -4531,27 +4667,11 @@ def _agent_findings(
     enabled: frozenset[str],
     runner: Runner,
 ) -> list[DoctorFinding]:
-    """Report selection, sign-in, and first-party integrations."""
+    """Report sign-in and integrations; core owns application IDs."""
     findings: list[DoctorFinding] = []
     for agent in _AGENTS:
         if agent not in enabled:
-            findings.append(
-                _finding(
-                    agent,
-                    FindingStatus.SKIPPED,
-                    CheckSeverity.INFO,
-                    f"{agent} was intentionally skipped",
-                )
-            )
             continue
-        findings.append(
-            _finding(
-                agent,
-                FindingStatus.READY,
-                CheckSeverity.INFO,
-                f"{agent} is selected for bootstrap",
-            )
-        )
         prefix = "claude" if agent == "claude-code" else agent
         findings.extend(
             (
@@ -4667,8 +4787,11 @@ def _skill_findings(
             not in enabled
         ):
             continue
-        destination = Path(record.destination)
+        relative_destination = Path(record.destination)
         try:
+            if relative_destination.is_absolute():
+                raise ValueError("managed destination must be relative")
+            destination = paths.home / relative_destination
             destination.resolve().relative_to(paths.home.resolve())
             digest = hash_skill_tree(destination)
         except (ValueError, FileNotFoundError):
@@ -4794,6 +4917,7 @@ PORTABILITY_RULES = {
         r"gitlab-mr-mcp|@playwright/mcp|notion-mcp"
     ),
     "operational-mcp": re.compile(r'"?mcpServers"?\s*[:=]'),
+    "generated-state": re.compile(r"(?:^|/)plugins/cache(?:/|$)"),
     "repo-specific": re.compile(
         r"(?m)(?:from\s+plato\s+import|import\s+plato\b|"
         r"Projects/plato\b|plato:skill\b)"
@@ -4936,6 +5060,7 @@ rtk jj new
 
 ```python
 # tests/assistants/test_integration.py
+from collections.abc import Callable
 from hashlib import sha256
 from pathlib import Path
 
@@ -4947,7 +5072,9 @@ from ballen_config.assistants import (
     doctor_checks,
     install_actions,
 )
-from ballen_config.cli import StageReport, run
+from ballen_config.cli import RunResult, run
+from ballen_config.manifests import ManifestRepository
+from ballen_config.models import Manager, ResolutionRequest
 from ballen_config.runtime import RuntimePaths
 from tests.assistants.fakes import StatefulAssistantFake
 
@@ -4975,15 +5102,29 @@ def run_with_assistants(
     repo_root: Path,
     home: Path,
     runner: StatefulAssistantFake,
-) -> StageReport:
+    output: Callable[[str], None] = lambda _: None,
+) -> RunResult:
     """Invoke core with every production assistant callback once."""
     paths = RuntimePaths.from_roots(repo_root=repo_root, home=home)
+    resolved = ManifestRepository.load(repo_root / "manifests").resolve(
+        ResolutionRequest(profile="work")
+    )
+    for component in resolved.components:
+        if component.manager is Manager.GIT:
+            assert component.destination is not None
+            (home / component.destination / ".git").mkdir(
+                parents=True,
+                exist_ok=True,
+            )
     return run(
         argv,
         repo_root=repo_root,
         home=home,
         runner=runner,
+        downloader=runner,
         confirm=lambda _: True,
+        output=output,
+        timestamp=lambda: "20260725T120000Z",
         install_action_suppliers=(install_actions,),
         configuration_suppliers=(configuration,),
         doctor_check_suppliers=(doctor_checks,),
@@ -5001,6 +5142,12 @@ def test_work_profile_with_codex_skip_converges(
     fake_runner.cursor_extensions.add(
         "velociraptor115.vscode-jj-graph"
     )
+    existing_settings = (
+        temporary_home
+        / "Library/Application Support/Cursor/User/settings.json"
+    )
+    existing_settings.parent.mkdir(parents=True)
+    existing_settings.write_text('{"unmanaged": true}\n')
 
     first = run_with_assistants(
         [
@@ -5015,12 +5162,14 @@ def test_work_profile_with_codex_skip_converges(
         runner=fake_runner,
     )
     assert first.exit_code == 0
-    assert (
-        temporary_home
-        / "Library/Application Support/Cursor/User/settings.json"
-    ).is_file()
+    assert existing_settings.is_file()
     assert (temporary_home / ".claude/settings.json").is_file()
     assert not (temporary_home / ".codex").exists()
+    backup_root = (
+        temporary_home / ".local/state/ballen-config/backups"
+    )
+    assert backup_root.is_dir()
+    assert any(path.is_file() for path in backup_root.rglob("*"))
 
     first_snapshot = snapshot_tree(temporary_home)
     second = run_with_assistants(
@@ -5091,21 +5240,137 @@ def test_agent_skip_removes_complete_surface(
     )
 ```
 
-Add integration assertions that:
+Add the remaining end-to-end assertions:
 
-- The plan lists agent actions without settings values or command output.
-- `--skip cursor`, `--skip claude-code`, and `--skip codex` each remove the
-  complete corresponding surface.
-- All three skipped produces no assistant configuration or subprocess calls.
-- Shared skills copy only to enabled target roots.
-- An existing unmanaged skill collision prevents mutation and reports a manual
-  resolution.
-- First configure backs up conflicting managed files once; second configure is
-  a no-op.
-- No path matching session, history, auth, token, cache, database, worktree, or
-  project-trust is read or written.
-- `cursor/mcp.json` is absent from the checkout and an existing
-  `~/.cursor/mcp.json` is reported, not imported or deleted.
+```python
+def test_plan_is_redacted_unique_and_read_only(
+    fake_runner: StatefulAssistantFake,
+    repo_root: Path,
+    temporary_home: Path,
+) -> None:
+    """Render structural actions without values, output, or mutation."""
+    fake_runner.satisfy_core_commands()
+    rendered: list[str] = []
+    result = run_with_assistants(
+        ["plan", "--profile", "work"],
+        repo_root=repo_root,
+        home=temporary_home,
+        runner=fake_runner,
+        output=rendered.append,
+    )
+    assert result.exit_code == 0
+    plan = "\n".join(rendered)
+    assert "cursor.extensions.catalog" in plan
+    assert "CLAUDE_CODE_USE_BEDROCK" not in plan
+    assert "token=" not in plan
+    assert "stderr" not in plan
+
+
+def test_all_agents_skipped_have_no_agent_surface_or_commands(
+    fake_runner: StatefulAssistantFake,
+    repo_root: Path,
+    temporary_home: Path,
+) -> None:
+    """Apply complete skips before every assistant callback."""
+    fake_runner.satisfy_core_commands()
+    result = run_with_assistants(
+        [
+            "all",
+            "--profile",
+            "work",
+            "--skip",
+            "cursor",
+            "--skip",
+            "claude-code",
+            "--skip",
+            "codex",
+        ],
+        repo_root=repo_root,
+        home=temporary_home,
+        runner=fake_runner,
+    )
+    assert result.exit_code == 0
+    assert all(
+        command[0] not in {"cursor", "claude", "codex"}
+        for command in fake_runner.commands
+    )
+    for relative in (".cursor", ".claude", ".codex", ".agents"):
+        assert not (temporary_home / relative).exists()
+
+
+def test_excluded_local_state_is_never_imported_or_changed(
+    fake_runner: StatefulAssistantFake,
+    repo_root: Path,
+    temporary_home: Path,
+) -> None:
+    """Leave generated, authentication, and disposable state byte-identical."""
+    excluded = (
+        "sessions",
+        "history",
+        "auth",
+        "token",
+        "cache",
+        "database",
+        "worktree",
+        "project-trust",
+    )
+    sentinels: list[Path] = []
+    for name in excluded:
+        sentinel = temporary_home / ".local/excluded" / name / "sentinel"
+        sentinel.parent.mkdir(parents=True)
+        sentinel.write_text(f"{name}-private-state")
+        sentinels.append(sentinel)
+    before = {path: path.read_bytes() for path in sentinels}
+    fake_runner.satisfy_core_commands()
+    result = run_with_assistants(
+        [
+            "all",
+            "--profile",
+            "work",
+            "--skip",
+            "cursor",
+            "--skip",
+            "claude-code",
+            "--skip",
+            "codex",
+        ],
+        repo_root=repo_root,
+        home=temporary_home,
+        runner=fake_runner,
+    )
+    assert result.exit_code == 0
+    assert {path: path.read_bytes() for path in sentinels} == before
+
+
+def test_legacy_cursor_mcp_is_reported_but_not_imported_or_deleted(
+    fake_runner: StatefulAssistantFake,
+    repo_root: Path,
+    temporary_home: Path,
+) -> None:
+    """Keep legacy MCP state outside the managed configuration surface."""
+    legacy = temporary_home / ".cursor/mcp.json"
+    legacy.parent.mkdir(parents=True)
+    payload = b'{"mcpServers":{"legacy":{"command":"private"}}}\n'
+    legacy.write_bytes(payload)
+    fake_runner.satisfy_core_commands()
+    rendered: list[str] = []
+    result = run_with_assistants(
+        ["doctor", "--profile", "work"],
+        repo_root=repo_root,
+        home=temporary_home,
+        runner=fake_runner,
+        output=rendered.append,
+    )
+    assert result.exit_code in {0, 1}
+    assert "cursor.legacy-mcp" in "\n".join(rendered)
+    assert legacy.read_bytes() == payload
+    assert not (repo_root / "cursor/mcp.json").exists()
+```
+
+The final suite also includes the Task 3 shared-skill target/collision tests and
+the Task 7 count-only worktree test. Together with the convergence test above,
+they prove enabled-target copying, unmanaged-collision fail-closed behavior,
+one-time backup, and second-run no-op behavior without duplicating fixtures.
 
 - [ ] **Step 2: Run the integration test and confirm the red state**
 
@@ -5257,7 +5522,7 @@ def doctor_checks(
 
 @dataclass(frozen=True)
 class AssistantPlanContributor:
-    """Render redacted structural actions from selected inventory."""
+    """Render manual/catalog actions not represented by managed specs."""
 
     paths: RuntimePaths
 
@@ -5276,16 +5541,21 @@ class AssistantPlanContributor:
         )
         actions = tuple(
             PlanAction(
-                component_id=resource.id,
+                component_id=(
+                    f"{resource.id}.manual"
+                    if resource.kind == "manual"
+                    and resource.source is not None
+                    else resource.id
+                ),
                 category=(
                     "manual"
                     if resource.kind == "manual"
-                    else "configure"
+                    else "install"
                 ),
                 action=(
                     "manual action"
                     if resource.kind == "manual"
-                    else "apply managed agent resource"
+                    else "reconcile reviewed native catalog"
                 ),
                 owner=resource.owner.value,
                 path=(
@@ -5296,6 +5566,7 @@ class AssistantPlanContributor:
                 required=resource.required,
             )
             for resource in resolved.resources
+            if resource.kind in {"manual", "catalog"}
         )
         _unique(
             "PlanAction.component_id",
@@ -5310,7 +5581,7 @@ Register the callbacks exactly once in `cli.main()` while retaining the core
 manual contributor:
 
 ```python
-# src/ballen_config/cli.py additions
+# src/ballen_config/cli.py additions plus complete main replacement
 from ballen_config.assistants import (
     AssistantPlanContributor,
     configuration,
@@ -5322,29 +5593,41 @@ from ballen_config.planning import CoreManualContributor
 from ballen_config.runner import SubprocessRunner
 
 
-paths = RuntimePaths.from_roots(
-    repo_root=Path(__file__).resolve().parents[2],
-    home=Path.home(),
-)
-runner = SubprocessRunner()
-downloader = HttpsDownloader()
-result = run(
-    tuple(sys.argv[1:] if arguments is None else arguments),
-    repo_root=paths.repo_root,
-    home=paths.home,
-    runner=runner,
-    downloader=downloader,
-    confirm=lambda prompt: input(f"{prompt} [y/N] ").lower() == "y",
-    output=print,
-    timestamp=lambda: datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"),
-    install_action_suppliers=(install_actions,),
-    configuration_suppliers=(configuration,),
-    doctor_check_suppliers=(doctor_checks,),
-    plan_contributors=(
-        CoreManualContributor(),
-        AssistantPlanContributor(paths),
-    ),
-)
+def main(arguments: Sequence[str] | None = None) -> int:
+    """Construct core and assistant dependencies and return exit status."""
+    previous_umask = os.umask(0o077)
+    try:
+        paths = RuntimePaths.from_roots(
+            repo_root=Path(__file__).resolve().parents[2],
+            home=Path.home(),
+        )
+        runner = SubprocessRunner()
+        result = run(
+            tuple(sys.argv[1:] if arguments is None else arguments),
+            repo_root=paths.repo_root,
+            home=paths.home,
+            runner=runner,
+            downloader=HttpsDownloader(),
+            confirm=lambda prompt: (
+                input(f"{prompt} [y/N] ").lower() == "y"
+            ),
+            output=print,
+            timestamp=lambda: datetime.now(UTC).strftime(
+                "%Y%m%dT%H%M%SZ"
+            ),
+            install_action_suppliers=(install_actions,),
+            configuration_suppliers=(configuration,),
+            doctor_check_suppliers=(doctor_checks,),
+            plan_contributors=(
+                CoreManualContributor(),
+                AssistantPlanContributor(paths),
+            ),
+        )
+        for outcome in result.report.outcomes:
+            print(outcome)
+        return result.exit_code
+    finally:
+        os.umask(previous_umask)
 ```
 
 The core passes the same resolved skip state to every supplier and executes
