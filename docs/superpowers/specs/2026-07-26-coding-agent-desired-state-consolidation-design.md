@@ -1,7 +1,7 @@
 # Coding-Agent Desired-State Consolidation Design
 
 **Date:** 2026-07-26
-**Status:** Approved for implementation planning
+**Status:** Draft for written-spec review; conversational design approved
 **Stack:** `laptop-bootstrap-agents` → `laptop-bootstrap-review` →
 `laptop-bootstrap-agent-consolidation`
 
@@ -142,8 +142,12 @@ The shared catalogs express portable desired state. Agent directories retain
 settings, instructions, hook adapters, and other formats that are genuinely
 native.
 
-A declaration with several targets reduces repository duplication. It does not
-cause one installed agent to discover or import another agent's files.
+A declaration with several targets reduces repository duplication. It never
+authorizes an adapter to use another agent's installed files as its source of
+truth. Cursor may still discover the Claude Code and Codex compatibility skill
+roots independently. Byte-identical copies of a shared skill across those
+roots are expected and consistent; only same-name, different-content copies
+are drift.
 
 ## Independent Agent Management
 
@@ -160,10 +164,13 @@ Copies are preferred over cross-tool discovery and repository symlinks. A
 copied skill continues working if the checkout moves, and each adapter can
 inspect the exact native destination that it owns.
 
-The bootstrap does not enable Cursor's third-party import setting and does not
-depend on its current value. If the user enables it independently, `doctor`
-may report duplicate same-name skills or imported plugin capabilities, but it
-does not mutate the preference.
+The bootstrap remains correct regardless of Cursor's third-party import
+setting. Setup documentation recommends disabling the preference for a cleaner
+independently managed view, but it is neither a prerequisite nor a blocking
+doctor check. The bootstrap does not write an undocumented Cursor preference.
+If the user enables it independently, `doctor` may report duplicate same-name
+skills or imported plugin capabilities without treating the preference itself
+as drift.
 
 ## Portable Skills
 
@@ -240,8 +247,10 @@ Cursor uses the same desired-state catalog but has distinct installation
 variants:
 
 - **Cursor marketplace plugin:** identified by its Cursor marketplace slug.
-  Until Cursor documents a supported unattended installer, the adapter emits a
-  precise `/add-plugin` or Customize action and `doctor` verifies the result.
+  Until Cursor documents supported unattended install and inspection
+  interfaces, the adapter emits a precise `/add-plugin` or Customize action.
+  `doctor` always retains it as a manual checklist item rather than scraping
+  Cursor's private databases or cache.
 - **Reviewed local plugin:** repository-owned source with a valid
   `.cursor-plugin/plugin.json`, copied atomically into
   `~/.cursor/plugins/local/<name>/`.
@@ -261,6 +270,67 @@ plan will name the concrete Pydantic models, but their conceptual variants are:
 The catalog can add another explicit variant later if a supported Cursor CLI
 installer becomes available.
 
+### Normative catalog shape
+
+The catalog uses `kind` as the plugin discriminator. These are the complete
+initial variants:
+
+```yaml
+marketplaces:
+  - name: claude-plugins-official
+    source: anthropics/claude-plugins-official
+    targets: [claude-code, codex]
+    profiles: [default]
+
+plugins:
+  - kind: native-marketplace
+    id: superpowers@claude-plugins-official
+    marketplace: claude-plugins-official
+    targets: [claude-code, codex]
+    profiles: [default]
+    required: true
+
+  - kind: cursor-marketplace
+    id: example-plugin
+    targets: [cursor]
+    profiles: [default]
+    required: false
+    scope: user
+    verification: manual
+
+  - kind: cursor-local
+    id: example-local-plugin
+    source: assistants/shared/plugins/local/example-local-plugin
+    targets: [cursor]
+    profiles: [default]
+    required: true
+```
+
+Marketplace records contain `name`, `source`, `targets`, and `profiles`.
+Marketplace targets are limited to Claude Code and Codex because Cursor
+marketplace slugs do not use their native repository-marketplace aliases.
+
+The plugin variants are:
+
+| `kind` | Required variant fields | Allowed targets |
+| --- | --- | --- |
+| `native-marketplace` | `id`, `marketplace` | Claude Code, Codex |
+| `cursor-marketplace` | `id`, `scope: user`, `verification: manual` | Cursor only |
+| `cursor-local` | `id`, repository-relative `source` | Cursor only |
+
+Every plugin also has nonempty `targets`, `profiles`, and `required` fields.
+Defaults may remain `profiles: [default]` and `required: true`, but serialized
+examples and error messages use the same meanings across variants.
+For `cursor-marketplace`, `required` controls whether the checklist wording is
+required or optional; it does not claim installation, change an exit code, or
+create an acknowledgement record.
+
+Duplicate identity is evaluated as `(target, plugin ID)` across all variants,
+not separately per `kind`. A marketplace identity is `(target, marketplace
+name)`. Before an adapter receives a record, the catalog projector replaces its
+target set with exactly one concrete target. Adapters never rename identifiers
+or interpret multi-target records.
+
 ## Catalog Validation
 
 The entire catalog is validated before native state is inspected or changed.
@@ -274,10 +344,12 @@ Validation requires:
 - plugin profiles are a subset of the referenced marketplace profiles;
 - native plugin suffixes match their declared marketplace aliases;
 - an installation variant supports every declared target;
-- local sources are repository-relative, contained by the checkout, and
-  regular reviewed files;
+- local source roots are repository-relative reviewed directory trees contained
+  by the checkout;
 - Cursor local plugins contain a valid manifest whose name matches the
   declaration;
+- reviewed local Cursor plugins do not declare skills that collide with the
+  shared skill catalog for Cursor;
 - required dependencies are eligible for every relevant profile and target.
 
 The same identifier may exist in separate records only when their target sets
@@ -309,6 +381,24 @@ For example:
 Catalog parsing remains an inventory preflight check, but there is no second
 list to compare. This removes synchronization work without weakening schema or
 source-path validation.
+
+## Desired-State Preflight Boundary
+
+Full validation before native inspection requires an explicit orchestration
+boundary. The top-level assistant orchestration loads one immutable desired
+state containing:
+
+- the validated central inventory;
+- every validated referenced catalog;
+- per-profile, per-target catalog projections.
+
+Adapters receive projected model objects rather than catalog paths. They cannot
+open or validate a catalog after running a native inspection command.
+
+The same preflight is used by `plan`, `install`, `configure`, and `doctor`
+before any runner call or configuration mutation. An invalid shared catalog
+therefore produces one stable validation error and zero Cursor, Claude Code, or
+Codex commands, backups, state receipts, or destination writes.
 
 ## Planning and Application Flow
 
@@ -342,7 +432,8 @@ The bootstrap manages only declared resources:
 - removing a marketplace declaration stops future installation but does not
   uninstall an already installed plugin;
 - native marketplace commands run only for missing desired entries;
-- required manual actions remain visible until inspection confirms completion;
+- Cursor marketplace actions remain visible as manual checklist items on every
+  relevant run until a supported inspection interface is designed;
 - optional manual actions do not fail the overall install.
 
 The bootstrap never reads an agent's installed state and writes it back into
@@ -356,12 +447,33 @@ to the catalog with coding-agent assistance.
   nothing is installed.
 - A required native command failure fails the install stage.
 - An optional native command failure is retained for the doctor summary.
-- A required Cursor marketplace action is reported as incomplete manual work,
-  not as installed.
+- A required Cursor marketplace action is reported as a required manual
+  checklist item, not as installed or as an automated stage failure.
 - One target's native failure does not corrupt another target's declarations or
-  configuration.
+  configuration. Successfully applied earlier targets are not rolled back;
+  independent idempotency makes the partially completed run safe to resume.
 - Authentication prompts and OAuth state remain outside the bootstrap; doctor
   reports only normalized readiness.
+
+## Reviewed Local Plugin Trees
+
+A Cursor local plugin source is a directory tree, not a single regular file.
+Its review boundary is:
+
+- the declared root resolves beneath the checkout and is an ordinary directory;
+- `.cursor-plugin/plugin.json` is a contained regular file;
+- every descendant is an ordinary directory or regular file;
+- symlinks, special files, traversal, and descendants that resolve outside the
+  root are rejected;
+- the manifest is parsed strictly and its `name` equals the catalog `id`;
+- a deterministic relative-path and content hash describes the complete tree.
+
+Application builds a fully validated temporary sibling directory, applies
+restrictive modes, and atomically renames it into place. An unmanaged existing
+destination is preserved as a collision. A managed destination is backed up
+before replacement. Failure before the rename leaves the prior destination
+unchanged; failure after a successful rename is recorded by the existing
+managed-state receipt.
 
 ## Testing Strategy
 
@@ -378,7 +490,8 @@ call counts.
 - reject duplicate `(target, marketplace)` and `(target, plugin ID)` pairs;
 - reject plugin targets or profiles outside the referenced marketplace;
 - reject incompatible installation variants;
-- reject unsafe or invalid local plugin sources and manifests.
+- reject unsafe or invalid local plugin sources and manifests;
+- reject shared-skill collisions in reviewed local Cursor plugins.
 
 ### Resolver and adapter tests
 
@@ -391,7 +504,10 @@ Parameterized fixtures cover Cursor, Claude Code, and Codex:
 - required and optional action propagation;
 - deterministic ordering;
 - manual Cursor marketplace actions;
-- local Cursor plugin copy, collision, and drift behavior.
+- absence of false installed-state claims when Cursor has no supported
+  inspection interface;
+- local Cursor plugin copy, collision, drift, backup, unsafe-tree, and
+  pre-rename rollback behavior.
 
 ### Integration tests
 
@@ -400,9 +516,18 @@ A temporary-home integration test:
 1. loads the central inventory and both shared catalogs;
 2. plans and configures all three agents;
 3. checks the three independent skill destinations;
-4. checks agent-native plugin actions;
-5. reruns the same operation and verifies idempotency;
-6. confirms unmanaged files remain unchanged.
+4. confirms Cursor treats byte-identical skills discovered through
+   compatibility roots as consistent rather than drift;
+5. checks agent-native plugin actions;
+6. reruns the same operation and verifies idempotency;
+7. confirms unmanaged files remain unchanged.
+
+A separate invalid-catalog integration test invokes each relevant top-level
+stage and asserts:
+
+- zero native runner commands for all three agents;
+- zero destination, backup, or state-receipt mutations;
+- one stable actionable preflight error.
 
 The focused tests run before the full suite. Final verification includes Ruff,
 static type checking, Pytest, repository policy checks, pre-commit, and a
@@ -460,6 +585,8 @@ The design is complete when:
 - the follow-on branch has one target-aware plugin catalog;
 - Cursor, Claude Code, and Codex are each planned and applied independently;
 - no adapter depends on Cursor cross-tool import;
+- setup recommends disabling Cursor cross-tool import but remains correct
+  regardless of that preference;
 - central inventory catalog lists are no longer duplicated;
 - invalid desired state cannot cause partial mutation;
 - repeated temporary-home integration runs are idempotent;
