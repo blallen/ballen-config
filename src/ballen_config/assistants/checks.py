@@ -152,7 +152,7 @@ def _skill_entries(paths: RuntimePaths, agent: str) -> tuple[dict[str, set[str]]
             unsafe = True
             continue
         try:
-            children = []
+            children: list[os.DirEntry[str]] = []
             with os.scandir(root) as scan:
                 for child in scan:
                     if len(children) >= _MAX_SKILL_ROOT_ENTRIES:
