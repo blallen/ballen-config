@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+import ballen_config.cli as cli
 from ballen_config.assistants import (
     AssistantPlanContributor,
     configuration,
@@ -15,7 +16,7 @@ from ballen_config.assistants import (
     install_actions,
 )
 from ballen_config.assistants.claude import ClaudePluginInspectionError
-from ballen_config.cli import RunResult, StageReport, main, run
+from ballen_config.cli import RunResult, main, run
 from ballen_config.manifests import ManifestRepository
 from ballen_config.models import Manager, ResolutionRequest
 from ballen_config.runtime import RuntimePaths
@@ -123,21 +124,45 @@ def test_aggregate_callbacks_omit_every_cursor_surface_when_skipped(
     assert ("cursor", "--list-extensions") not in fake_runner.commands
 
 
-def test_cli_registers_each_aggregate_callback_once(monkeypatch) -> None:
-    """Production CLI supplies each aggregate seam exactly once."""
-    captured: dict[str, object] = {}
+def test_main_registers_exported_callbacks_and_runs_real_aggregate_plan(
+    repo_root: Path,
+    temporary_home: Path,
+    fake_runner: StatefulAssistantFake,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Main passes exported callbacks and the captured callbacks drive real output."""
+    saved_run = cli.run
 
-    def fake_run(*_args, **kwargs):
-        captured.update(kwargs)
-        return RunResult(exit_code=0, report=StageReport())
+    def wrapped(arguments: Sequence[str], **kwargs: object) -> RunResult:
+        assert kwargs["install_action_suppliers"] == (install_actions,)
+        assert kwargs["configuration_suppliers"] == (configuration,)
+        assert kwargs["doctor_check_suppliers"] == (doctor_checks,)
+        contributors = kwargs["plan_contributors"]
+        assert isinstance(contributors, tuple)
+        assert isinstance(contributors[1], AssistantPlanContributor)
+        fake_runner.satisfy_core_commands()
+        return saved_run(
+            arguments,
+            repo_root=repo_root,
+            home=temporary_home,
+            runner=fake_runner,
+            downloader=fake_runner,
+            confirm=lambda _prompt: True,
+            output=print,
+            timestamp=lambda: "20260726T120000Z",
+            install_action_suppliers=kwargs["install_action_suppliers"],
+            configuration_suppliers=kwargs["configuration_suppliers"],
+            doctor_check_suppliers=kwargs["doctor_check_suppliers"],
+            plan_contributors=kwargs["plan_contributors"],
+        )
 
-    monkeypatch.setattr("ballen_config.cli.run", fake_run)
-
-    assert main(("plan",)) == 0
-    assert len(captured["install_action_suppliers"]) == 1
-    assert len(captured["configuration_suppliers"]) == 1
-    assert len(captured["doctor_check_suppliers"]) == 1
-    assert len(captured["plan_contributors"]) == 2
+    monkeypatch.setattr(cli, "run", wrapped)
+    assert (
+        main(("plan", "--skip", "cursor", "--skip", "claude-code", "--skip", "codex"))
+        == 0
+    )
+    assert "profile: default" in capsys.readouterr().out
 
 
 def test_doctor_normalizes_claude_native_inspection_failure(
@@ -340,3 +365,81 @@ def test_all_agent_skips_leave_no_assistant_plan_or_native_commands(
     assert "cursor." not in rendered
     assert "claude." not in rendered
     assert "codex." not in rendered
+
+
+def test_default_and_work_profiles_diverge_only_in_work_agent_resources(
+    repo_root: Path, temporary_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Only the work production path adds Bedrock and optional Piste resources."""
+    monkeypatch.setattr(
+        "ballen_config.assistants.cursor.read_bundled_extensions",
+        lambda _root: frozenset(),
+    )
+    default_home = temporary_home / "default"
+    work_home = temporary_home / "work"
+    default_home.mkdir()
+    work_home.mkdir()
+    default_runner = StatefulAssistantFake(default_home)
+    work_runner = StatefulAssistantFake(work_home)
+    default_output: list[str] = []
+    work_output: list[str] = []
+
+    default_result = run_with_assistants(
+        ("all",),
+        repo_root=repo_root,
+        home=default_home,
+        runner=default_runner,
+        output=default_output,
+    )
+    work_result = run_with_assistants(
+        ("all", "--profile", "work"),
+        repo_root=repo_root,
+        home=work_home,
+        runner=work_runner,
+        output=work_output,
+    )
+    assert default_result.exit_code == work_result.exit_code == 0
+
+    default_settings = json.loads(
+        (
+            default_home / "Library/Application Support/Cursor/User/settings.json"
+        ).read_text()
+    )
+    work_settings = json.loads(
+        (
+            work_home / "Library/Application Support/Cursor/User/settings.json"
+        ).read_text()
+    )
+    assert "claudeCode.environmentVariables" not in default_settings
+    assert "claudeCode.environmentVariables" in work_settings
+    assert not any("piste" in " ".join(command) for command in default_runner.commands)
+    assert any("piste" in " ".join(command) for command in work_runner.commands)
+    assert not any("piste" in outcome for outcome in default_result.report.outcomes)
+    assert any(
+        "claude.marketplace.piste" in outcome for outcome in work_result.report.outcomes
+    )
+    assert all("BEDROCK" not in outcome for outcome in work_result.report.outcomes)
+
+
+def test_doctor_continues_after_cursor_native_inspection_failure(
+    repo_root: Path, temporary_home: Path, fake_runner: StatefulAssistantFake
+) -> None:
+    """One unavailable native boundary yields a generic finding and continues."""
+    output: list[str] = []
+    fake_runner.add(
+        ("cursor", "--list-extensions"), returncode=1, stdout="token", stderr="secret"
+    )
+
+    result = run_with_assistants(
+        ("doctor",),
+        repo_root=repo_root,
+        home=temporary_home,
+        runner=fake_runner,
+        output=output,
+    )
+
+    rendered = "\n".join(output)
+    assert "cursor.unavailable: unavailable" in result.report.outcomes
+    assert ("claude", "plugin", "list", "--json") in fake_runner.commands
+    assert ("codex", "plugin", "list", "--json") in fake_runner.commands
+    assert "token" not in rendered and "secret" not in rendered
