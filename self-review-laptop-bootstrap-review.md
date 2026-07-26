@@ -2,13 +2,18 @@
 
 ## Verdict
 
-**CLEAN** after remediation and independent final review.
+**REMEDIATION IN PROGRESS** after expanding the review to the complete stack.
 
 The initial review found several high-confidence opportunities to remove
 framework theater, consolidate repeated boundary code, and make documentation
 carry intent rather than mirror signatures. All Important, Moderate, and Minor
 findings below were resolved or deliberately retained with a documented
 standards reason.
+
+A follow-up review then covered every non-Python file in
+`main..laptop-bootstrap-review`, including assistant defaults, manifests,
+shell and VCS configuration, CI, deleted legacy files, and documentation. That
+pass found the additional issues recorded under **Full-stack follow-up**.
 
 ## Scope
 
@@ -20,6 +25,9 @@ standards reason.
   - core source and docstrings
   - core tests
   - coding-agent tests
+  - assistant defaults and manifests
+  - shell, CI, dotfiles, security, and deleted files
+  - documentation and default guidance
 
 This is a large stack, so the review was intentionally split by subsystem. The
 findings below focus on source quality, tests, and documentation; they do not
@@ -177,8 +185,58 @@ removed five redundant test functions and five collected cases.
 
 14. **The package-version smoke test is release-coupled**
 
-    `tests/test_package.py` hard-codes `0.1.0`. Remove it or compare installed
-    package metadata with `ballen_config.__version__`.
+   `tests/test_package.py` hard-codes `0.1.0`. Remove it or compare installed
+   package metadata with `ballen_config.__version__`.
+
+## Full-stack follow-up
+
+### Critical
+
+15. **Cursor's stock JSONC keybindings block planning on an existing laptop**
+
+    Cursor initializes `keybindings.json` with a leading `//` comment, but the
+    native-state renderer uses the reviewed-source strict JSON decoder.
+    `./bootstrap plan --profile work` therefore fails with
+    `invalid Cursor keybindings JSON` on this laptop. Keep repository defaults
+    strict JSON while accepting Cursor's native JSONC input, then prove both
+    clean-home and real-home plans.
+
+16. **The stage-zero Homebrew installer executes a mutable remote script**
+
+    `bootstrap` downloads `Homebrew/install@HEAD` directly into Bash without a
+    pinned revision or integrity check. Replace the mutable execution path with
+    a pinned installer revision and verify its SHA-256 digest before execution.
+
+### Important
+
+17. **JJ Ruff fix tools reference a deleted configuration file**
+
+    `dotfiles/vcs/jj-config.toml` passes `--config ruff.toml` to both Ruff
+    tools, but this stack deleted `ruff.toml` after moving policy to
+    `pyproject.toml`. Point the portable aliases at the current configuration
+    and add a regression that prevents the paths from drifting again.
+
+18. **CI does not run the complete pre-commit contract**
+
+    CI invokes two security hooks and duplicates several later checks, but it
+    omits trailing-whitespace, end-of-file, YAML, TOML, and large-file hooks.
+    Run the complete pre-commit suite in CI while retaining the deeper type and
+    test stages.
+
+19. **The approved design describes deferred memory support as implemented**
+
+    The design's CLI and repository-layout sections name memory commands and
+    `memory-source-ids.txt`, while the implementation plans correctly defer
+    memory transfer. Mark those entries as future capability so the design
+    remains an accurate explanation of the shipped defaults.
+
+### Minor
+
+20. **Two archival plans use Unicode directory trees**
+
+    The Plato documentation standard prefers Mermaid for diagrams. Replace the
+    two small repository trees with compact tables, which are easier to keep
+    accurate and accessible in these archival plans.
 
 ## Ponytail review
 
