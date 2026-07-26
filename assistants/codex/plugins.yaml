@@ -1,12 +1,16 @@
 marketplaces:
   - name: claude-plugins-official
     source: anthropics/claude-plugins-official
+    profiles: [default]
   - name: superpowers-marketplace
     source: obra/superpowers-marketplace
+    profiles: [default]
   - name: context-mode
     source: mksglu/claude-context-mode
+    profiles: [default]
   - name: bigspinai
     source: bigspinai/toolkit
+    profiles: [default]
   - name: piste
     source: git@gitlab.com:flagship-informatics/internal-open-source/piste.git
     profiles: [work]
@@ -14,18 +18,25 @@ marketplaces:
 plugins:
   - id: bigspin@bigspinai
     marketplace: bigspinai
+    profiles: [default]
   - id: context-mode@context-mode
     marketplace: context-mode
+    profiles: [default]
   - id: frontend-design@claude-plugins-official
     marketplace: claude-plugins-official
+    profiles: [default]
   - id: github@claude-plugins-official
     marketplace: claude-plugins-official
+    profiles: [default]
   - id: logfire@claude-plugins-official
     marketplace: claude-plugins-official
+    profiles: [default]
   - id: superpowers@claude-plugins-official
     marketplace: claude-plugins-official
+    profiles: [default]
   - id: superpowers-developing-for-claude-code@superpowers-marketplace
     marketplace: superpowers-marketplace
+    profiles: [default]
   - id: ami-qsp-tools@piste
     marketplace: piste
     profiles: [work]

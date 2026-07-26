@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import tomllib
 from pathlib import Path
-from typing import Never, NotRequired, TypedDict, cast
+from typing import Never, TypedDict, cast
 
 import tomlkit
 import yaml
@@ -66,7 +66,7 @@ class CodexPluginSnapshot(TypedDict):
     """The strictly validated Codex plugin-list payload."""
 
     plugins: list[CodexPluginEntry]
-    marketplaces: NotRequired[list[CodexMarketplaceEntry]]
+    marketplaces: list[CodexMarketplaceEntry]
 
 
 def _reject_duplicate_json_keys(pairs: list[tuple[str, object]]) -> JsonObject:

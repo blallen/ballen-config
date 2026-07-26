@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+import yaml
 
 from ballen_config.assistants.codex import (
     CodexPluginInspectionError,
@@ -120,6 +121,17 @@ def test_plugin_actions_are_exact_ordered_and_profile_aware(repo_root: Path) -> 
     )
 
 
+def test_plugin_catalog_explicitly_declares_every_profile(repo_root: Path) -> None:
+    """Keep default and work profile selection visible in the reviewed source."""
+    source = yaml.safe_load(
+        (repo_root / "assistants/codex/plugins.yaml").read_text(encoding="utf-8")
+    )
+    assert all(item["profiles"] == ["default"] for item in source["marketplaces"][:-1])
+    assert source["marketplaces"][-1]["profiles"] == ["work"]
+    assert all(item["profiles"] == ["default"] for item in source["plugins"][:-2])
+    assert all(item["profiles"] == ["work"] for item in source["plugins"][-2:])
+
+
 def test_enabled_inspection_fails_closed_and_skip_does_nothing(
     repo_root: Path, temporary_home: Path, fake_runner: StatefulAssistantFake
 ) -> None:
@@ -161,7 +173,20 @@ def test_instruction_and_configuration_own_only_codex_resources(
     assert f"@{temporary_home}/.codex/RTK.md" in rendered
     assert rendered.endswith(
         "Repository instructions take precedence for repository-specific behavior.\n"
+        "Never migrate authentication, trust, sessions, project paths, or generated plugin state.\n"
     )
+    suffix = (repo_root / "assistants/codex/AGENTS.md").read_text(encoding="utf-8")
+    assert all(
+        concept in suffix
+        for concept in (
+            "authentication",
+            "trust",
+            "sessions",
+            "project paths",
+            "plugin state",
+        )
+    )
+    assert "/Users/" not in suffix
     contribution = codex_configuration(
         repo_root=repo_root,
         home=temporary_home,
