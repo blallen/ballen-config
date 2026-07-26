@@ -210,6 +210,19 @@ def test_initial_inventory_is_only_empty_shared_skill_catalog(
     assert resource.item_ids == ()
 
 
+def test_initial_shared_catalog_disappears_when_all_agents_are_skipped(
+    repo_root: Path,
+) -> None:
+    """Remove the initial shared catalog when every concrete target is skipped."""
+    inventory = load_inventory(repo_root / "assistants/inventory.yaml", repo_root)
+    resolved = resolve_inventory(
+        inventory,
+        profiles=("default",),
+        skipped=frozenset({"cursor", "claude-code", "codex"}),
+    )
+    assert resolved.resources == ()
+
+
 class RecordingPlanContributor:
     """Record the resolved setup delivered to the plan extension seam."""
 

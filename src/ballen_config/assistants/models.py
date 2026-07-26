@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import re
 from enum import StrEnum
 from pathlib import PurePosixPath
 from typing import Annotated, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 
 
 class AgentName(StrEnum):
@@ -16,6 +17,90 @@ class AgentName(StrEnum):
     CLAUDE = "claude-code"
     CODEX = "codex"
     SHARED = "shared"
+
+
+def _validate_concrete_targets(
+    targets: tuple[AgentName, ...],
+) -> tuple[AgentName, ...]:
+    """Require target lists to name only installable coding agents.
+
+    Args:
+        targets: Parsed target agent names.
+
+    Returns:
+        The validated target tuple.
+
+    Raises:
+        ValueError: If the shared pseudo-owner is used as a concrete target.
+    """
+    if AgentName.SHARED in targets:
+        raise ValueError("shared is not a concrete target")
+    return targets
+
+
+ConcreteTargets = Annotated[
+    tuple[AgentName, ...],
+    AfterValidator(_validate_concrete_targets),
+]
+
+_MANAGED_STATE_PATH_WORDS = frozenset(
+    {
+        "auth",
+        "cache",
+        "caches",
+        "credential",
+        "credentials",
+        "histories",
+        "history",
+        "index",
+        "indexes",
+        "indices",
+        "mcp",
+        "mcpserver",
+        "mcpservers",
+        "memories",
+        "memory",
+        "session",
+        "sessions",
+        "token",
+        "tokens",
+        "transcript",
+        "transcripts",
+        "trust",
+        "trusted",
+        "worktree",
+        "worktrees",
+    }
+)
+_PATH_WORD_PATTERN = re.compile(r"[a-z0-9]+")
+
+
+def _validate_managed_file_path(path: PurePosixPath) -> PurePosixPath:
+    """Reject file-copy paths that represent local agent state.
+
+    Args:
+        path: Parsed POSIX source or destination path.
+
+    Returns:
+        The validated path.
+
+    Raises:
+        ValueError: If a path component identifies excluded local state.
+    """
+    words = {
+        word
+        for part in path.parts
+        for word in _PATH_WORD_PATTERN.findall(part.casefold())
+    }
+    if words.intersection(_MANAGED_STATE_PATH_WORDS):
+        raise ValueError("file resource path represents managed local state")
+    return path
+
+
+ManagedFilePath = Annotated[
+    PurePosixPath,
+    AfterValidator(_validate_managed_file_path),
+]
 
 
 class ResourceBase(BaseModel):
@@ -41,10 +126,10 @@ class FileResource(ResourceBase):
     """A reviewed source managed through the core configuration engine."""
 
     kind: Literal["file"]
-    source: PurePosixPath
-    destination: PurePosixPath
+    source: ManagedFilePath
+    destination: ManagedFilePath
     mode: Literal[0o600, 0o700] = 0o600
-    targets: tuple[AgentName, ...] = ()
+    targets: ConcreteTargets = ()
     role: Literal["direct", "render-source", "overlay", "suffix"] = "direct"
 
 
@@ -54,7 +139,7 @@ class HookResource(ResourceBase):
     kind: Literal["hook"]
     source: PurePosixPath
     event: str = Field(min_length=1)
-    targets: tuple[AgentName, ...] = Field(min_length=1)
+    targets: ConcreteTargets = Field(min_length=1)
 
 
 class CatalogResource(ResourceBase):
@@ -63,7 +148,7 @@ class CatalogResource(ResourceBase):
     kind: Literal["catalog"]
     source: PurePosixPath
     catalog_kind: CatalogKind
-    targets: tuple[AgentName, ...] = ()
+    targets: ConcreteTargets = ()
     item_ids: tuple[str, ...]
 
 
@@ -128,6 +213,21 @@ class ExtensionCatalog(BaseModel):
 
     extensions: tuple[ExtensionSpec, ...]
 
+    @model_validator(mode="after")
+    def validate_unique_ids(self) -> Self:
+        """Reject duplicate extension identifiers.
+
+        Returns:
+            The validated extension catalog.
+
+        Raises:
+            ValueError: If extension identifiers are duplicated.
+        """
+        ids = [extension.id for extension in self.extensions]
+        if len(ids) != len(set(ids)):
+            raise ValueError("duplicate extension id")
+        return self
+
 
 class Marketplace(BaseModel):
     """A named plugin marketplace source."""
@@ -160,15 +260,23 @@ class PluginCatalog(BaseModel):
 
     @model_validator(mode="after")
     def validate_marketplaces(self) -> Self:
-        """Reject plugin references to undeclared marketplaces.
+        """Reject ambiguous or inconsistent plugin catalog declarations.
 
         Returns:
             The validated plugin catalog.
 
         Raises:
-            ValueError: If any plugin references an unknown marketplace.
+            ValueError: If declarations are duplicated, unknown, or mismatched.
         """
-        names = {marketplace.name for marketplace in self.marketplaces}
+        marketplace_names = [marketplace.name for marketplace in self.marketplaces]
+        if len(marketplace_names) != len(set(marketplace_names)):
+            raise ValueError("duplicate marketplace name")
+
+        plugin_ids = [plugin.id for plugin in self.plugins]
+        if len(plugin_ids) != len(set(plugin_ids)):
+            raise ValueError("duplicate plugin id")
+
+        names = set(marketplace_names)
         unknown = {
             plugin.marketplace
             for plugin in self.plugins
@@ -176,6 +284,16 @@ class PluginCatalog(BaseModel):
         }
         if unknown:
             raise ValueError(f"unknown marketplaces: {sorted(unknown)}")
+
+        mismatched = [
+            plugin.id
+            for plugin in self.plugins
+            if plugin.id.rpartition("@")[1:] != ("@", plugin.marketplace)
+        ]
+        if mismatched:
+            raise ValueError(
+                f"plugin marketplace suffix mismatch: {sorted(mismatched)}"
+            )
         return self
 
 
@@ -186,7 +304,7 @@ class SkillSpec(BaseModel):
 
     name: str = Field(pattern=r"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$")
     source: PurePosixPath
-    targets: tuple[AgentName, ...] = Field(min_length=1)
+    targets: ConcreteTargets = Field(min_length=1)
     profiles: tuple[str, ...] = ("default",)
     dependencies: tuple[str, ...] = ()
     provenance: str = Field(min_length=1)
