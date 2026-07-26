@@ -1,4 +1,25 @@
 resources:
+  - id: shared.engineering
+    kind: file
+    owner: shared
+    source: assistants/shared/instructions/engineering.md
+    destination: .local/share/ballen-config/instructions/engineering.md
+    targets: [cursor, claude-code, codex]
+
+  - id: shared.rtk
+    kind: file
+    owner: shared
+    source: assistants/shared/instructions/rtk.md
+    destination: .local/share/ballen-config/instructions/rtk.md
+    targets: [cursor, claude-code, codex]
+
+  - id: shared.rtk-hook
+    kind: hook
+    owner: shared
+    source: assistants/shared/hooks/rtk-hook
+    event: shell-command
+    targets: [cursor, claude-code]
+
   - id: shared.skills.catalog
     kind: catalog
     owner: shared

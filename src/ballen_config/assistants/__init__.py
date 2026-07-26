@@ -1,5 +1,15 @@
 """Public typed API for portable coding-agent inventory declarations."""
 
+from ballen_config.assistants.hooks import (
+    ClaudeHookFragment,
+    CursorRegistration,
+    claude_hook_fragment,
+    cursor_hook_renderer,
+    cursor_registration,
+    hook_contribution,
+    validate_hook_source,
+)
+from ballen_config.assistants.instructions import render_native_instructions
 from ballen_config.assistants.models import (
     AgentName,
     AssistantInventory,
@@ -31,6 +41,8 @@ __all__ = [
     "AssistantInventory",
     "CatalogKind",
     "CatalogResource",
+    "ClaudeHookFragment",
+    "CursorRegistration",
     "ExtensionCatalog",
     "ExtensionSpec",
     "FileResource",
@@ -45,7 +57,13 @@ __all__ = [
     "SkillCollisionError",
     "SkillCopyAction",
     "SkillSpec",
+    "claude_hook_fragment",
+    "cursor_hook_renderer",
+    "cursor_registration",
     "hash_skill_tree",
+    "hook_contribution",
     "managed_tree_spec",
     "plan_skill_copies",
+    "render_native_instructions",
+    "validate_hook_source",
 ]

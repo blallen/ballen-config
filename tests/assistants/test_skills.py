@@ -776,7 +776,9 @@ def test_initial_catalog_and_inventory_remain_empty_and_synchronized(
     catalog = yaml.safe_load(
         (repo_root / "assistants/shared/skills/catalog.yaml").read_text()
     )
-    resource = inventory.resources[0]
+    resource = next(
+        item for item in inventory.resources if item.id == "shared.skills.catalog"
+    )
     assert catalog == {"skills": []}
     assert isinstance(resource, CatalogResource)
     assert resource.item_ids == ()
