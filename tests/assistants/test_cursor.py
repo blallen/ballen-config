@@ -256,6 +256,33 @@ def test_configuration_emits_one_profile_aware_settings_spec(
         assert rendered["claudeCode.environmentVariables"] == expected_environment
 
 
+def test_renderers_preserve_unrelated_cursor_native_state(
+    repo_root: Path, temporary_home: Path
+) -> None:
+    """Rendered settings and keybindings retain unrelated local preferences."""
+    paths = RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home)
+    contribution = configuration(_resolved_setup("cursor"), paths)
+    specs = {spec.id: spec for spec in contribution.specs}
+    settings = json.loads(
+        contribution.renderers["cursor-settings"](
+            specs["cursor-settings"].source.read_bytes(),
+            b'{"native":{"keep":true}}',
+        )
+    )
+    bindings = json.loads(
+        contribution.renderers["cursor-keybindings"](
+            specs["cursor-keybindings"].source.read_bytes(),
+            b'[{"key":"cmd+x","command":"native.keep"}]',
+        )
+    )
+
+    assert settings["native"] == {"keep": True}
+    assert {item["command"] for item in bindings} >= {
+        "native.keep",
+        "composerMode.agent",
+    }
+
+
 def test_configuration_uses_relative_private_core_safe_specs(
     repo_root: Path,
     temporary_home: Path,
@@ -293,7 +320,7 @@ def test_configuration_uses_relative_private_core_safe_specs(
     )
     assert all(spec.component == "cursor" for spec in contribution.specs)
     assert all(spec.mode == 0o600 for spec in by_id.values())
-    assert by_id["cursor-keybindings"].method is ApplyMethod.COPY
+    assert by_id["cursor-keybindings"].method is ApplyMethod.RENDER
     assert by_id["cursor-user-rules"].method is ApplyMethod.RENDER
     assert all(
         spec.destination != Path(".cursor/hooks.json") for spec in by_id.values()

@@ -73,9 +73,28 @@ def _decode_json(source: bytes, *, label: str) -> object:
         ValueError: If the source is invalid JSON.
     """
     try:
-        return json.loads(source)
+        return json.loads(
+            source,
+            object_pairs_hook=_reject_duplicate_keys,
+            parse_constant=_reject_non_finite,
+        )
     except (json.JSONDecodeError, UnicodeDecodeError) as error:
         raise ValueError(f"invalid {label} JSON") from error
+
+
+def _reject_duplicate_keys(pairs: list[tuple[str, object]]) -> JsonObject:
+    """Decode JSON objects only when each key appears once."""
+    result: JsonObject = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate JSON key")
+        result[key] = value
+    return result
+
+
+def _reject_non_finite(_value: str) -> object:
+    """Reject non-standard JSON numeric constants."""
+    raise ValueError("non-finite JSON value")
 
 
 def _load_json_object(path: Path, *, label: str) -> JsonObject:
@@ -376,13 +395,23 @@ def cursor_settings_renderer(
         else None
     )
 
-    def render(source: bytes, _current: bytes | None) -> bytes:
+    def render(source: bytes, current: bytes | None) -> bytes:
         document = _decode_json(source, label="Cursor settings base")
         if not isinstance(document, dict):
             raise ValueError("Cursor settings base must be a JSON object")
         if overlay is not None:
             document = deep_merge(document, overlay)
-        return json.dumps(document, indent=2, sort_keys=True).encode() + b"\n"
+        existing = (
+            {} if current is None else _decode_json(current, label="Cursor settings")
+        )
+        if not isinstance(existing, dict):
+            raise ValueError("Cursor settings must be a JSON object")
+        return (
+            json.dumps(
+                deep_merge(existing, document), indent=2, sort_keys=True
+            ).encode()
+            + b"\n"
+        )
 
     return render
 
@@ -413,6 +442,38 @@ def cursor_rules_renderer(paths: RuntimePaths) -> Renderer:
         ).encode()
 
     return render
+
+
+def cursor_keybindings_renderer() -> Renderer:
+    """Merge reviewed keybindings while preserving unrelated user bindings."""
+
+    def render(source: bytes, current: bytes | None) -> bytes:
+        reviewed = _load_json_array_bytes(source, label="Cursor keybindings")
+        existing = (
+            []
+            if current is None
+            else _load_json_array_bytes(current, label="Cursor keybindings")
+        )
+
+        def identity(item: object) -> tuple[object, object] | None:
+            if not isinstance(item, dict) or not isinstance(item.get("command"), str):
+                return None
+            return (item["command"], item.get("when"))
+
+        managed = {identity(item) for item in reviewed}
+        merged = [item for item in existing if identity(item) not in managed]
+        merged.extend(reviewed)
+        return json.dumps(merged, indent=2, sort_keys=True).encode() + b"\n"
+
+    return render
+
+
+def _load_json_array_bytes(source: bytes, *, label: str) -> list[object]:
+    """Decode a strict JSON array from renderer input bytes."""
+    value = _decode_json(source, label=label)
+    if not isinstance(value, list):
+        raise ValueError(f"{label} must be a JSON array")
+    return value
 
 
 def configuration(
@@ -465,9 +526,10 @@ def configuration(
         id="cursor-keybindings",
         source=keybindings,
         destination=Path("Library/Application Support/Cursor/User/keybindings.json"),
-        method=ApplyMethod.COPY,
+        method=ApplyMethod.RENDER,
         mode=0o600,
         component="cursor",
+        renderer_id="cursor-keybindings",
         validator_id="json",
     )
     rules_spec = ManagedFileSpec(
@@ -487,5 +549,6 @@ def configuration(
                 work="work" in setup.profiles,
             ),
             "cursor-user-rules": cursor_rules_renderer(paths),
+            "cursor-keybindings": cursor_keybindings_renderer(),
         },
     )

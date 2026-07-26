@@ -34,6 +34,7 @@ from ballen_config.assistants.codex import (
     load_stable_settings as load_codex_stable_settings,
 )
 from ballen_config.assistants.cursor import (
+    CursorExtensionInspectionError,
     CursorExtensionPackage,
     ExtensionState,
     cursor_rules_renderer,
@@ -92,7 +93,12 @@ from ballen_config.configure import (
     ConfigurationContribution,
     merge_configuration_contributions,
 )
-from ballen_config.doctor import DoctorCheck
+from ballen_config.doctor import (
+    CheckSeverity,
+    DoctorCheck,
+    DoctorFinding,
+    FindingStatus,
+)
 from ballen_config.install import InstallAction
 from ballen_config.models import ResolvedSetup
 from ballen_config.planning import PlanAction
@@ -164,11 +170,39 @@ def doctor_checks(
     setup: ResolvedSetup, paths: RuntimePaths, runner: Runner
 ) -> tuple[DoctorCheck, ...]:
     """Return redacted, unique diagnostics for enabled coding agents."""
-    checks = assistant_checks(
-        enabled=_enabled_agents(setup),
-        paths=paths,
-        runner=runner,
-        pending_actions=install_actions(setup, paths, runner),
+    pending_actions: list[InstallAction] = []
+    unavailable: list[DoctorCheck] = []
+    for agent, supplier, errors, label in (
+        ("cursor", cursor_install_actions, (CursorExtensionInspectionError,), "Cursor"),
+        (
+            "claude-code",
+            claude_install_actions,
+            (ClaudePluginInspectionError,),
+            "Claude",
+        ),
+        ("codex", codex_install_actions, (CodexPluginInspectionError,), "Codex"),
+    ):
+        if not setup.is_enabled(agent):
+            continue
+        try:
+            pending_actions.extend(supplier(setup, paths, runner))
+        except errors:
+            unavailable.append(
+                DoctorFinding(
+                    id=f"{agent.split('-')[0]}.unavailable",
+                    status=FindingStatus.UNAVAILABLE,
+                    severity=CheckSeverity.WARNING,
+                    message=f"{label} native inspection unavailable",
+                )
+            )
+    checks = (
+        *unavailable,
+        *assistant_checks(
+            enabled=_enabled_agents(setup),
+            paths=paths,
+            runner=runner,
+            pending_actions=tuple(pending_actions),
+        ),
     )
     identifiers = [check.id for check in checks]
     if len(identifiers) != len(set(identifiers)):

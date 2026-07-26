@@ -111,6 +111,41 @@ def _resolved_setup(
     )
 
 
+def test_configuration_skips_catalog_and_state_when_all_agents_disabled(
+    skill_paths: RuntimePaths,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """All-agent skips do not inspect shared skill sources or state."""
+    setup = _resolved_setup()
+    monkeypatch.setattr(
+        "ballen_config.assistants.skills.yaml.safe_load",
+        lambda _source: pytest.fail("catalog read"),
+    )
+    monkeypatch.setattr(
+        "ballen_config.assistants.skills.StateStore.load",
+        lambda _store: pytest.fail("state read"),
+    )
+
+    assert configuration(setup, skill_paths) == ConfigurationContribution()
+
+
+def test_configuration_skips_state_when_catalog_selects_no_skills(
+    skill_paths: RuntimePaths,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An empty selected catalog avoids local state inspection."""
+    _write_catalog(skill_paths, [])
+    monkeypatch.setattr(
+        "ballen_config.assistants.skills.StateStore.load",
+        lambda _store: pytest.fail("state read"),
+    )
+
+    assert (
+        configuration(_resolved_setup("cursor"), skill_paths)
+        == ConfigurationContribution()
+    )
+
+
 def test_hash_is_stable_across_creation_order(
     tmp_path: Path,
     source_skill: Path,

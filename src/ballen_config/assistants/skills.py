@@ -340,6 +340,8 @@ def configuration(
         ValueError: If a selected dependency is ineligible or a source is not
             canonical and contained.
     """
+    if not any(setup.is_enabled(agent) for agent in ("cursor", "claude-code", "codex")):
+        return ConfigurationContribution()
     catalog_path = paths.repo_root / "assistants/shared/skills/catalog.yaml"
     catalog = SkillCatalog.model_validate(
         yaml.safe_load(catalog_path.read_text(encoding="utf-8"))
@@ -349,6 +351,8 @@ def configuration(
         for skill in sorted(catalog.skills, key=lambda item: item.name)
         if (targets := _eligible_targets(skill, setup))
     )
+    if not selected:
+        return ConfigurationContribution()
     selected_targets = {skill.name: frozenset(targets) for skill, targets in selected}
     for skill, targets in selected:
         consumer_targets = frozenset(targets)

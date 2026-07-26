@@ -273,6 +273,14 @@ def run(
             for supplier in install_action_suppliers
             for action in supplier(resolved, paths, runner)
         )
+        identifiers = [component.id for component in resolved.components] + [
+            action.component_id for action in actions
+        ]
+        if len(identifiers) != len(set(identifiers)):
+            return RunResult(
+                exit_code=2,
+                report=StageReport(outcomes=("duplicate install action IDs",)),
+            )
         report = run_install(
             components=resolved.components,
             actions=actions,

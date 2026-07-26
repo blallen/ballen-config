@@ -5,8 +5,10 @@ from __future__ import annotations
 from ballen_config.assistants import (
     AssistantPlanContributor,
     configuration,
+    doctor_checks,
     install_actions,
 )
+from ballen_config.assistants.claude import ClaudePluginInspectionError
 from ballen_config.cli import RunResult, StageReport, main
 from ballen_config.manifests import ManifestRepository
 from ballen_config.models import ResolutionRequest
@@ -47,3 +49,25 @@ def test_cli_registers_each_aggregate_callback_once(monkeypatch) -> None:
     assert len(captured["configuration_suppliers"]) == 1
     assert len(captured["doctor_check_suppliers"]) == 1
     assert len(captured["plan_contributors"]) == 2
+
+
+def test_doctor_normalizes_claude_native_inspection_failure(
+    repo_root, temporary_home, fake_runner, monkeypatch
+) -> None:
+    """A failed native inspection becomes one generic warning finding."""
+    setup = ManifestRepository.load(repo_root / "manifests").resolve(
+        ResolutionRequest(skips=("cursor", "codex"))
+    )
+    paths = RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home)
+    monkeypatch.setattr(
+        "ballen_config.assistants.claude_install_actions",
+        lambda *_args: (_ for _ in ()).throw(ClaudePluginInspectionError("secret")),
+    )
+
+    findings = doctor_checks(setup, paths, fake_runner)
+
+    unavailable = next(
+        finding for finding in findings if finding.id == "claude.unavailable"
+    )
+    assert unavailable.status.value == "unavailable"
+    assert unavailable.message == "Claude native inspection unavailable"
