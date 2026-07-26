@@ -1,0 +1,177 @@
+#!/bin/zsh
+set -eu
+umask 077
+
+readonly ROOT_DIR="${0:A:h}"
+readonly IDS_FILE="$ROOT_DIR/manifests/component-ids.txt"
+readonly LOCK_FILE="$ROOT_DIR/uv.lock"
+readonly RUNTIME_MARKER="$ROOT_DIR/.venv/.ballen-config-lock.sha256"
+readonly PREPARE_REQUIRED=20
+readonly TEST_TOOL_ROOT="${BALLEN_BOOTSTRAP_TOOL_ROOT:-}"
+typeset UNAME_BIN="${TEST_TOOL_ROOT:+$TEST_TOOL_ROOT/}uname"
+typeset XCODE_SELECT_BIN="${TEST_TOOL_ROOT:+$TEST_TOOL_ROOT/}xcode-select"
+typeset CURL_BIN="${TEST_TOOL_ROOT:+$TEST_TOOL_ROOT/}curl"
+typeset BASH_BIN="${TEST_TOOL_ROOT:+$TEST_TOOL_ROOT/}bash"
+typeset SHASUM_BIN="${TEST_TOOL_ROOT:+$TEST_TOOL_ROOT/}shasum"
+typeset -a ORIGINAL_ARGS
+ORIGINAL_ARGS=("$@")
+typeset -g UV_BIN=""
+
+if [[ -z "$TEST_TOOL_ROOT" ]]; then
+  UNAME_BIN=/usr/bin/uname
+  XCODE_SELECT_BIN=/usr/bin/xcode-select
+  CURL_BIN=/usr/bin/curl
+  BASH_BIN=/bin/bash
+  SHASUM_BIN=/usr/bin/shasum
+fi
+
+fail() {
+  print -u2 -- "$1"
+  exit "${2:-2}"
+}
+
+has_id() {
+  local kind="$1"
+  local value="$2"
+  /usr/bin/grep -Fqx "$kind $value" "$IDS_FILE"
+}
+
+validate_arguments() {
+  local stage="all"
+  local index=1
+  if (( $# > 0 )) && [[ "$1" != --* ]]; then
+    stage="$1"
+    index=2
+  fi
+  case "$stage" in
+    all|prepare|plan|install|configure|doctor) ;;
+    *) fail "unknown stage: $stage" ;;
+  esac
+  while (( index <= $# )); do
+    local option="${@[index]}"
+    case "$option" in
+      --profile|--include|--skip)
+        (( index + 1 <= $# )) || fail "missing value for $option"
+        local value="${@[index + 1]}"
+        local kind="${option#--}"
+        has_id "$kind" "$value" || fail "unknown $kind: $value"
+        (( index += 2 ))
+        ;;
+      *) fail "unknown option: $option" ;;
+    esac
+  done
+  print -- "$stage"
+}
+
+brew_path() {
+  if command -v brew >/dev/null 2>&1; then
+    command -v brew
+  elif [[ -x /opt/homebrew/bin/brew ]]; then
+    print -- /opt/homebrew/bin/brew
+  elif [[ -x /usr/local/bin/brew ]]; then
+    print -- /usr/local/bin/brew
+  else
+    return 1
+  fi
+}
+
+confirm() {
+  print -- "$1"
+  print -nu2 -- "Continue? [y/N] "
+  local reply=""
+  IFS= read -r reply || return 1
+  [[ "$reply" == [yY] ]]
+}
+
+find_uv() {
+  if command -v uv >/dev/null 2>&1; then
+    command -v uv
+    return
+  fi
+  local brew
+  brew="$(brew_path)" || return 1
+  local candidate
+  candidate="$("$brew" --prefix)/bin/uv"
+  [[ -x "$candidate" ]] || return 1
+  print -- "$candidate"
+}
+
+current_lock_hash() {
+  local output
+  output="$("$SHASUM_BIN" -a 256 "$LOCK_FILE")" || return 1
+  local digest="${output%%[[:space:]]*}"
+  (( ${#digest} == 64 )) || return 1
+  [[ "$digest" != *[^0-9a-f]* ]] || return 1
+  print -r -- "$digest"
+}
+
+runtime_ready() {
+  local python="$ROOT_DIR/.venv/bin/python"
+  [[ -x "$python" && -f "$RUNTIME_MARKER" && -r "$RUNTIME_MARKER" ]] || return 1
+  "$python" --version 2>&1 \
+    | /usr/bin/grep -Eq '^Python 3\.12(\.|$)' || return 1
+  local expected_hash
+  expected_hash="$(current_lock_hash)" || return 1
+  local prepared_hash
+  prepared_hash="$(<"$RUNTIME_MARKER")" || return 1
+  [[ "$prepared_hash" == "$expected_hash" ]] || return 1
+  "$python" -B -c \
+    'import ballen_config, pydantic, yaml, tomlkit' \
+    >/dev/null 2>&1
+}
+
+require_macos() {
+  [[ "$("$UNAME_BIN" -s)" == Darwin ]] || fail "macOS is required"
+}
+
+prepare_runtime() {
+  require_macos
+  if ! "$XCODE_SELECT_BIN" -p >/dev/null 2>&1; then
+    "$XCODE_SELECT_BIN" --install
+    fail "installation started; rerun ./bootstrap prepare when it completes" "$PREPARE_REQUIRED"
+  fi
+  local brew
+  if ! brew="$(brew_path)"; then
+    "$BASH_BIN" -c "$("$CURL_BIN" -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    brew="$(brew_path)" || fail "Homebrew installation did not produce brew"
+  fi
+  if ! UV_BIN="$(find_uv)"; then
+    "$brew" install uv
+    UV_BIN="$(find_uv)" || fail "Homebrew installation did not produce uv"
+  fi
+  "$UV_BIN" python install 3.12
+  /bin/rm -f -- "$RUNTIME_MARKER"
+  "$UV_BIN" sync --frozen --python 3.12
+  local fingerprint
+  fingerprint="$(current_lock_hash)" || fail "unable to fingerprint uv.lock"
+  print -r -- "$fingerprint" > "$RUNTIME_MARKER"
+}
+
+STAGE="$(validate_arguments "$@")"
+readonly STAGE
+if [[ "$STAGE" == prepare ]]; then
+  confirm "Prepare Command Line Tools, Homebrew, uv, Python 3.12, and the frozen environment?" \
+    || exit 0
+  prepare_runtime
+  exit 0
+fi
+
+if ! runtime_ready; then
+  case "$STAGE" in
+    install|all)
+      confirm "The runtime is missing. Run the reviewed prepare step now?" \
+        || exit 0
+      prepare_runtime
+      ;;
+    *) fail "bootstrap runtime is missing; run ./bootstrap prepare" "$PREPARE_REQUIRED" ;;
+  esac
+fi
+
+case "$STAGE" in
+  install|configure|all) require_macos ;;
+esac
+
+if [[ -z "$UV_BIN" ]]; then
+  UV_BIN="$(find_uv)" || fail "uv is missing; run ./bootstrap prepare" "$PREPARE_REQUIRED"
+fi
+exec "$UV_BIN" run --frozen --no-sync python -m ballen_config "${ORIGINAL_ARGS[@]}"

@@ -1,0 +1,47 @@
+components:
+  - id: wave
+    manager: brew_cask
+    package: wave
+    profiles: [default]
+    skip_key: wave
+    application_paths: [/Applications/Wave.app]
+  - id: cursor
+    manager: brew_cask
+    package: cursor
+    profiles: [default]
+    skip_key: cursor
+    application_paths: [/Applications/Cursor.app]
+  - {id: claude-code, manager: brew_cask, package: claude-code, profiles: [default], skip_key: claude-code}
+  - {id: codex, manager: brew_cask, package: codex, profiles: [default], skip_key: codex}
+  - id: brave-browser
+    manager: brew_cask
+    package: brave-browser
+    profiles: [default]
+    application_paths: [/Applications/Brave Browser.app]
+  - {id: meslo-font, manager: brew_cask, package: font-meslo-lg-nerd-font, profiles: [default]}
+  - id: obsidian
+    manager: brew_cask
+    package: obsidian
+    profiles: [default]
+    application_paths: [/Applications/Obsidian.app]
+    enabled_by_default: false
+    include_key: obsidian
+    required: false
+  - id: signal
+    manager: brew_cask
+    package: signal
+    profiles: [default]
+    application_paths: [/Applications/Signal.app]
+    enabled_by_default: false
+    include_key: signal
+    required: false
+  - id: mactex
+    manager: brew_cask
+    package: mactex
+    profiles: [default]
+    application_paths: [/Library/TeX/texbin/latex]
+    receipt_prefixes: [org.tug.mactex.gui]
+    enabled_by_default: false
+    include_key: mactex
+    required: false
+    large: true

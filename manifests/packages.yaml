@@ -1,0 +1,45 @@
+components:
+  - {id: uv, manager: brew_formula, package: uv, profiles: [default]}
+  - {id: gh, manager: brew_formula, package: gh, profiles: [default]}
+  - {id: glab, manager: brew_formula, package: glab, profiles: [default]}
+  - {id: jj, manager: brew_formula, package: jj, profiles: [default]}
+  - {id: node, manager: brew_formula, package: node, profiles: [default]}
+  - {id: ripgrep, manager: brew_formula, package: ripgrep, profiles: [default]}
+  - {id: rtk, manager: brew_formula, package: rtk, profiles: [default]}
+  - {id: libmagic, manager: brew_formula, package: libmagic, profiles: [work]}
+  - {id: awscli, manager: brew_formula, package: awscli, profiles: [work]}
+  - id: oh-my-zsh
+    manager: git
+    package: https://github.com/ohmyzsh/ohmyzsh.git
+    destination: .oh-my-zsh
+    profiles: [default]
+  - id: powerlevel10k
+    manager: git
+    package: https://github.com/romkatv/powerlevel10k.git
+    destination: .oh-my-zsh/custom/themes/powerlevel10k
+    depends_on: [oh-my-zsh]
+    profiles: [default]
+  - id: zsh-autosuggestions
+    manager: git
+    package: https://github.com/zsh-users/zsh-autosuggestions.git
+    destination: .oh-my-zsh/custom/plugins/zsh-autosuggestions
+    depends_on: [oh-my-zsh]
+    profiles: [default]
+  - id: zsh-completions
+    manager: git
+    package: https://github.com/zsh-users/zsh-completions.git
+    destination: .oh-my-zsh/custom/plugins/zsh-completions
+    depends_on: [oh-my-zsh]
+    profiles: [default]
+  - id: zsh-syntax-highlighting
+    manager: git
+    package: https://github.com/zsh-users/zsh-syntax-highlighting.git
+    destination: .oh-my-zsh/custom/plugins/zsh-syntax-highlighting
+    depends_on: [oh-my-zsh]
+    profiles: [default]
+  - id: forgit
+    manager: git
+    package: https://github.com/wfxr/forgit.git
+    destination: .oh-my-zsh/custom/plugins/forgit
+    depends_on: [oh-my-zsh]
+    profiles: [default]

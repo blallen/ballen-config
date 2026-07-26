@@ -1,0 +1,8 @@
+# Put private hosts, aliases, jump hosts, and identity paths in this local file.
+Include ~/.ssh/config.local
+
+# Public Git hosting defaults shared across machines.
+Host github.com gitlab.com
+    User git
+    AddKeysToAgent yes
+    UseKeychain yes
