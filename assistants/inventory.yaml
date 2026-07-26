@@ -27,3 +27,63 @@ resources:
     catalog_kind: skill
     targets: [cursor, claude-code, codex]
     item_ids: []
+
+  - id: cursor.settings
+    kind: file
+    owner: cursor
+    source: assistants/cursor/settings.base.json
+    destination: Library/Application Support/Cursor/User/settings.json
+    role: render-source
+
+  - id: cursor.settings.work
+    kind: file
+    owner: cursor
+    source: assistants/cursor/settings.work.json
+    destination: Library/Application Support/Cursor/User/settings.json
+    profiles: [work]
+    role: overlay
+
+  - id: cursor.keybindings
+    kind: file
+    owner: cursor
+    source: assistants/cursor/keybindings.json
+    destination: Library/Application Support/Cursor/User/keybindings.json
+
+  - id: cursor.user-rules
+    kind: manual
+    owner: cursor
+    source: assistants/cursor/user-rules.md
+    summary: Copy the rendered cursor-user-rules.md from the bootstrap state directory into Cursor Customize > Rules.
+
+  - id: cursor.extensions.catalog
+    kind: catalog
+    owner: cursor
+    source: assistants/cursor/extensions.yaml
+    catalog_kind: extension
+    item_ids:
+      - adamviola.parquet-explorer
+      - anthropic.claude-code
+      - anysphere.remote-containers
+      - anysphere.remote-ssh
+      - bierner.markdown-mermaid
+      - bierner.markdown-preview-github-styles
+      - charliermarsh.ruff
+      - davidanson.vscode-markdownlint
+      - esbenp.prettier-vscode
+      - humao.rest-client
+      - jjk.jjk
+      - matangover.mypy
+      - mhutchie.git-graph
+      - ms-azuretools.vscode-docker
+      - ms-python.python
+      - ms-toolsai.jupyter
+      - ms-vscode.atom-keybindings
+      - ms-vscode.makefile-tools
+      - openai.chatgpt
+      - redhat.vscode-yaml
+      - samuelcolvin.jinjahtml
+      - shd101wyy.markdown-preview-enhanced
+      - tamasfe.even-better-toml
+      - tomoki1207.pdf
+      - visualjj.visualjj
+      - velociraptor115.vscode-jj-graph

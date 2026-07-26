@@ -1,5 +1,23 @@
 """Public typed API for portable coding-agent inventory declarations."""
 
+from ballen_config.assistants.cursor import (
+    CursorExtensionPackage,
+    ExtensionState,
+    cursor_rules_renderer,
+    cursor_settings_renderer,
+    deep_merge,
+    jj_graph_action,
+    plan_cursor_extension_actions,
+    read_bundled_extensions,
+    render_settings,
+    resolve_extensions,
+)
+from ballen_config.assistants.cursor import (
+    configuration as cursor_configuration,
+)
+from ballen_config.assistants.cursor import (
+    install_actions as cursor_install_actions,
+)
 from ballen_config.assistants.hooks import (
     ClaudeHookFragment,
     CursorRegistration,
@@ -42,9 +60,11 @@ __all__ = [
     "CatalogKind",
     "CatalogResource",
     "ClaudeHookFragment",
+    "CursorExtensionPackage",
     "CursorRegistration",
     "ExtensionCatalog",
     "ExtensionSpec",
+    "ExtensionState",
     "FileResource",
     "HookResource",
     "ManualResource",
@@ -58,12 +78,22 @@ __all__ = [
     "SkillCopyAction",
     "SkillSpec",
     "claude_hook_fragment",
+    "cursor_configuration",
     "cursor_hook_renderer",
+    "cursor_install_actions",
     "cursor_registration",
+    "cursor_rules_renderer",
+    "cursor_settings_renderer",
+    "deep_merge",
     "hash_skill_tree",
     "hook_contribution",
+    "jj_graph_action",
     "managed_tree_spec",
+    "plan_cursor_extension_actions",
     "plan_skill_copies",
+    "read_bundled_extensions",
     "render_native_instructions",
+    "render_settings",
+    "resolve_extensions",
     "validate_hook_source",
 ]

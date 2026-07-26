@@ -149,7 +149,7 @@ def test_inventory_loads_reviewed_shared_instruction_and_hook_resources(
     """Keep Task 3 sources reviewed and the empty skill catalog synchronized."""
     inventory = load_inventory(repo_root / "assistants/inventory.yaml", repo_root)
     by_id = {resource.id: resource for resource in inventory.resources}
-    assert set(by_id) == {
+    assert {identifier for identifier in by_id if identifier.startswith("shared.")} == {
         "shared.engineering",
         "shared.rtk",
         "shared.rtk-hook",

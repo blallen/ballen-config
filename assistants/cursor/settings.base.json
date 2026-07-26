@@ -48,9 +48,5 @@
     "[github-actions-workflow]": {
         "editor.defaultFormatter": "redhat.vscode-yaml"
     },
-    "ruff.configurationPreference": "filesystemFirst",
-    "claudeCode.environmentVariables": [
-        "CLAUDE_CODE_USE_BEDROCK=1",
-        "AWS_REGION=us-east-1"
-    ]
+    "ruff.configurationPreference": "filesystemFirst"
 }
