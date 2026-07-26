@@ -1,10 +1,18 @@
 import hashlib
+import stat
 from collections.abc import Sequence
 from pathlib import Path
+from urllib.request import Request
 
 import pytest
 
-from ballen_config.install import InstallAction, Installer, InstallError, run_install
+from ballen_config.install import (
+    HttpsRedirectHandler,
+    InstallAction,
+    Installer,
+    InstallError,
+    run_install,
+)
 from ballen_config.models import Component, Manager
 from ballen_config.runner import CommandResult
 from ballen_config.runtime import RuntimePaths
@@ -174,7 +182,7 @@ def test_verified_download_checks_size_hash_runs_and_cleans(
     artifact = Path(runner.commands[0][2])
     assert runner.commands[0][:2] == ("cursor", "--install-extension")
     assert not artifact.exists()
-    assert not (paths.state_root / "tmp").exists()
+    assert (paths.state_root / "tmp").is_dir()
 
 
 @pytest.mark.parametrize(("size_delta", "digest"), [(1, None), (0, "0" * 64)])
@@ -196,7 +204,7 @@ def test_verified_download_rejects_unverified_payload_and_cleans(
     with pytest.raises(InstallError, match="verification failed"):
         installer.run_action(make_action(payload, size_delta=size_delta, digest=digest))
     assert runner.commands == []
-    assert not (paths.state_root / "tmp").exists()
+    assert (paths.state_root / "tmp").is_dir()
 
 
 @pytest.mark.parametrize(("size_delta", "digest"), [(1, None), (0, "0" * 64)])
@@ -222,6 +230,111 @@ def test_optional_verified_download_failure_is_nonfatal(
         == "optional-failure"
     )
     assert runner.commands == []
+
+
+def test_verified_download_preserves_reusable_temp_parent(
+    fake_home: Path, tmp_path: Path
+) -> None:
+    payload = b"extension bytes"
+    paths = RuntimePaths.from_roots(repo_root=tmp_path, home=fake_home)
+    temp_root = paths.state_root / "tmp"
+    temp_root.mkdir(parents=True)
+    stale = temp_root / "unrelated-stale-content"
+    stale.write_text("preserve me")
+    runner = FakeRunner([result()])
+    installer = Installer(
+        runner,
+        fake_home,
+        downloader=FakeDownloader({"https://example.test/tool.vsix": payload}),
+        private_temp_root=temp_root,
+    )
+
+    assert installer.run_action(make_action(payload)).state == "installed"
+
+    assert stale.read_text() == "preserve me"
+    assert stat.S_IMODE(temp_root.stat().st_mode) == 0o700
+    assert list(temp_root.iterdir()) == [stale]
+
+
+def test_verified_download_actions_use_distinct_workspaces(
+    fake_home: Path, tmp_path: Path
+) -> None:
+    payload = b"extension bytes"
+    paths = RuntimePaths.from_roots(repo_root=tmp_path, home=fake_home)
+    downloader = FakeDownloader({"https://example.test/tool.vsix": payload})
+    installer = Installer(
+        FakeRunner([result(), result()]),
+        fake_home,
+        downloader=downloader,
+        private_temp_root=paths.state_root / "tmp",
+    )
+
+    installer.run_action(make_action(payload))
+    installer.run_action(make_action(payload))
+
+    workspaces = [destination.parent for destination in downloader.destinations]
+    assert len(set(workspaces)) == 2
+    assert all(not workspace.exists() for workspace in workspaces)
+    assert (paths.state_root / "tmp").is_dir()
+
+
+def test_optional_verified_download_setup_failure_is_normalized(
+    fake_home: Path, tmp_path: Path
+) -> None:
+    payload = b"extension bytes"
+    paths = RuntimePaths.from_roots(repo_root=tmp_path, home=fake_home)
+    blocked_temp_root = paths.state_root / "tmp"
+    blocked_temp_root.parent.mkdir(parents=True)
+    blocked_temp_root.write_text("not a directory")
+    runner = FakeRunner([])
+    installer = Installer(
+        runner,
+        fake_home,
+        downloader=FakeDownloader({"https://example.test/tool.vsix": payload}),
+        private_temp_root=blocked_temp_root,
+    )
+
+    outcome = installer.run_action(make_action(payload, required=False))
+
+    assert outcome.state == "optional-failure"
+    assert runner.commands == []
+    assert blocked_temp_root.read_text() == "not a directory"
+
+
+def test_https_redirect_handler_rejects_http_hop_without_url_leakage() -> None:
+    handler = HttpsRedirectHandler()
+    request = Request("https://downloads.example.test/tool")
+
+    with pytest.raises(InstallError) as captured:
+        handler.redirect_request(
+            request,
+            None,
+            302,
+            "Found",
+            {},
+            "http://redirect.example.test/tool?token=secret",
+        )
+
+    assert str(captured.value) == "download redirect rejected"
+    assert "secret" not in str(captured.value)
+    assert "redirect.example.test" not in str(captured.value)
+
+
+def test_https_redirect_handler_delegates_https_hop() -> None:
+    handler = HttpsRedirectHandler()
+    request = Request("https://downloads.example.test/tool")
+
+    redirected = handler.redirect_request(
+        request,
+        None,
+        302,
+        "Found",
+        {},
+        "https://cdn.example.test/tool",
+    )
+
+    assert redirected is not None
+    assert redirected.full_url == "https://cdn.example.test/tool"
 
 
 def test_run_install_records_normalized_outcomes(

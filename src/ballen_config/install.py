@@ -9,8 +9,10 @@ import stat
 import tempfile
 import urllib.request
 from collections.abc import Callable, Sequence
+from http.client import HTTPMessage
 from pathlib import Path
-from typing import Literal, Protocol
+from typing import IO, Literal, Protocol, cast
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -86,8 +88,80 @@ class InstallError(RuntimeError):
     """A generic normalized installation failure."""
 
 
+class HttpsRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Reject every redirect hop whose target is not HTTPS."""
+
+    def redirect_request(
+        self,
+        req: urllib.request.Request,
+        fp: IO[bytes],
+        code: int,
+        msg: str,
+        headers: HTTPMessage,
+        newurl: str,
+    ) -> urllib.request.Request | None:
+        """Validate a redirect target before delegating to urllib.
+
+        Args:
+            req: Original request.
+            fp: Response stream from the original request.
+            code: HTTP redirect status.
+            msg: HTTP status message.
+            headers: Redirect response headers.
+            newurl: Proposed redirect target.
+
+        Returns:
+            The delegated redirect request.
+
+        Raises:
+            InstallError: If the redirect target is not HTTPS.
+        """
+        if urlsplit(newurl).scheme != "https":
+            raise InstallError("download redirect rejected")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+class DownloadResponse(Protocol):
+    """Minimal response surface consumed by the HTTPS downloader."""
+
+    def __enter__(self) -> DownloadResponse:
+        """Enter the response context."""
+
+    def __exit__(
+        self,
+        exc_type: object,
+        exc_value: object,
+        traceback: object,
+    ) -> object:
+        """Exit the response context."""
+
+    def geturl(self) -> str:
+        """Return the final response URL."""
+
+    def read(self, amount: int = -1) -> bytes:
+        """Read at most ``amount`` response bytes."""
+
+
+class UrlOpener(Protocol):
+    """Injectable urllib-compatible response opener."""
+
+    def open(self, fullurl: str, *, timeout: float) -> DownloadResponse:
+        """Open a URL with a bounded timeout."""
+
+
 class HttpsDownloader:
     """Production streaming HTTPS downloader."""
+
+    def __init__(self, opener: UrlOpener | None = None) -> None:
+        """Initialize with an HTTPS-hop-validating opener.
+
+        Args:
+            opener: Injectable opener for tests and controlled transports.
+        """
+        self.opener = opener or cast(
+            UrlOpener,
+            urllib.request.build_opener(HttpsRedirectHandler()),
+        )
 
     def download(self, *, url: str, destination: Path, maximum_bytes: int) -> None:
         """Stream an HTTPS resource to an exclusive private artifact.
@@ -100,11 +174,11 @@ class HttpsDownloader:
         Raises:
             InstallError: If the URL or redirect is not HTTPS, or bound fails.
         """
-        if not url.startswith("https://"):
+        if urlsplit(url).scheme != "https":
             raise InstallError("verified download requires HTTPS")
         try:
-            with urllib.request.urlopen(url, timeout=60) as response:
-                if not response.geturl().startswith("https://"):
+            with self.opener.open(url, timeout=60) as response:
+                if urlsplit(response.geturl()).scheme != "https":
                     raise InstallError("download redirected away from HTTPS")
                 with destination.open("xb") as stream:
                     total = 0
@@ -182,14 +256,23 @@ class Installer:
         assert action.artifact_name is not None
         assert action.size_bytes is not None
         assert action.sha256 is not None
-        temp_root = assert_contained(self.private_temp_root, self.home)
-        assert_no_symlink_components(temp_root, stop=self.home, include_leaf=True)
-        temp_root.mkdir(parents=True, mode=0o700, exist_ok=False)
-        os.chmod(temp_root, 0o700)
-        workspace = Path(tempfile.mkdtemp(prefix="action-", dir=temp_root))
-        os.chmod(workspace, 0o700)
-        artifact = workspace / action.artifact_name
+        workspace: Path | None = None
         try:
+            try:
+                temp_root = assert_contained(self.private_temp_root, self.home)
+                assert_no_symlink_components(
+                    temp_root, stop=self.home, include_leaf=True
+                )
+                temp_root.mkdir(parents=True, mode=0o700, exist_ok=True)
+                assert_no_symlink_components(
+                    temp_root, stop=self.home, include_leaf=True
+                )
+                os.chmod(temp_root, 0o700)
+                workspace = Path(tempfile.mkdtemp(prefix="action-", dir=temp_root))
+                os.chmod(workspace, 0o700)
+            except (OSError, ValueError) as error:
+                raise InstallError("download workspace failed") from error
+            artifact = workspace / action.artifact_name
             try:
                 self.downloader.download(
                     url=action.url,
@@ -216,8 +299,8 @@ class Installer:
             )
             return self.runner.run(argv)
         finally:
-            shutil.rmtree(workspace, ignore_errors=True)
-            shutil.rmtree(temp_root, ignore_errors=True)
+            if workspace is not None:
+                shutil.rmtree(workspace, ignore_errors=True)
 
     def _brew(self, component: Component) -> InstallOutcome:
         """Return present or install a Homebrew formula or cask."""
