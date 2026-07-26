@@ -33,6 +33,24 @@ fail() {
   exit "${2:-2}"
 }
 
+usage() {
+  print -- "usage: ./bootstrap [all|prepare|plan|install|configure|doctor] [options]"
+  print -- ""
+  print -- "options:"
+  print -- "  --profile ID   select one reviewed profile"
+  print -- "  --include ID   include an optional component; repeatable"
+  print -- "  --skip ID      skip a component globally; repeatable"
+  print -- "  --help         show this help and exit"
+}
+
+help_requested() {
+  local argument
+  for argument in "$@"; do
+    [[ "$argument" == --help ]] && return 0
+  done
+  return 1
+}
+
 has_id() {
   local kind="$1"
   local value="$2"
@@ -53,6 +71,9 @@ validate_arguments() {
   while (( index <= $# )); do
     local option="${@[index]}"
     case "$option" in
+      --help)
+        (( index += 1 ))
+        ;;
       --profile|--include|--skip)
         (( index + 1 <= $# )) || fail "missing value for $option"
         local value="${@[index + 1]}"
@@ -186,6 +207,10 @@ prepare_runtime() {
 
 STAGE="$(validate_arguments "$@")"
 readonly STAGE
+if help_requested "$@"; then
+  usage
+  exit 0
+fi
 if [[ "$STAGE" == prepare ]]; then
   confirm "Prepare Command Line Tools, Homebrew, uv, Python 3.12, and the frozen environment?" \
     || exit 0

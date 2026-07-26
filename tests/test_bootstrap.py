@@ -367,6 +367,35 @@ def test_prepared_plan_preserves_original_arguments_without_sync(
 
 
 @pytest.mark.parametrize(
+    "arguments",
+    [
+        pytest.param(("--help",), id="top-level"),
+        pytest.param(("install", "--help"), id="stage-specific"),
+    ],
+)
+def test_help_requests_are_available_before_runtime_preparation(
+    repo_root: Path,
+    tmp_path: Path,
+    fake_stage_zero_tools: FakeStageZeroTools,
+    arguments: tuple[str, ...],
+) -> None:
+    """Show stage-zero help without preparing or synchronizing a runtime."""
+    root = copy_stage_zero(repo_root, tmp_path)
+
+    result = run_bootstrap(
+        root,
+        *arguments,
+        environment=fake_stage_zero_tools["environment"],
+    )
+
+    assert result.returncode == 0
+    assert "usage: ./bootstrap" in result.stdout
+    command_log = read_command_log(fake_stage_zero_tools)
+    assert "uv run " not in command_log
+    assert "uv sync " not in command_log
+
+
+@pytest.mark.parametrize(
     "stage",
     [
         pytest.param("plan", id="plan"),

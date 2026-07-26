@@ -69,6 +69,27 @@ def test_cli_defaults_to_all_and_default_profile() -> None:
     assert options.request.skips == ()
 
 
+def test_help_returns_success_without_an_invalid_configuration_report(
+    repo_root: Path,
+    fake_home: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Treat argparse's help exit as a successful read-only request."""
+    result = run(
+        ("--help",),
+        repo_root=repo_root,
+        home=fake_home,
+        runner=FakeRunner(),
+        downloader=FakeDownloader(),
+        confirm=lambda _prompt: False,
+        output=lambda _message: None,
+        timestamp=lambda: "fixed",
+    )
+
+    assert result == RunResult(exit_code=0, report=StageReport())
+    assert "usage: bootstrap" in capsys.readouterr().out
+
+
 class FakeRunner:
     """Return safe defaults while recording every native command."""
 

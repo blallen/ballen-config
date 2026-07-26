@@ -312,13 +312,14 @@ def run(
                 *plan_contributors,
             ),
         )
-    except (
-        SystemExit,
-        OSError,
-        ValidationError,
-        ValueError,
-        YAMLError,
-    ):
+    except SystemExit as error:
+        if error.code == 0:
+            return RunResult(exit_code=0, report=StageReport())
+        return RunResult(
+            exit_code=2,
+            report=StageReport(outcomes=("invalid configuration",)),
+        )
+    except (OSError, ValidationError, ValueError, YAMLError):
         return RunResult(
             exit_code=2,
             report=StageReport(outcomes=("invalid configuration",)),
