@@ -9,6 +9,7 @@ from ballen_config.planning import (
     CoreManualContributor,
     PlanAction,
     build_plan,
+    build_resolved_plan,
     format_plan,
 )
 
@@ -88,6 +89,30 @@ def test_plan_preserves_install_order_and_redacts_native_values(
     assert "~/.config/waveterm/settings.json" in output
     assert "prompt: confirm package and configuration changes" in output
     assert "glpat-secret-value" not in output
+
+
+def test_build_plan_delegates_to_resolved_plan(
+    repo_root: Path,
+    repository: ManifestRepository,
+) -> None:
+    """Manifest and resolved entry points produce the same stable plan."""
+    request = ResolutionRequest(profile="default")
+    resolved = repository.resolve(request)
+    expected = build_resolved_plan(
+        resolved,
+        profile=request.profile,
+        inspector=FakeInspector(),
+        contributors=(FakeContributor(),),
+    )
+    assert (
+        build_plan(
+            repo_root / "manifests",
+            request,
+            FakeInspector(),
+            contributors=(FakeContributor(),),
+        )
+        == expected
+    )
 
 
 def test_core_manual_actions_are_stable_and_work_aware(

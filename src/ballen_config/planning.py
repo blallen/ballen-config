@@ -114,17 +114,18 @@ class SetupPlan(BaseModel):
     expected_prompts: tuple[str, ...]
 
 
-def build_plan(
-    manifest_root: Path,
-    request: ResolutionRequest,
+def build_resolved_plan(
+    resolved: ResolvedSetup,
+    *,
+    profile: str,
     inspector: Inspector,
     contributors: Sequence[PlanContributor] = (),
 ) -> SetupPlan:
-    """Build a deterministic structural plan.
+    """Build a deterministic plan from one already-resolved setup.
 
     Args:
-        manifest_root: Directory containing package and profile manifests.
-        request: Profile and component selection.
+        resolved: Resolved profiles, components, and skips.
+        profile: Requested primary profile name.
         inspector: Read-only component state provider.
         contributors: Additional redacted action providers.
 
@@ -134,7 +135,6 @@ def build_plan(
     Raises:
         ValueError: If any action component identifier is duplicated.
     """
-    resolved = ManifestRepository.load(manifest_root).resolve(request)
     install_actions = tuple(
         PlanAction(
             component_id=component.id,
@@ -169,11 +169,40 @@ def build_plan(
     if len(action_ids) != len(set(action_ids)):
         raise ValueError("duplicate PlanAction.component_id")
     return SetupPlan(
-        profile=request.profile,
+        profile=profile,
         profiles=resolved.profiles,
         skipped=resolved.skipped,
         actions=actions,
         expected_prompts=("confirm package and configuration changes",),
+    )
+
+
+def build_plan(
+    manifest_root: Path,
+    request: ResolutionRequest,
+    inspector: Inspector,
+    contributors: Sequence[PlanContributor] = (),
+) -> SetupPlan:
+    """Build a deterministic structural plan.
+
+    Args:
+        manifest_root: Directory containing package and profile manifests.
+        request: Profile and component selection.
+        inspector: Read-only component state provider.
+        contributors: Additional redacted action providers.
+
+    Returns:
+        The ordered, redacted setup plan.
+
+    Raises:
+        ValueError: If any action component identifier is duplicated.
+    """
+    resolved = ManifestRepository.load(manifest_root).resolve(request)
+    return build_resolved_plan(
+        resolved,
+        profile=request.profile,
+        inspector=inspector,
+        contributors=contributors,
     )
 
 

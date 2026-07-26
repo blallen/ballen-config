@@ -1,8 +1,58 @@
-import argparse
-from collections.abc import Sequence
-from dataclasses import dataclass
+"""Typed bootstrap command-line parsing and stage dispatch."""
 
-from ballen_config.models import ResolutionRequest
+from __future__ import annotations
+
+import argparse
+import os
+import sys
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import cast
+
+from pydantic import BaseModel, ConfigDict, ValidationError
+from yaml import YAMLError
+
+from ballen_config.configure import (
+    ConfigurationContribution,
+    ConfigurationEngine,
+    ConfigurationPlanContributor,
+    ConfigurationSupplier,
+    core_configuration,
+    core_validators,
+    merge_configuration_contributions,
+    run_configure,
+)
+from ballen_config.doctor import (
+    DoctorCheckSupplier,
+    core_doctor_checks,
+    run_doctor,
+)
+from ballen_config.install import (
+    Downloader,
+    HttpsDownloader,
+    InstallActionSupplier,
+    run_install,
+)
+from ballen_config.manifests import ManifestRepository
+from ballen_config.models import (
+    Component,
+    Manager,
+    ResolutionRequest,
+    ResolvedSetup,
+)
+from ballen_config.planning import (
+    ComponentState,
+    CoreManualContributor,
+    Inspector,
+    PlanContributor,
+    build_resolved_plan,
+    format_plan,
+)
+from ballen_config.runner import CommandRunner, SubprocessRunner
+from ballen_config.runtime import RuntimePaths
+from ballen_config.state import StateStore
 
 STAGES = ("all", "prepare", "plan", "install", "configure", "doctor")
 
@@ -13,6 +63,76 @@ class CliOptions:
 
     stage: str
     request: ResolutionRequest
+
+
+class StageReport(BaseModel):
+    """Normalized effects from one CLI invocation."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    changed_count: int = 0
+    outcomes: tuple[str, ...] = ()
+
+
+class RunResult(BaseModel):
+    """Exit status plus a secret-free programmatic report."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    exit_code: int
+    report: StageReport
+
+
+class ResolvedInspector:
+    """Read-only installation inspector for resolved components."""
+
+    def __init__(
+        self,
+        runner: CommandRunner,
+        components: Sequence[Component],
+        home: Path,
+    ) -> None:
+        """Initialize the read-only component inspection boundary.
+
+        Args:
+            runner: Captured subprocess boundary.
+            components: Resolved components keyed internally by identifier.
+            home: Approved user home directory.
+        """
+        self.runner = runner
+        self.components = {component.id: component for component in components}
+        self.home = home
+
+    def state(self, component_id: str) -> ComponentState:
+        """Return normalized structural state for a resolved component.
+
+        Args:
+            component_id: Resolved component identifier.
+
+        Returns:
+            Present when an app path, Homebrew package, or safe Git checkout
+            exists; otherwise missing.
+        """
+        component = self.components[component_id]
+        if any(Path(path).exists() for path in component.application_paths):
+            return ComponentState.PRESENT
+        if component.manager in {Manager.BREW_FORMULA, Manager.BREW_CASK}:
+            flag = (
+                "--formula" if component.manager is Manager.BREW_FORMULA else "--cask"
+            )
+            result = self.runner.run(("brew", "list", flag, component.package))
+            return (
+                ComponentState.PRESENT
+                if result["returncode"] == 0
+                else ComponentState.MISSING
+            )
+        assert component.destination is not None
+        destination = self.home / component.destination
+        return (
+            ComponentState.PRESENT
+            if not destination.is_symlink() and (destination / ".git").is_dir()
+            else ComponentState.MISSING
+        )
 
 
 def parse_args(arguments: Sequence[str] | None = None) -> CliOptions:
@@ -38,3 +158,218 @@ def parse_args(arguments: Sequence[str] | None = None) -> CliOptions:
             skips=tuple(namespace.skip),
         ),
     )
+
+
+def run(
+    arguments: Sequence[str],
+    *,
+    repo_root: Path,
+    home: Path,
+    runner: CommandRunner,
+    downloader: Downloader,
+    confirm: Callable[[str], bool],
+    output: Callable[[str], None],
+    timestamp: Callable[[], str],
+    install_action_suppliers: Sequence[InstallActionSupplier] = (),
+    configuration_suppliers: Sequence[ConfigurationSupplier] = (),
+    doctor_check_suppliers: Sequence[DoctorCheckSupplier] = (),
+    plan_contributors: Sequence[PlanContributor] = (),
+) -> RunResult:
+    """Execute one validated stage with all side effects injected.
+
+    Args:
+        arguments: Command-line stage and selection arguments.
+        repo_root: Repository containing reviewed manifests and sources.
+        home: Approved destination home.
+        runner: Captured subprocess boundary.
+        downloader: Verified-download boundary for install actions.
+        confirm: Interactive mutation confirmation boundary.
+        output: Normalized output sink.
+        timestamp: Private backup timestamp supplier.
+        install_action_suppliers: Extension installation declarations.
+        configuration_suppliers: Extension configuration declarations.
+        doctor_check_suppliers: Extension diagnostic checks.
+        plan_contributors: Additional structural plan contributors.
+
+    Returns:
+        Normalized exit status and effects.
+    """
+    try:
+        options = parse_args(arguments)
+        if options.stage == "prepare":
+            return RunResult(exit_code=2, report=StageReport())
+        paths = RuntimePaths.from_roots(repo_root=repo_root, home=home)
+        repository = ManifestRepository.load(repo_root / "manifests")
+        resolved = repository.resolve(options.request)
+
+        core = core_configuration(resolved, paths).model_copy(
+            update={"validators": core_validators(runner)}
+        )
+        supplied = tuple(
+            supplier(resolved, paths) for supplier in configuration_suppliers
+        )
+        configuration = merge_configuration_contributions((core, *supplied))
+        engine = ConfigurationEngine(
+            paths=paths,
+            state_store=StateStore(paths),
+            timestamp=timestamp(),
+            renderers=configuration.renderers,
+            validators=configuration.validators,
+        )
+
+        def selected_configuration(
+            resolved: ResolvedSetup,
+            paths: RuntimePaths,
+        ) -> ConfigurationContribution:
+            del resolved, paths
+            return configuration
+
+        configuration_contributor = cast(
+            PlanContributor,
+            ConfigurationPlanContributor(engine, selected_configuration),
+        )
+        inspector: Inspector = ResolvedInspector(
+            runner,
+            resolved.components,
+            paths.home,
+        )
+        plan = build_resolved_plan(
+            resolved,
+            profile=options.request.profile,
+            inspector=inspector,
+            contributors=(configuration_contributor, *plan_contributors),
+        )
+    except (
+        SystemExit,
+        OSError,
+        ValidationError,
+        ValueError,
+        YAMLError,
+    ):
+        return RunResult(
+            exit_code=2,
+            report=StageReport(outcomes=("invalid configuration",)),
+        )
+
+    output(format_plan(plan))
+    if options.stage == "plan":
+        return RunResult(exit_code=0, report=StageReport())
+
+    def install_stage() -> RunResult:
+        actions = tuple(
+            action
+            for supplier in install_action_suppliers
+            for action in supplier(resolved, paths, runner)
+        )
+        report = run_install(
+            components=resolved.components,
+            actions=actions,
+            runner=runner,
+            paths=paths,
+            state_store=StateStore(paths),
+            downloader=downloader,
+        )
+        return RunResult(
+            exit_code=report.exit_code,
+            report=StageReport(outcomes=report.outcomes),
+        )
+
+    def configure_stage() -> RunResult:
+        report = run_configure(engine, configuration.specs)
+        return RunResult(
+            exit_code=0,
+            report=StageReport(
+                changed_count=report.changed_count,
+                outcomes=tuple(
+                    f"{action.id}: {action.outcome}" for action in report.actions
+                ),
+            ),
+        )
+
+    def doctor_stage() -> RunResult:
+        checks = list(
+            core_doctor_checks(
+                resolved,
+                paths,
+                runner,
+                engine=engine,
+                specs=configuration.specs,
+            )
+        )
+        for supplier in doctor_check_suppliers:
+            checks.extend(supplier(resolved, paths, runner))
+        finding_ids = [check.id for check in checks]
+        if len(finding_ids) != len(set(finding_ids)):
+            return RunResult(
+                exit_code=2,
+                report=StageReport(outcomes=("duplicate doctor finding IDs",)),
+            )
+        report = run_doctor(checks)
+        output(report.render())
+        return RunResult(
+            exit_code=report.exit_code,
+            report=StageReport(
+                outcomes=tuple(
+                    f"{finding.id}: {finding.status.value}"
+                    for finding in report.findings
+                )
+            ),
+        )
+
+    if options.stage == "doctor":
+        return doctor_stage()
+    if not confirm("Apply the displayed bootstrap changes?"):
+        return RunResult(
+            exit_code=0,
+            report=StageReport(outcomes=("declined",)),
+        )
+    if options.stage == "install":
+        return install_stage()
+    if options.stage == "configure":
+        return configure_stage()
+
+    installed = install_stage()
+    if installed.exit_code != 0:
+        return installed
+    configured = configure_stage()
+    diagnosed = doctor_stage()
+    return RunResult(
+        exit_code=diagnosed.exit_code,
+        report=StageReport(
+            changed_count=configured.report.changed_count,
+            outcomes=(
+                *installed.report.outcomes,
+                *configured.report.outcomes,
+                *diagnosed.report.outcomes,
+            ),
+        ),
+    )
+
+
+def main(arguments: Sequence[str] | None = None) -> int:
+    """Construct production dependencies and return the process exit code.
+
+    Args:
+        arguments: Explicit arguments, or ``None`` for process arguments.
+
+    Returns:
+        Normalized process exit code.
+    """
+    previous_umask = os.umask(0o077)
+    try:
+        result = run(
+            tuple(sys.argv[1:] if arguments is None else arguments),
+            repo_root=Path(__file__).resolve().parents[2],
+            home=Path.home(),
+            runner=SubprocessRunner(),
+            downloader=HttpsDownloader(),
+            confirm=lambda prompt: input(f"{prompt} [y/N] ").lower() == "y",
+            output=print,
+            timestamp=lambda: datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"),
+            plan_contributors=(CoreManualContributor(),),
+        )
+        for outcome in result.report.outcomes:
+            print(outcome)
+        return result.exit_code
+    finally:
+        os.umask(previous_umask)
