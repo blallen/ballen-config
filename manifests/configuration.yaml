@@ -1,0 +1,49 @@
+files:
+  - id: zshrc
+    source: dotfiles/shell/zshrc
+    destination: .zshrc
+    method: symlink
+    mode: "0600"
+    component: shell
+    validator_id: zsh
+  - id: zprofile
+    source: dotfiles/shell/zprofile
+    destination: .zprofile
+    method: symlink
+    mode: "0600"
+    component: shell
+    validator_id: zsh
+  - id: p10k
+    source: dotfiles/shell/p10k.zsh
+    destination: .p10k.zsh
+    method: symlink
+    mode: "0600"
+    component: shell
+    validator_id: zsh
+  - id: gitconfig
+    source: dotfiles/vcs/gitconfig
+    destination: .gitconfig
+    method: symlink
+    mode: "0600"
+    component: git
+    validator_id: git-config
+  - id: gitignore
+    source: dotfiles/vcs/gitignore
+    destination: .config/git/ignore
+    method: symlink
+    mode: "0600"
+    component: git
+  - id: jj-config
+    source: dotfiles/vcs/jj-config.toml
+    destination: .config/jj/config.toml
+    method: symlink
+    mode: "0600"
+    component: jj
+    validator_id: toml
+  - id: wave-settings
+    source: terminal/wave/settings.json
+    destination: .config/waveterm/settings.json
+    method: copy
+    mode: "0600"
+    component: wave
+    validator_id: json
