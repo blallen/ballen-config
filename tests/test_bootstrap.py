@@ -79,7 +79,20 @@ exit 2
 set -eu
 umask 077
 print -r -- "curl $*" >> "$COMMAND_LOG"
-print -r -- "exit 0"
+local output=""
+while (( $# > 0 )); do
+  if [[ "$1" == "-o" ]]; then
+    output="$2"
+    shift 2
+  else
+    shift
+  fi
+done
+if [[ -n "$output" ]]; then
+  print -r -- "${FAKE_INSTALLER_CONTENT:-exit 0}" > "$output"
+else
+  print -r -- "${FAKE_INSTALLER_CONTENT:-exit 0}"
+fi
 """,
     )
     write_executable(
@@ -108,7 +121,11 @@ set -eu
 umask 077
 print -r -- "shasum $*" >> "$COMMAND_LOG"
 [[ "${1:-}" == "-a" && "${2:-}" == "256" ]] || exit 2
-print -r -- "$FAKE_LOCK_HASH  uv.lock"
+if [[ "${3:-}" == *uv.lock ]]; then
+  print -r -- "$FAKE_LOCK_HASH  ${3:-}"
+else
+  print -r -- "$FAKE_INSTALLER_HASH  ${3:-}"
+fi
 """,
     )
     write_executable(
@@ -146,6 +163,7 @@ fi
             "BALLEN_BOOTSTRAP_TOOL_ROOT": str(tools_root),
             "COMMAND_LOG": str(command_log),
             "FAKE_BREW_PREFIX": str(tools_root),
+            "FAKE_INSTALLER_HASH": hashlib.sha256(b"exit 0\n").hexdigest(),
             "FAKE_LOCK_HASH": lock_fingerprint(repo_root),
             "PATH": f"{tools_root}:/usr/bin:/bin",
         },
@@ -289,6 +307,33 @@ def test_prepare_synchronizes_frozen_python_312_environment(
     marker = runtime_marker(root)
     assert marker.read_text(encoding="utf-8") == f"{lock_fingerprint(root)}\n"
     assert marker.stat().st_mode & 0o777 == 0o600
+
+
+def test_prepare_rejects_unverified_homebrew_installer_before_execution(
+    repo_root: Path,
+    tmp_path: Path,
+    fake_stage_zero_tools: FakeStageZeroTools,
+) -> None:
+    """Never execute downloaded Homebrew bytes whose reviewed digest changed."""
+    root = copy_stage_zero(repo_root, tmp_path)
+    fake_stage_zero_tools["root"].joinpath("brew").unlink()
+    environment = {
+        **fake_stage_zero_tools["environment"],
+        "FAKE_INSTALLER_HASH": "0" * 64,
+    }
+
+    result = run_bootstrap(
+        root,
+        "prepare",
+        environment=environment,
+        input_text="y\n",
+    )
+
+    assert result.returncode == 2
+    assert "Homebrew installer checksum mismatch" in result.stderr
+    assert not any(
+        line.startswith("bash ") for line in read_command_log(fake_stage_zero_tools)
+    )
 
 
 def test_prepared_plan_preserves_original_arguments_without_sync(
