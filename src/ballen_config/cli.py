@@ -14,6 +14,18 @@ from typing import cast
 from pydantic import BaseModel, ConfigDict, ValidationError
 from yaml import YAMLError
 
+from ballen_config.assistants import (
+    AssistantPlanContributor,
+)
+from ballen_config.assistants import (
+    configuration as assistant_configuration,
+)
+from ballen_config.assistants import (
+    doctor_checks as assistant_doctor_checks,
+)
+from ballen_config.assistants import (
+    install_actions as assistant_install_actions,
+)
 from ballen_config.configure import (
     ConfigurationContribution,
     ConfigurationEngine,
@@ -366,7 +378,20 @@ def main(arguments: Sequence[str] | None = None) -> int:
             confirm=lambda prompt: input(f"{prompt} [y/N] ").lower() == "y",
             output=print,
             timestamp=lambda: datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"),
-            plan_contributors=(CoreManualContributor(),),
+            install_action_suppliers=(assistant_install_actions,),
+            configuration_suppliers=(
+                cast(ConfigurationSupplier, assistant_configuration),
+            ),
+            doctor_check_suppliers=(assistant_doctor_checks,),
+            plan_contributors=(
+                CoreManualContributor(),
+                AssistantPlanContributor(
+                    RuntimePaths.from_roots(
+                        repo_root=Path(__file__).resolve().parents[2],
+                        home=Path.home(),
+                    )
+                ),
+            ),
         )
         for outcome in result.report.outcomes:
             print(outcome)

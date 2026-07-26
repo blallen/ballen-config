@@ -13,6 +13,11 @@
 5. Install IT-managed applications through the company-supported channel.
 6. Before `--include mactex`, allow for the full MacTeX download and disk
    footprint.
-7. Finish with `./bootstrap doctor --profile work`, or use
+7. Sign in to each enabled coding agent: Cursor, Claude Code, and Codex.
+8. Import the rendered Cursor User Rules in Cursor Customize > Rules when
+   Cursor is enabled.
+9. Enable each enabled agent's first-party browser capability and authorize
+   the official Notion integration when needed.
+10. Finish with `./bootstrap doctor --profile work`, or use
    `./bootstrap doctor --profile default` for the default profile. Resolve only
    the normalized manual findings.
