@@ -389,9 +389,11 @@ def assistant_checks(
         elif worktrees.is_dir():
             try:
                 count = 0
+                scanned_entries = 0
                 with os.scandir(worktrees) as scan:
                     for child in scan:
-                        if count >= _MAX_CURSOR_WORKTREES:
+                        scanned_entries += 1
+                        if scanned_entries > _MAX_CURSOR_WORKTREES:
                             add(
                                 _finding(
                                     "cursor.worktrees",

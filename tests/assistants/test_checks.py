@@ -247,6 +247,61 @@ def test_symlinked_skill_root_is_not_traversed(
     )
 
 
+@pytest.mark.parametrize("kind", ["root", "tree", "worktrees"])
+def test_diagnostic_scans_cap_every_entry(
+    paths: RuntimePaths, monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    """Fail closed when noncandidate entries exhaust a scan budget."""
+    import ballen_config.assistants.checks as checks
+
+    monkeypatch.setattr(checks, "_MAX_SKILL_ROOT_ENTRIES", 2)
+    monkeypatch.setattr(checks, "_MAX_SKILL_TREE_ENTRIES", 2)
+    monkeypatch.setattr(checks, "_MAX_CURSOR_WORKTREES", 2)
+    if kind == "root":
+        root = paths.home / ".agents/skills"
+        root.mkdir(parents=True)
+        for index in range(3):
+            (root / f"file-{index}").write_text("x")
+        findings = assistant_checks(
+            enabled=frozenset({"codex"}),
+            paths=paths,
+            runner=StatefulAssistantFake(paths.home),
+        )
+        assert (
+            run_doctor(findings).finding("skill-scan.codex").message
+            == "Native skill state requires manual review"
+        )
+    elif kind == "tree":
+        root = paths.home / ".agents/skills/capped"
+        root.mkdir(parents=True)
+        (root / "SKILL.md").write_text("---\nname: capped\n---\nx\n")
+        for index in range(2):
+            (root / f"file-{index}").write_text("x")
+        findings = assistant_checks(
+            enabled=frozenset({"codex"}),
+            paths=paths,
+            runner=StatefulAssistantFake(paths.home),
+        )
+        assert (
+            run_doctor(findings).finding("skill-scan.codex").message
+            == "Native skill state requires manual review"
+        )
+    else:
+        root = paths.home / ".cursor/worktrees"
+        root.mkdir(parents=True)
+        for index in range(3):
+            (root / f"file-{index}").write_text("x")
+        findings = assistant_checks(
+            enabled=frozenset({"cursor"}),
+            paths=paths,
+            runner=StatefulAssistantFake(paths.home),
+        )
+        assert (
+            run_doctor(findings).finding("cursor.worktrees").message
+            == "Cursor worktree state requires manual review"
+        )
+
+
 def test_inventory_manual_resources_are_exact_and_unique(repo_root: Path) -> None:
     """Declare portable first-party browser and Notion setup guidance."""
     from ballen_config.assistants.inventory import load_inventory
