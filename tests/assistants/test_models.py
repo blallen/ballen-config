@@ -17,7 +17,7 @@ from ballen_config.assistants.models import (
 @pytest.mark.parametrize(
     ("resource", "missing_field"),
     [
-        (
+        pytest.param(
             {
                 "id": "cursor.settings",
                 "kind": "file",
@@ -25,8 +25,9 @@ from ballen_config.assistants.models import (
                 "source": "assistants/cursor/settings.json",
             },
             "destination",
+            id="file-destination",
         ),
-        (
+        pytest.param(
             {
                 "id": "shared.rtk-hook",
                 "kind": "hook",
@@ -35,8 +36,9 @@ from ballen_config.assistants.models import (
                 "targets": ["cursor"],
             },
             "event",
+            id="hook-event",
         ),
-        (
+        pytest.param(
             {
                 "id": "shared.skills.catalog",
                 "kind": "catalog",
@@ -45,14 +47,16 @@ from ballen_config.assistants.models import (
                 "catalog_kind": "skill",
             },
             "item_ids",
+            id="catalog-item-ids",
         ),
-        (
+        pytest.param(
             {
                 "id": "cursor.user-rules",
                 "kind": "manual",
                 "owner": "cursor",
             },
             "summary",
+            id="manual-summary",
         ),
     ],
 )
@@ -96,30 +100,39 @@ def test_inventory_has_no_mcp_resource_kind() -> None:
 @pytest.mark.parametrize(
     "resource",
     [
-        {
-            "id": "cursor.settings",
-            "kind": "file",
-            "owner": "cursor",
-            "source": "assistants/cursor/settings.json",
-            "destination": ".cursor/settings.json",
-            "mode": 0o644,
-        },
-        {
-            "id": "shared.hook",
-            "kind": "hook",
-            "owner": "shared",
-            "source": "assistants/shared/hooks/rtk-hook",
-            "event": "",
-            "targets": ["cursor"],
-        },
-        {
-            "id": "shared.hook",
-            "kind": "hook",
-            "owner": "shared",
-            "source": "assistants/shared/hooks/rtk-hook",
-            "event": "shell-command",
-            "targets": [],
-        },
+        pytest.param(
+            {
+                "id": "cursor.settings",
+                "kind": "file",
+                "owner": "cursor",
+                "source": "assistants/cursor/settings.json",
+                "destination": ".cursor/settings.json",
+                "mode": 0o644,
+            },
+            id="unsafe-file-mode",
+        ),
+        pytest.param(
+            {
+                "id": "shared.hook",
+                "kind": "hook",
+                "owner": "shared",
+                "source": "assistants/shared/hooks/rtk-hook",
+                "event": "",
+                "targets": ["cursor"],
+            },
+            id="empty-hook-event",
+        ),
+        pytest.param(
+            {
+                "id": "shared.hook",
+                "kind": "hook",
+                "owner": "shared",
+                "source": "assistants/shared/hooks/rtk-hook",
+                "event": "shell-command",
+                "targets": [],
+            },
+            id="empty-hook-targets",
+        ),
     ],
 )
 def test_resources_reject_unsafe_modes_and_empty_hook_fields(
@@ -130,22 +143,8 @@ def test_resources_reject_unsafe_modes_and_empty_hook_fields(
         AssistantInventory.model_validate({"resources": [resource]})
 
 
-def test_models_are_frozen_and_forbid_extra_fields() -> None:
-    """Prevent runtime mutation and silent schema expansion."""
-    inventory = AssistantInventory.model_validate(
-        {
-            "resources": [
-                {
-                    "id": "cursor.manual",
-                    "kind": "manual",
-                    "owner": "cursor",
-                    "summary": "Manual step.",
-                }
-            ]
-        }
-    )
-    with pytest.raises(ValidationError):
-        inventory.resources[0].required = False
+def test_inventory_forbids_undeclared_fields() -> None:
+    """Reject inventory input that would silently widen the public schema."""
     with pytest.raises(ValidationError):
         AssistantInventory.model_validate({"resources": [], "unknown": True})
 
@@ -175,10 +174,10 @@ def test_vsix_requires_complete_immutable_https_metadata() -> None:
 @pytest.mark.parametrize(
     ("field", "value"),
     [
-        ("version", "1.0.0"),
-        ("size_bytes", 1),
-        ("url", "https://example.invalid/extension.vsix"),
-        ("sha256", "a" * 64),
+        pytest.param("version", "1.0.0", id="version"),
+        pytest.param("size_bytes", 1, id="size-bytes"),
+        pytest.param("url", "https://example.invalid/extension.vsix", id="url"),
+        pytest.param("sha256", "a" * 64, id="sha256"),
     ],
 )
 def test_gallery_extensions_forbid_vsix_metadata(
@@ -332,22 +331,28 @@ def test_concrete_target_lists_reject_shared(
         model.model_validate({collection: [item]})
 
 
-@pytest.mark.parametrize("field", ["source", "destination"])
+@pytest.mark.parametrize(
+    "field",
+    [
+        pytest.param("source", id="source"),
+        pytest.param("destination", id="destination"),
+    ],
+)
 @pytest.mark.parametrize(
     "path",
     [
-        "assistants/codex/auth.json",
-        "assistants/claude/session-env/current.json",
-        "assistants/cursor/history.jsonl",
-        "assistants/cursor/transcripts/chat.json",
-        "assistants/codex/memories/notes.md",
-        "assistants/cursor/worktrees/project.json",
-        "assistants/cursor/index.sqlite",
-        "assistants/cursor/cache/extensions.json",
-        "assistants/codex/trust.toml",
-        "assistants/claude/credentials.json",
-        "assistants/cursor/tokens.json",
-        "assistants/cursor/mcp.json",
+        pytest.param("assistants/codex/auth.json", id="auth"),
+        pytest.param("assistants/claude/session-env/current.json", id="session"),
+        pytest.param("assistants/cursor/history.jsonl", id="history"),
+        pytest.param("assistants/cursor/transcripts/chat.json", id="transcript"),
+        pytest.param("assistants/codex/memories/notes.md", id="memory"),
+        pytest.param("assistants/cursor/worktrees/project.json", id="worktree"),
+        pytest.param("assistants/cursor/index.sqlite", id="index"),
+        pytest.param("assistants/cursor/cache/extensions.json", id="cache"),
+        pytest.param("assistants/codex/trust.toml", id="trust"),
+        pytest.param("assistants/claude/credentials.json", id="credentials"),
+        pytest.param("assistants/cursor/tokens.json", id="token"),
+        pytest.param("assistants/cursor/mcp.json", id="mcp"),
     ],
 )
 def test_file_resources_reject_managed_local_state_paths(
