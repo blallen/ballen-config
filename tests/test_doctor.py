@@ -54,8 +54,8 @@ def home_snapshot(home: Path) -> tuple[tuple[str, int, bytes], ...]:
 
 def test_auth_output_is_never_returned(fake_home: Path) -> None:
     """Authentication identity and token-like output remain captured."""
-    secret_stdout = "account@example.com token scopes api"
-    secret_stderr = "credential-helper token-like stderr"
+    secret_stdout = "account@example.com token scopes api"  # pragma: allowlist secret
+    secret_stderr = "credential-helper token-like stderr"  # pragma: allowlist secret
     runner = FakeRunner(
         {
             ("glab", "auth", "status"): {

@@ -20,6 +20,7 @@ ballen-config = "ballen_config.cli:main"
 [dependency-groups]
 dev = [
   "mypy>=1.11",
+  "pre-commit==4.6.0",
   "pytest>=8.3",
   "ruff>=0.15",
   "types-PyYAML>=6.0",

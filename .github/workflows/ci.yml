@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: macos-14
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Sync frozen environment
+        run: uv sync --frozen
+
+      - name: Lint Python
+        run: uv run --frozen ruff check src tests
+
+      - name: Check Python formatting
+        run: uv run --frozen ruff format --check src tests
+
+      - name: Type-check
+        run: uv run --frozen mypy
+
+      - name: Test
+        run: uv run --frozen pytest
+
+      - name: Validate bootstrap shell syntax
+        run: zsh -n bootstrap
+
+      - name: Enforce repository policy
+        run: uv run --frozen python -m ballen_config.policy
+
+      - name: Prepare frozen runtime marker
+        run: |
+          /bin/mkdir -p .venv
+          /usr/bin/shasum -a 256 uv.lock | /usr/bin/awk '{print $1}' > .venv/.ballen-config-lock.sha256
+          /bin/chmod 0600 .venv/.ballen-config-lock.sha256
+
+      - name: Validate prepared work plan
+        run: ./bootstrap plan --profile work

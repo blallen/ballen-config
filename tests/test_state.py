@@ -59,14 +59,14 @@ def test_state_store_rejects_terminal_state_symlink(
     paths = RuntimePaths.from_roots(repo_root=repo_root, home=fake_home)
     paths.state_root.mkdir(parents=True)
     outside = tmp_path / "outside.json"
-    outside.write_text('{"secret": "unchanged"}')
+    outside.write_text('{"secret": "unchanged"}')  # pragma: allowlist secret
     (paths.state_root / "state.json").symlink_to(outside)
     store = StateStore(paths)
     with pytest.raises(ValueError, match="symlinked path component"):
         store.load()
     with pytest.raises(ValueError, match="symlinked path component"):
         store.write(BootstrapState())
-    assert outside.read_text() == '{"secret": "unchanged"}'
+    assert outside.read_text() == '{"secret": "unchanged"}'  # pragma: allowlist secret
 
 
 def test_state_store_rejects_state_path_outside_home(
