@@ -109,6 +109,28 @@ def test_second_apply_is_unchanged_without_backup(config_paths: RuntimePaths) ->
     assert not (config_paths.backup_root / "two").exists()
 
 
+@pytest.mark.parametrize("method", [ApplyMethod.COPY, ApplyMethod.RENDER])
+def test_matching_file_bytes_with_wrong_mode_are_updated(
+    config_paths: RuntimePaths,
+    method: ApplyMethod,
+) -> None:
+    """Copy and render specs converge private mode even when bytes match."""
+    spec = file_spec(config_paths, method=method)
+    renderers: Mapping[str, Renderer] | None = None
+    if method is ApplyMethod.RENDER:
+        spec = spec.model_copy(update={"renderer_id": "identity"})
+        renderers = {"identity": lambda source, _current: source}
+    destination = config_paths.home / spec.destination
+    destination.parent.mkdir(parents=True)
+    destination.write_bytes(spec.source.read_bytes())
+    destination.chmod(0o644)
+    subject = engine(config_paths, timestamp=method.value, renderers=renderers)
+
+    assert subject.plan((spec,))[0].outcome == "updated"
+    assert subject.apply(spec).outcome == "updated"
+    assert stat.S_IMODE(destination.stat().st_mode) == 0o600
+
+
 def test_symlink_converges_and_replaces_conflicting_file_with_backup(
     config_paths: RuntimePaths,
 ) -> None:
@@ -136,6 +158,26 @@ def test_symlinked_parent_is_rejected_without_outside_write(
     (config_paths.home / ".config").symlink_to(outside, target_is_directory=True)
     with pytest.raises(ValueError, match="symlinked path component"):
         engine(config_paths).apply(spec)
+    assert list(outside.iterdir()) == []
+
+
+def test_symlinked_backup_ancestor_is_rejected_before_directory_creation(
+    config_paths: RuntimePaths,
+    tmp_path: Path,
+) -> None:
+    """Backup setup fails closed before following a symlink outside home."""
+    spec = file_spec(config_paths)
+    destination = config_paths.home / spec.destination
+    destination.parent.mkdir(parents=True)
+    destination.write_text("user content")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (config_paths.home / ".local").symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="symlinked path component"):
+        engine(config_paths, timestamp="unsafe").apply(spec)
+
+    assert destination.read_text() == "user content"
     assert list(outside.iterdir()) == []
 
 

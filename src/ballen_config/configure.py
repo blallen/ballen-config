@@ -279,6 +279,7 @@ class ConfigurationEngine:
                 same = (
                     stat.S_ISREG(metadata.st_mode)
                     and destination.read_bytes() == desired_bytes
+                    and stat.S_IMODE(metadata.st_mode) == _private_mode(spec.mode)
                 )
         else:
             same = stat.S_ISDIR(metadata.st_mode) and _digest_tree(
@@ -298,6 +299,8 @@ class ConfigurationEngine:
         return tuple(self._action(spec) for spec in ordered)
 
     def _private_parent(self, path: Path) -> None:
+        assert_contained(path, self.paths.home)
+        assert_no_symlink_components(path, stop=self.paths.home, include_leaf=True)
         path.mkdir(parents=True, mode=0o700, exist_ok=True)
         assert_no_symlink_components(path, stop=self.paths.home, include_leaf=True)
         path.chmod(0o700)
