@@ -1,5 +1,18 @@
 """Public typed API for portable coding-agent inventory declarations."""
 
+from ballen_config.assistants.claude import (
+    ClaudePluginInspectionError,
+    ClaudeSettingsError,
+    ClaudeStableSettings,
+    claude_configuration,
+    claude_instruction_renderer,
+    claude_settings_renderer,
+    load_stable_settings,
+    plan_claude_plugins,
+)
+from ballen_config.assistants.claude import (
+    install_actions as claude_install_actions,
+)
 from ballen_config.assistants.cursor import (
     CursorExtensionPackage,
     ExtensionState,
@@ -60,6 +73,9 @@ __all__ = [
     "CatalogKind",
     "CatalogResource",
     "ClaudeHookFragment",
+    "ClaudePluginInspectionError",
+    "ClaudeSettingsError",
+    "ClaudeStableSettings",
     "CursorExtensionPackage",
     "CursorRegistration",
     "ExtensionCatalog",
@@ -77,7 +93,11 @@ __all__ = [
     "SkillCollisionError",
     "SkillCopyAction",
     "SkillSpec",
+    "claude_configuration",
     "claude_hook_fragment",
+    "claude_install_actions",
+    "claude_instruction_renderer",
+    "claude_settings_renderer",
     "cursor_configuration",
     "cursor_hook_renderer",
     "cursor_install_actions",
@@ -88,7 +108,9 @@ __all__ = [
     "hash_skill_tree",
     "hook_contribution",
     "jj_graph_action",
+    "load_stable_settings",
     "managed_tree_spec",
+    "plan_claude_plugins",
     "plan_cursor_extension_actions",
     "plan_skill_copies",
     "read_bundled_extensions",

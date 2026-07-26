@@ -87,3 +87,35 @@ resources:
       - tomoki1207.pdf
       - visualjj.visualjj
       - velociraptor115.vscode-jj-graph
+
+  - id: claude.settings
+    kind: file
+    owner: claude-code
+    source: assistants/claude/settings.json
+    destination: .claude/settings.json
+    role: render-source
+
+  - id: claude.instructions
+    kind: file
+    owner: claude-code
+    source: assistants/claude/CLAUDE.md
+    destination: .claude/CLAUDE.md
+    role: suffix
+
+  - id: claude.plugins.catalog
+    kind: catalog
+    owner: claude-code
+    source: assistants/claude/plugins.yaml
+    catalog_kind: plugin
+    item_ids:
+      - bigspin@bigspinai
+      - context-mode@claude-context-mode
+      - frontend-design@claude-plugins-official
+      - iterative-development@prime-radiant-marketplace
+      - logfire@claude-plugins-official
+      - ponytail@ponytail
+      - pydantic-ai@claude-plugins-official
+      - superpowers@claude-plugins-official
+      - superpowers-developing-for-claude-code@superpowers-marketplace
+      - ami-qsp-tools@piste
+      - fieldkit@piste
