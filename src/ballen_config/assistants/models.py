@@ -22,17 +22,7 @@ class AgentName(StrEnum):
 def _validate_concrete_targets(
     targets: tuple[AgentName, ...],
 ) -> tuple[AgentName, ...]:
-    """Require target lists to name only installable coding agents.
-
-    Args:
-        targets: Parsed target agent names.
-
-    Returns:
-        The validated target tuple.
-
-    Raises:
-        ValueError: If the shared pseudo-owner is used as a concrete target.
-    """
+    """Require target lists to name only installable coding agents."""
     if AgentName.SHARED in targets:
         raise ValueError("shared is not a concrete target")
     return targets
@@ -76,17 +66,7 @@ _PATH_WORD_PATTERN = re.compile(r"[a-z0-9]+")
 
 
 def _validate_managed_file_path(path: PurePosixPath) -> PurePosixPath:
-    """Reject file-copy paths that represent local agent state.
-
-    Args:
-        path: Parsed POSIX source or destination path.
-
-    Returns:
-        The validated path.
-
-    Raises:
-        ValueError: If a path component identifies excluded local state.
-    """
+    """Reject file-copy paths that represent local agent state."""
     words = {
         word
         for part in path.parts
@@ -187,14 +167,7 @@ class ExtensionSpec(BaseModel):
 
     @model_validator(mode="after")
     def validate_variant(self) -> Self:
-        """Require complete immutable metadata only for HTTPS VSIX installs.
-
-        Returns:
-            The validated extension declaration.
-
-        Raises:
-            ValueError: If gallery and VSIX fields are inconsistent.
-        """
+        """Require complete immutable metadata only for HTTPS VSIX installs."""
         metadata = (self.version, self.size_bytes, self.url, self.sha256)
         if self.install_mode == "gallery":
             if any(value is not None for value in metadata):
@@ -220,14 +193,7 @@ class ExtensionCatalog(BaseModel):
 
     @model_validator(mode="after")
     def validate_unique_ids(self) -> Self:
-        """Reject duplicate extension identifiers.
-
-        Returns:
-            The validated extension catalog.
-
-        Raises:
-            ValueError: If extension identifiers are duplicated.
-        """
+        """Reject duplicate extension identifiers."""
         ids = [extension.id for extension in self.extensions]
         if len(ids) != len(set(ids)):
             raise ValueError("duplicate extension id")
@@ -265,14 +231,7 @@ class PluginCatalog(BaseModel):
 
     @model_validator(mode="after")
     def validate_marketplaces(self) -> Self:
-        """Reject ambiguous or inconsistent plugin catalog declarations.
-
-        Returns:
-            The validated plugin catalog.
-
-        Raises:
-            ValueError: If declarations are duplicated, unknown, or mismatched.
-        """
+        """Reject ambiguous or inconsistent plugin catalog declarations."""
         marketplace_names = [marketplace.name for marketplace in self.marketplaces]
         if len(marketplace_names) != len(set(marketplace_names)):
             raise ValueError("duplicate marketplace name")
@@ -341,14 +300,7 @@ class SkillCatalog(BaseModel):
 
     @model_validator(mode="after")
     def validate_graph(self) -> Self:
-        """Reject duplicate, unknown, and cyclic skill dependencies.
-
-        Returns:
-            The validated skill catalog.
-
-        Raises:
-            ValueError: If names are duplicated or dependencies are invalid.
-        """
+        """Reject duplicate, unknown, and cyclic skill dependencies."""
         by_name = {skill.name: skill for skill in self.skills}
         if len(by_name) != len(self.skills):
             raise ValueError("duplicate skill name")
@@ -387,14 +339,7 @@ class AssistantInventory(BaseModel):
 
     @model_validator(mode="after")
     def validate_references(self) -> Self:
-        """Reject duplicate inventory resource identifiers.
-
-        Returns:
-            The validated inventory.
-
-        Raises:
-            ValueError: If resource identifiers are duplicated.
-        """
+        """Reject duplicate inventory resource identifiers."""
         ids = [resource.id for resource in self.resources]
         if len(ids) != len(set(ids)):
             raise ValueError("duplicate resource id")

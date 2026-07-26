@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path, PurePosixPath
+from types import MappingProxyType
+from typing import Final
 
 import yaml
 from pydantic import BaseModel, ConfigDict
@@ -29,11 +32,13 @@ class ResolvedInventory(BaseModel):
     resources: tuple[PortableResource, ...]
 
 
-_COMPONENT_OWNER = {
-    "cursor": AgentName.CURSOR,
-    "claude-code": AgentName.CLAUDE,
-    "codex": AgentName.CODEX,
-}
+_COMPONENT_OWNER: Final[Mapping[str, AgentName]] = MappingProxyType(
+    {
+        "cursor": AgentName.CURSOR,
+        "claude-code": AgentName.CLAUDE,
+        "codex": AgentName.CODEX,
+    }
+)
 
 
 def _validated_source(source: PurePosixPath, root: Path) -> Path:

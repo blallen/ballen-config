@@ -5,8 +5,10 @@ from __future__ import annotations
 import hashlib
 import os
 import stat
-from collections.abc import Collection, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from pathlib import Path
+from types import MappingProxyType
+from typing import Final
 
 from ballen_config.doctor import (
     CheckSeverity,
@@ -20,28 +22,22 @@ from ballen_config.runner import Runner
 from ballen_config.runtime import RuntimePaths
 from ballen_config.state import StateStore
 
-_AGENT_ROOTS: dict[str, tuple[Path, ...]] = {
-    "cursor": (Path(".cursor/skills"),),
-    "claude-code": (Path(".claude/skills"),),
-    "codex": (Path(".agents/skills"), Path(".codex/skills")),
-}
-_MAX_SKILL_ROOT_ENTRIES = 512
-_MAX_SKILL_TREE_ENTRIES = 2048
-_MAX_SKILL_TREE_BYTES = 32 * 1024 * 1024
-_MAX_CURSOR_WORKTREES = 512
+_AGENT_ROOTS: Final[Mapping[str, tuple[Path, ...]]] = MappingProxyType(
+    {
+        "cursor": (Path(".cursor/skills"),),
+        "claude-code": (Path(".claude/skills"),),
+        "codex": (Path(".agents/skills"), Path(".codex/skills")),
+    }
+)
+_MAX_SKILL_ROOT_ENTRIES: Final[int] = 512
+_MAX_SKILL_TREE_ENTRIES: Final[int] = 2048
+_MAX_SKILL_TREE_BYTES: Final[int] = 32 * 1024 * 1024
+_MAX_CURSOR_WORKTREES: Final[int] = 512
 
 
-def _enabled(enabled: Collection[object], name: str) -> bool:
-    """Return whether a concrete agent name is enabled.
-
-    Args:
-        enabled: Resolved concrete agent names.
-        name: Agent name to test.
-
-    Returns:
-        Whether the agent is enabled.
-    """
-    return name in {str(item) for item in enabled}
+def _enabled(enabled: Collection[str], name: str) -> bool:
+    """Return whether a concrete agent name is enabled."""
+    return name in enabled
 
 
 def _finding(
@@ -57,11 +53,6 @@ def _finding(
         severity=severity,
         message=message,
     )
-
-
-def _skill_roots(paths: RuntimePaths, agent: str) -> tuple[Path, ...]:
-    """Return only enabled agent-native skill roots under the approved home."""
-    return tuple(paths.home / relative for relative in _AGENT_ROOTS[agent])
 
 
 def _safe_home_path(home: Path, relative: Path) -> Path | None:
@@ -184,17 +175,11 @@ def _skill_entries(paths: RuntimePaths, agent: str) -> tuple[dict[str, set[str]]
             if digest is None:
                 unsafe = True
                 continue
-            try:
-                entries.setdefault(child.name, set()).add(digest)
-            except (OSError, ValueError):
-                unsafe = True
-                continue
+            entries.setdefault(child.name, set()).add(digest)
     return entries, unsafe
 
 
-def _skill_findings(
-    paths: RuntimePaths, enabled: Collection[object]
-) -> list[DoctorCheck]:
+def _skill_findings(paths: RuntimePaths, enabled: Collection[str]) -> list[DoctorCheck]:
     """Return collision and recorded-drift findings for enabled agents only."""
     findings: list[DoctorCheck] = []
     enabled_agents = tuple(
@@ -283,7 +268,7 @@ def _skill_findings(
 
 def assistant_checks(
     *,
-    enabled: Collection[object],
+    enabled: Collection[str],
     paths: RuntimePaths,
     runner: Runner,
     pending_actions: Sequence[InstallAction] = (),
