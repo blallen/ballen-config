@@ -18,6 +18,13 @@ from ballen_config.assistants.models import (
     SkillCatalog,
     SkillSpec,
 )
+from ballen_config.assistants.skills import (
+    SkillCollisionError,
+    SkillCopyAction,
+    hash_skill_tree,
+    managed_tree_spec,
+    plan_skill_copies,
+)
 
 __all__ = [
     "AgentName",
@@ -35,5 +42,10 @@ __all__ = [
     "PortableResource",
     "ResourceBase",
     "SkillCatalog",
+    "SkillCollisionError",
+    "SkillCopyAction",
     "SkillSpec",
+    "hash_skill_tree",
+    "managed_tree_spec",
+    "plan_skill_copies",
 ]

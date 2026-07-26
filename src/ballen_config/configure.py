@@ -11,7 +11,7 @@ import tempfile
 from collections.abc import Callable, Mapping, Sequence
 from enum import StrEnum
 from pathlib import Path
-from typing import Literal, Protocol
+from typing import TYPE_CHECKING, Literal, Protocol
 
 import tomlkit
 import yaml
@@ -22,6 +22,9 @@ from ballen_config.paths import assert_contained, assert_no_symlink_components
 from ballen_config.runner import Runner, SubprocessRunner
 from ballen_config.runtime import RuntimePaths
 from ballen_config.state import ManagedRecord, StateStore
+
+if TYPE_CHECKING:
+    from ballen_config.planning import PlanAction
 
 
 class ApplyMethod(StrEnum):
@@ -89,6 +92,9 @@ class ConfigurationContribution(BaseModel):
         default_factory=dict
     )
     validators: Mapping[str, Callable[[Path], None]] = Field(default_factory=dict)
+    plan_action_overrides: Mapping[str, Literal["update", "repair"]] = Field(
+        default_factory=dict
+    )
 
 
 class ConfigurationSupplier(Protocol):
@@ -135,8 +141,32 @@ def _digest_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _digest_tree(path: Path) -> str:
-    """Hash a tree's names, bytes, and executable bits while rejecting links."""
+def digest_tree(path: Path) -> str:
+    """Hash one managed tree using the stable persisted-state algorithm.
+
+    The digest covers sorted relative paths, directory entries, regular-file
+    bytes, and the user executable bit. The root and every descendant must be
+    ordinary, symlink-free filesystem objects.
+
+    Args:
+        path: Root directory to hash.
+
+    Returns:
+        Lowercase SHA-256 digest compatible with existing managed-tree state.
+
+    Raises:
+        ValueError: If the root is absent, is a symlink, is not a directory, or
+            contains a symlink or unsupported filesystem object.
+    """
+    try:
+        root_metadata = os.lstat(path)
+    except FileNotFoundError as error:
+        raise ValueError(f"tree root does not exist: {path}") from error
+    if stat.S_ISLNK(root_metadata.st_mode):
+        raise ValueError(f"tree root is a symlink: {path}")
+    if not stat.S_ISDIR(root_metadata.st_mode):
+        raise ValueError(f"tree root is not a directory: {path}")
+
     digest = hashlib.sha256()
     for child in sorted(path.rglob("*"), key=lambda candidate: candidate.as_posix()):
         metadata = os.lstat(child)
@@ -240,7 +270,7 @@ class ConfigurationEngine:
         else:
             if not stat.S_ISDIR(metadata.st_mode):
                 raise ValueError(f"source is not a directory: {source}")
-            _digest_tree(source)
+            digest_tree(source)
         self._destination(spec)
 
     def _file_bytes(self, spec: ManagedFileSpec, destination: Path) -> bytes:
@@ -284,9 +314,9 @@ class ConfigurationEngine:
                     and stat.S_IMODE(metadata.st_mode) == _private_mode(spec.mode)
                 )
         else:
-            same = stat.S_ISDIR(metadata.st_mode) and _digest_tree(
+            same = stat.S_ISDIR(metadata.st_mode) and digest_tree(
                 destination
-            ) == _digest_tree(spec.source)
+            ) == digest_tree(spec.source)
         return ConfigAction(
             id=spec.id,
             destination=relative,
@@ -338,13 +368,13 @@ class ConfigurationEngine:
         source_digest = (
             _digest_file(spec.source)
             if isinstance(spec, ManagedFileSpec)
-            else _digest_tree(spec.source)
+            else digest_tree(spec.source)
         )
         destination_digest = (
             _digest_file(destination)
             if isinstance(spec, ManagedFileSpec) and not destination.is_symlink()
             else (
-                _digest_tree(destination)
+                digest_tree(destination)
                 if isinstance(spec, ManagedTreeSpec)
                 else source_digest
             )
@@ -425,15 +455,24 @@ class ConfigurationEngine:
         try:
             self._copy_tree(spec.source, stage)
             backup = self._backup(destination)
+            published = False
             try:
                 self.replace(stage, destination)
+                published = True
+                self._record(spec, destination)
             except Exception:
+                if published:
+                    metadata = os.lstat(destination)
+                    if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISDIR(
+                        metadata.st_mode
+                    ):
+                        raise ValueError("published tree has unsafe type") from None
+                    shutil.rmtree(destination)
                 self._restore(backup, destination)
                 raise
         finally:
             if stage.exists():
                 shutil.rmtree(stage)
-        self._record(spec, destination)
         return action
 
     def apply(self, spec: ManagedSpec) -> ConfigAction:
@@ -481,6 +520,11 @@ def merge_configuration_contributions(
 ) -> ConfigurationContribution:
     """Merge contributors while rejecting duplicate public identifiers."""
     specs = tuple(spec for contribution in contributions for spec in contribution.specs)
+    override_items = tuple(
+        item
+        for contribution in contributions
+        for item in contribution.plan_action_overrides.items()
+    )
     for values, name in (
         ([spec.id for spec in specs], "spec id"),
         ([str(spec.destination) for spec in specs], "managed destination"),
@@ -492,9 +536,14 @@ def merge_configuration_contributions(
             [key for contribution in contributions for key in contribution.validators],
             "validator id",
         ),
+        ([key for key, _value in override_items], "plan-action override"),
     ):
         if len(values) != len(set(values)):
             raise ValueError(f"duplicate {name}")
+    spec_ids = {spec.id for spec in specs}
+    unknown_overrides = {key for key, _value in override_items if key not in spec_ids}
+    if unknown_overrides:
+        raise ValueError(f"unknown plan-action override: {sorted(unknown_overrides)}")
     return ConfigurationContribution(
         specs=specs,
         renderers={
@@ -503,6 +552,7 @@ def merge_configuration_contributions(
         validators={
             key: value for c in contributions for key, value in c.validators.items()
         },
+        plan_action_overrides=dict(override_items),
     )
 
 
@@ -531,17 +581,29 @@ class ConfigurationPlanContributor:
         self.engine = engine
         self.supplier = supplier
 
-    def actions(self, resolved: ResolvedSetup) -> tuple[object, ...]:
+    def actions(self, resolved: ResolvedSetup) -> tuple[PlanAction, ...]:
         """Return configuration actions and portable-path diagnostics."""
         from ballen_config.planning import PlanAction
 
         contribution = self.supplier(resolved, self.engine.paths)
         planned = self.engine.plan(contribution.specs)
+        planned_ids = {item.id for item in planned}
+        unknown_overrides = set(contribution.plan_action_overrides).difference(
+            planned_ids
+        )
+        if unknown_overrides:
+            raise ValueError(
+                f"unknown plan-action override: {sorted(unknown_overrides)}"
+            )
         actions: list[PlanAction] = [
             PlanAction(
                 component_id=item.id,
                 category="configure",
-                action=item.outcome,
+                action=(
+                    contribution.plan_action_overrides.get(item.id, item.outcome)
+                    if item.outcome != "unchanged"
+                    else item.outcome
+                ),
                 owner="bootstrap",
                 path=f"~/{item.destination}",
             )
