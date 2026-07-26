@@ -64,6 +64,18 @@ class CodexPluginSnapshot(TypedDict):
     marketplaces: list[CodexMarketplaceEntry]
 
 
+class CodexNativePluginEntry(TypedDict):
+    """The installed-plugin fields consumed from Codex's native CLI."""
+
+    pluginId: str
+
+
+class CodexNativeMarketplaceEntry(TypedDict):
+    """The marketplace fields consumed from Codex's native CLI."""
+
+    name: str
+
+
 def load_stable_settings(path: Path) -> CodexStableSettings:
     """Load the repository-owned allowlisted Codex settings.
 
@@ -174,25 +186,38 @@ def plan_codex_plugins(
 
 def _plugin_snapshot(result: object) -> CodexPluginSnapshot:
     """Validate the minimal native plugin-list payload used for planning."""
-    if not isinstance(result, dict) or set(result) != {"plugins", "marketplaces"}:
+    if not isinstance(result, dict):
         raise CodexPluginInspectionError("Codex plugin inspection failed")
-    plugins = result.get("plugins")
-    marketplaces = result.get("marketplaces")
-    if not isinstance(plugins, list) or not isinstance(marketplaces, list):
+    installed = result.get("installed")
+    if not isinstance(installed, list):
         raise CodexPluginInspectionError("Codex plugin inspection failed")
     if not all(
-        isinstance(item, dict) and set(item) == {"id"} and isinstance(item["id"], str)
-        for item in plugins
+        isinstance(item, dict) and isinstance(item.get("pluginId"), str)
+        for item in installed
     ):
         raise CodexPluginInspectionError("Codex plugin inspection failed")
+    plugins = [
+        {"id": cast(CodexNativePluginEntry, item)["pluginId"]} for item in installed
+    ]
+    return cast(CodexPluginSnapshot, {"plugins": plugins, "marketplaces": []})
+
+
+def _marketplace_snapshot(result: object) -> list[CodexMarketplaceEntry]:
+    """Validate the marketplace-list fields used for planning."""
+    if not isinstance(result, dict):
+        raise CodexPluginInspectionError("Codex plugin inspection failed")
+    marketplaces = result.get("marketplaces")
+    if not isinstance(marketplaces, list):
+        raise CodexPluginInspectionError("Codex plugin inspection failed")
     if not all(
-        isinstance(item, dict)
-        and set(item) == {"name"}
-        and isinstance(item["name"], str)
+        isinstance(item, dict) and isinstance(item.get("name"), str)
         for item in marketplaces
     ):
         raise CodexPluginInspectionError("Codex plugin inspection failed")
-    return cast(CodexPluginSnapshot, {"plugins": plugins, "marketplaces": marketplaces})
+    return [
+        {"name": cast(CodexNativeMarketplaceEntry, item)["name"]}
+        for item in marketplaces
+    ]
 
 
 def install_actions(
@@ -213,13 +238,27 @@ def install_actions(
         UnicodeDecodeError,
     ) as error:
         raise CodexPluginInspectionError("Codex plugin inspection failed") from error
+    marketplaces = runner.run(("codex", "plugin", "marketplace", "list", "--json"))
+    if marketplaces["returncode"] != 0:
+        raise CodexPluginInspectionError("Codex plugin inspection failed")
+    try:
+        known_marketplaces = _marketplace_snapshot(
+            strict_json_loads(marketplaces["stdout"])
+        )
+    except (
+        CodexPluginInspectionError,
+        StrictJsonError,
+        json.JSONDecodeError,
+        UnicodeDecodeError,
+    ) as error:
+        raise CodexPluginInspectionError("Codex plugin inspection failed") from error
     catalog_path = _reviewed_source(paths, Path("assistants/codex/plugins.yaml"))
     return plan_codex_plugins(
         catalog_path,
         profiles=setup.profiles,
         installed=frozenset(plugin["id"] for plugin in snapshot["plugins"]),
         known_marketplaces=frozenset(
-            marketplace["name"] for marketplace in snapshot["marketplaces"]
+            marketplace["name"] for marketplace in known_marketplaces
         ),
     )
 

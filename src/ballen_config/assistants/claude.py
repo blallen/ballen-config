@@ -49,6 +49,7 @@ class ClaudePluginEntry(TypedDict):
     """One plugin entry returned by Claude's native CLI."""
 
     id: str
+    scope: str
 
 
 class ClaudeMarketplaceEntry(TypedDict):
@@ -264,11 +265,14 @@ def plan_claude_plugins(
     return tuple(actions)
 
 
-def _plugin_snapshot(result: object) -> ClaudePluginSnapshot:
-    """Validate the minimal native plugin-list payload used for planning.
+def _plugin_snapshot(
+    plugins_result: object, marketplaces_result: object
+) -> ClaudePluginSnapshot:
+    """Validate the minimal native inspection payloads used for planning.
 
     Args:
-        result: JSON-decoded native command output.
+        plugins_result: JSON-decoded native plugin-list output.
+        marketplaces_result: JSON-decoded native marketplace-list output.
 
     Returns:
         Validated plugin snapshot.
@@ -276,23 +280,25 @@ def _plugin_snapshot(result: object) -> ClaudePluginSnapshot:
     Raises:
         ClaudePluginInspectionError: If native output is malformed.
     """
-    if not isinstance(result, dict):
-        raise ClaudePluginInspectionError("Claude plugin inspection failed")
-    plugins = result.get("plugins")
-    marketplaces = result.get("marketplaces", [])
-    if not isinstance(plugins, list) or not isinstance(marketplaces, list):
+    if not isinstance(plugins_result, list) or not isinstance(
+        marketplaces_result, list
+    ):
         raise ClaudePluginInspectionError("Claude plugin inspection failed")
     if not all(
-        isinstance(item, dict) and isinstance(item.get("id"), str) for item in plugins
+        isinstance(item, dict)
+        and isinstance(item.get("id"), str)
+        and isinstance(item.get("scope"), str)
+        for item in plugins_result
     ):
         raise ClaudePluginInspectionError("Claude plugin inspection failed")
     if not all(
         isinstance(item, dict) and isinstance(item.get("name"), str)
-        for item in marketplaces
+        for item in marketplaces_result
     ):
         raise ClaudePluginInspectionError("Claude plugin inspection failed")
     return cast(
-        ClaudePluginSnapshot, {"plugins": plugins, "marketplaces": marketplaces}
+        ClaudePluginSnapshot,
+        {"plugins": plugins_result, "marketplaces": marketplaces_result},
     )
 
 
@@ -316,11 +322,23 @@ def install_actions(
     """
     if "claude-code" in setup.skipped or not setup.is_enabled("claude-code"):
         return ()
-    listed = runner.run(("claude", "plugin", "list", "--json"))
-    if listed["returncode"] != 0:
+    plugins_listed = runner.run(("claude", "plugin", "list", "--json"))
+    if plugins_listed["returncode"] != 0:
         raise ClaudePluginInspectionError("Claude plugin inspection failed")
     try:
-        snapshot = _plugin_snapshot(strict_json_loads(listed["stdout"]))
+        plugins_result = strict_json_loads(plugins_listed["stdout"])
+    except (StrictJsonError, json.JSONDecodeError, UnicodeDecodeError) as error:
+        raise ClaudePluginInspectionError("Claude plugin inspection failed") from error
+    marketplaces_listed = runner.run(
+        ("claude", "plugin", "marketplace", "list", "--json")
+    )
+    if marketplaces_listed["returncode"] != 0:
+        raise ClaudePluginInspectionError("Claude plugin inspection failed")
+    try:
+        snapshot = _plugin_snapshot(
+            plugins_result,
+            strict_json_loads(marketplaces_listed["stdout"]),
+        )
     except (
         ClaudePluginInspectionError,
         StrictJsonError,
@@ -332,7 +350,9 @@ def install_actions(
     return plan_claude_plugins(
         catalog_path,
         profiles=setup.profiles,
-        installed=frozenset(plugin["id"] for plugin in snapshot["plugins"]),
+        installed=frozenset(
+            plugin["id"] for plugin in snapshot["plugins"] if plugin["scope"] == "user"
+        ),
         known_marketplaces=frozenset(
             marketplace["name"] for marketplace in snapshot["marketplaces"]
         ),

@@ -166,6 +166,122 @@ def test_plugin_catalog_declares_only_retained_default_profile(repo_root: Path) 
     assert all(item["profiles"] == ["default"] for item in source["plugins"])
 
 
+def test_native_plugin_inspection_accepts_installed_plugin_records(
+    repo_root: Path, temporary_home: Path, fake_runner: StatefulAssistantFake
+) -> None:
+    """Use the current native plugin-list schema to avoid duplicate actions."""
+    fake_runner.add(
+        ("codex", "plugin", "list", "--json"),
+        returncode=0,
+        stdout=(
+            '{"installed": [{"pluginId": "frontend-design@claude-plugins-official", '
+            '"marketplaceName": "claude-plugins-official", "version": "1.0.0", '
+            '"enabled": true, "source": "anthropics/claude-plugins-official"}], '
+            '"available": []}'
+        ),
+    )
+    fake_runner.add(
+        ("codex", "plugin", "marketplace", "list", "--json"),
+        returncode=0,
+        stdout=(
+            '{"marketplaces": [{"name": "claude-plugins-official", '
+            '"root": "/plugins/claude-plugins-official", '
+            '"marketplaceSource": "anthropics/claude-plugins-official"}]}'
+        ),
+    )
+
+    actions = install_actions(
+        _setup(),
+        RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home),
+        fake_runner,
+    )
+
+    component_ids = {action.component_id for action in actions}
+    assert "codex.marketplace.claude-plugins-official" not in component_ids
+    assert "codex.plugin.frontend-design@claude-plugins-official" not in component_ids
+
+
+@pytest.mark.parametrize(
+    ("plugin_list", "marketplace_list", "expected_commands"),
+    [
+        pytest.param(
+            '{"installed": [{"pluginId": 1}], "available": []}',
+            '{"marketplaces": []}',
+            (("codex", "plugin", "list", "--json"),),
+            id="invalid-plugin-id",
+        ),
+        pytest.param(
+            '{"installed": [], "available": []}',
+            '{"marketplaces": [{}]}',
+            (
+                ("codex", "plugin", "list", "--json"),
+                ("codex", "plugin", "marketplace", "list", "--json"),
+            ),
+            id="invalid-marketplace-name",
+        ),
+    ],
+)
+def test_native_plugin_inspection_fails_closed_for_malformed_native_records(
+    repo_root: Path,
+    temporary_home: Path,
+    fake_runner: StatefulAssistantFake,
+    plugin_list: str,
+    marketplace_list: str,
+    expected_commands: tuple[tuple[str, ...], ...],
+) -> None:
+    """Normalize malformed native records from either inspection command."""
+    fake_runner.add(
+        ("codex", "plugin", "list", "--json"), returncode=0, stdout=plugin_list
+    )
+    fake_runner.add(
+        ("codex", "plugin", "marketplace", "list", "--json"),
+        returncode=0,
+        stdout=marketplace_list,
+    )
+
+    with pytest.raises(
+        CodexPluginInspectionError, match="Codex plugin inspection failed"
+    ):
+        install_actions(
+            _setup(),
+            RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home),
+            fake_runner,
+        )
+    assert fake_runner.commands == list(expected_commands)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        pytest.param(
+            ("codex", "plugin", "list", "--json"),
+            id="plugin-list-command",
+        ),
+        pytest.param(
+            ("codex", "plugin", "marketplace", "list", "--json"),
+            id="marketplace-list-command",
+        ),
+    ],
+)
+def test_native_plugin_inspection_normalizes_command_failures(
+    repo_root: Path,
+    temporary_home: Path,
+    fake_runner: StatefulAssistantFake,
+    command: tuple[str, ...],
+) -> None:
+    """Normalize either native inspection command failure."""
+    fake_runner.add(command, returncode=1)
+
+    with pytest.raises(
+        CodexPluginInspectionError, match="Codex plugin inspection failed"
+    ):
+        install_actions(
+            _setup(),
+            RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home),
+            fake_runner,
+        )
+
+
 def test_enabled_inspection_fails_closed_and_skip_does_nothing(
     repo_root: Path, temporary_home: Path, fake_runner: StatefulAssistantFake
 ) -> None:
