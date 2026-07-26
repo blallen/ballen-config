@@ -1,3 +1,4 @@
+import hashlib
 import os
 import shutil
 import subprocess
@@ -27,8 +28,21 @@ def write_executable(path: Path, contents: str) -> None:
     path.chmod(0o700)
 
 
+def lock_fingerprint(root: Path) -> str:
+    """Return the SHA-256 fingerprint of an isolated checkout lock file."""
+    return hashlib.sha256((root / "uv.lock").read_bytes()).hexdigest()
+
+
+def runtime_marker(root: Path) -> Path:
+    """Return the isolated runtime readiness marker path."""
+    return root / ".venv/.ballen-config-lock.sha256"
+
+
 @pytest.fixture
-def fake_stage_zero_tools(tmp_path: Path) -> FakeStageZeroTools:
+def fake_stage_zero_tools(
+    repo_root: Path,
+    tmp_path: Path,
+) -> FakeStageZeroTools:
     """Provide deterministic private substitutes for stage-zero commands."""
     tools_root = tmp_path / "tools"
     tools_root.mkdir(mode=0o700)
@@ -88,20 +102,39 @@ fi
 """,
     )
     write_executable(
+        tools_root / "shasum",
+        """#!/bin/zsh
+set -eu
+umask 077
+print -r -- "shasum $*" >> "$COMMAND_LOG"
+[[ "${1:-}" == "-a" && "${2:-}" == "256" ]] || exit 2
+print -r -- "$FAKE_LOCK_HASH  uv.lock"
+""",
+    )
+    write_executable(
         tools_root / "uv",
         """#!/bin/zsh
 set -eu
 umask 077
 print -r -- "uv $*" >> "$COMMAND_LOG"
 if [[ "${1:-}" == "sync" ]]; then
+  if [[ "${FAKE_UV_SYNC_STATUS:-0}" != "0" ]]; then
+    exit "$FAKE_UV_SYNC_STATUS"
+  fi
   /bin/mkdir -p "$PWD/.venv/bin"
   {
     print -r -- '#!/bin/zsh'
+    print -r -- 'set -eu'
     print -r -- 'if [[ "${1:-}" == "--version" ]]; then'
     print -r -- '  print -r -- "Python 3.12.9"'
     print -r -- '  exit 0'
     print -r -- 'fi'
-    print -r -- 'exit 0'
+    print -r -- 'if [[ "${1:-}" == "-B" && "${2:-}" == "-c" ]]; then'
+    print -r -- '  [[ "${3:-}" == "import ballen_config, pydantic, yaml, tomlkit" ]] || exit 2'
+    print -r -- '  [[ "${FAKE_RUNTIME_IMPORTS_READY:-1}" == "1" ]]'
+    print -r -- '  exit'
+    print -r -- 'fi'
+    print -r -- 'exit 2'
   } > "$PWD/.venv/bin/python"
   /bin/chmod 700 "$PWD/.venv/bin/python"
 fi
@@ -113,6 +146,7 @@ fi
             "BALLEN_BOOTSTRAP_TOOL_ROOT": str(tools_root),
             "COMMAND_LOG": str(command_log),
             "FAKE_BREW_PREFIX": str(tools_root),
+            "FAKE_LOCK_HASH": lock_fingerprint(repo_root),
             "PATH": f"{tools_root}:/usr/bin:/bin",
         },
         "root": tools_root,
@@ -128,6 +162,7 @@ def copy_stage_zero(repo_root: Path, tmp_path: Path) -> Path:
         repo_root / "manifests/component-ids.txt",
         root / "manifests/component-ids.txt",
     )
+    shutil.copy2(repo_root / "uv.lock", root / "uv.lock")
     return root
 
 
@@ -174,19 +209,28 @@ def snapshot_checkout(root: Path) -> dict[Path, tuple[int, bytes | None]]:
 
 
 def write_runtime(root: Path, version: str = "Python 3.12.9") -> None:
-    """Create a private executable runtime reporting a chosen version."""
+    """Create a marked runtime reporting a chosen version and import status."""
     python = root / ".venv/bin/python"
     python.parent.mkdir(parents=True)
     write_executable(
         python,
         f"""#!/bin/zsh
+set -eu
 if [[ "${{1:-}}" == "--version" ]]; then
   print -r -- "{version}"
   exit 0
 fi
-exit 0
+if [[ "${{1:-}}" == "-B" && "${{2:-}}" == "-c" ]]; then
+  [[ "${{3:-}}" == "import ballen_config, pydantic, yaml, tomlkit" ]] || exit 2
+  [[ "${{FAKE_RUNTIME_IMPORTS_READY:-1}}" == "1" ]]
+  exit
+fi
+exit 2
 """,
     )
+    marker = runtime_marker(root)
+    marker.write_text(f"{lock_fingerprint(root)}\n", encoding="utf-8")
+    marker.chmod(0o600)
 
 
 def read_command_log(tools: FakeStageZeroTools) -> str:
@@ -195,6 +239,13 @@ def read_command_log(tools: FakeStageZeroTools) -> str:
     if not command_log.exists():
         return ""
     return command_log.read_text(encoding="utf-8")
+
+
+def assert_no_uv_dispatch(command_log: str) -> None:
+    """Assert that readiness failure neither synchronizes nor dispatches."""
+    assert not any(
+        line.startswith(("uv run ", "uv sync ")) for line in command_log.splitlines()
+    )
 
 
 def test_plan_on_unprepared_checkout_is_read_only(
@@ -248,6 +299,9 @@ def test_prepare_synchronizes_frozen_python_312_environment(
     assert "uv python install 3.12" in command_log
     assert "uv sync --frozen --python 3.12" in command_log
     assert (root / ".venv/bin/python").stat().st_mode & 0o777 == 0o700
+    marker = runtime_marker(root)
+    assert marker.read_text(encoding="utf-8") == f"{lock_fingerprint(root)}\n"
+    assert marker.stat().st_mode & 0o777 == 0o600
 
 
 def test_prepared_plan_preserves_original_arguments_without_sync(
@@ -510,3 +564,96 @@ def test_missing_command_line_tools_start_install_and_require_rerun(
         "xcode-select -p",
         "xcode-select --install",
     ]
+
+
+def test_stale_lock_fingerprint_refuses_plan_without_mutation(
+    repo_root: Path,
+    tmp_path: Path,
+    fake_stage_zero_tools: FakeStageZeroTools,
+) -> None:
+    root = copy_stage_zero(repo_root, tmp_path)
+    write_runtime(root)
+    lock_file = root / "uv.lock"
+    lock_file.write_bytes(lock_file.read_bytes() + b"\n# changed after prepare\n")
+    environment = {
+        **fake_stage_zero_tools["environment"],
+        "FAKE_LOCK_HASH": lock_fingerprint(root),
+    }
+    before = snapshot_checkout(root)
+
+    result = run_bootstrap(root, "plan", environment=environment)
+
+    assert result.returncode == 20
+    assert "run ./bootstrap prepare" in result.stderr
+    assert_no_uv_dispatch(read_command_log(fake_stage_zero_tools))
+    assert snapshot_checkout(root) == before
+
+
+def test_missing_runtime_import_refuses_plan_without_mutation(
+    repo_root: Path,
+    tmp_path: Path,
+    fake_stage_zero_tools: FakeStageZeroTools,
+) -> None:
+    root = copy_stage_zero(repo_root, tmp_path)
+    write_runtime(root)
+    environment = {
+        **fake_stage_zero_tools["environment"],
+        "FAKE_RUNTIME_IMPORTS_READY": "0",
+    }
+    before = snapshot_checkout(root)
+
+    result = run_bootstrap(root, "plan", environment=environment)
+
+    assert result.returncode == 20
+    assert "run ./bootstrap prepare" in result.stderr
+    assert_no_uv_dispatch(read_command_log(fake_stage_zero_tools))
+    assert snapshot_checkout(root) == before
+
+
+@pytest.mark.parametrize("arguments", [("install",), ("configure",), ()])
+def test_prepared_non_darwin_mutating_stage_never_dispatches(
+    repo_root: Path,
+    tmp_path: Path,
+    fake_stage_zero_tools: FakeStageZeroTools,
+    arguments: tuple[str, ...],
+) -> None:
+    root = copy_stage_zero(repo_root, tmp_path)
+    write_runtime(root)
+    environment = {
+        **fake_stage_zero_tools["environment"],
+        "FAKE_UNAME_OUTPUT": "Linux",
+    }
+    before = snapshot_checkout(root)
+
+    result = run_bootstrap(root, *arguments, environment=environment)
+
+    assert result.returncode == 2
+    assert "macOS is required" in result.stderr
+    command_log = read_command_log(fake_stage_zero_tools)
+    assert "uname -s" in command_log
+    assert not any(line.startswith("uv run ") for line in command_log.splitlines())
+    assert snapshot_checkout(root) == before
+
+
+def test_failed_frozen_sync_does_not_leave_runtime_marker(
+    repo_root: Path,
+    tmp_path: Path,
+    fake_stage_zero_tools: FakeStageZeroTools,
+) -> None:
+    root = copy_stage_zero(repo_root, tmp_path)
+    write_runtime(root)
+    environment = {
+        **fake_stage_zero_tools["environment"],
+        "FAKE_UV_SYNC_STATUS": "9",
+    }
+
+    result = run_bootstrap(
+        root,
+        "prepare",
+        environment=environment,
+        input_text="y\n",
+    )
+
+    assert result.returncode == 9
+    assert "uv sync --frozen --python 3.12" in read_command_log(fake_stage_zero_tools)
+    assert not runtime_marker(root).exists()

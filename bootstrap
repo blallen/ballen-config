@@ -4,12 +4,15 @@ umask 077
 
 readonly ROOT_DIR="${0:A:h}"
 readonly IDS_FILE="$ROOT_DIR/manifests/component-ids.txt"
+readonly LOCK_FILE="$ROOT_DIR/uv.lock"
+readonly RUNTIME_MARKER="$ROOT_DIR/.venv/.ballen-config-lock.sha256"
 readonly PREPARE_REQUIRED=20
 readonly TEST_TOOL_ROOT="${BALLEN_BOOTSTRAP_TOOL_ROOT:-}"
 typeset UNAME_BIN="${TEST_TOOL_ROOT:+$TEST_TOOL_ROOT/}uname"
 typeset XCODE_SELECT_BIN="${TEST_TOOL_ROOT:+$TEST_TOOL_ROOT/}xcode-select"
 typeset CURL_BIN="${TEST_TOOL_ROOT:+$TEST_TOOL_ROOT/}curl"
 typeset BASH_BIN="${TEST_TOOL_ROOT:+$TEST_TOOL_ROOT/}bash"
+typeset SHASUM_BIN="${TEST_TOOL_ROOT:+$TEST_TOOL_ROOT/}shasum"
 typeset -a ORIGINAL_ARGS
 ORIGINAL_ARGS=("$@")
 typeset -g UV_BIN=""
@@ -19,6 +22,7 @@ if [[ -z "$TEST_TOOL_ROOT" ]]; then
   XCODE_SELECT_BIN=/usr/bin/xcode-select
   CURL_BIN=/usr/bin/curl
   BASH_BIN=/bin/bash
+  SHASUM_BIN=/usr/bin/shasum
 fi
 
 fail() {
@@ -92,14 +96,36 @@ find_uv() {
   print -- "$candidate"
 }
 
+current_lock_hash() {
+  local output
+  output="$("$SHASUM_BIN" -a 256 "$LOCK_FILE")" || return 1
+  local digest="${output%%[[:space:]]*}"
+  (( ${#digest} == 64 )) || return 1
+  [[ "$digest" != *[^0-9a-f]* ]] || return 1
+  print -r -- "$digest"
+}
+
 runtime_ready() {
-  [[ -x "$ROOT_DIR/.venv/bin/python" ]] || return 1
-  "$ROOT_DIR/.venv/bin/python" --version 2>&1 \
-    | /usr/bin/grep -Eq '^Python 3\.12(\.|$)'
+  local python="$ROOT_DIR/.venv/bin/python"
+  [[ -x "$python" && -f "$RUNTIME_MARKER" && -r "$RUNTIME_MARKER" ]] || return 1
+  "$python" --version 2>&1 \
+    | /usr/bin/grep -Eq '^Python 3\.12(\.|$)' || return 1
+  local expected_hash
+  expected_hash="$(current_lock_hash)" || return 1
+  local prepared_hash
+  prepared_hash="$(<"$RUNTIME_MARKER")" || return 1
+  [[ "$prepared_hash" == "$expected_hash" ]] || return 1
+  "$python" -B -c \
+    'import ballen_config, pydantic, yaml, tomlkit' \
+    >/dev/null 2>&1
+}
+
+require_macos() {
+  [[ "$("$UNAME_BIN" -s)" == Darwin ]] || fail "macOS is required"
 }
 
 prepare_runtime() {
-  [[ "$("$UNAME_BIN" -s)" == Darwin ]] || fail "macOS is required"
+  require_macos
   if ! "$XCODE_SELECT_BIN" -p >/dev/null 2>&1; then
     "$XCODE_SELECT_BIN" --install
     fail "installation started; rerun ./bootstrap prepare when it completes" "$PREPARE_REQUIRED"
@@ -114,7 +140,11 @@ prepare_runtime() {
     UV_BIN="$(find_uv)" || fail "Homebrew installation did not produce uv"
   fi
   "$UV_BIN" python install 3.12
+  /bin/rm -f -- "$RUNTIME_MARKER"
   "$UV_BIN" sync --frozen --python 3.12
+  local fingerprint
+  fingerprint="$(current_lock_hash)" || fail "unable to fingerprint uv.lock"
+  print -r -- "$fingerprint" > "$RUNTIME_MARKER"
 }
 
 STAGE="$(validate_arguments "$@")"
@@ -136,6 +166,10 @@ if ! runtime_ready; then
     *) fail "bootstrap runtime is missing; run ./bootstrap prepare" "$PREPARE_REQUIRED" ;;
   esac
 fi
+
+case "$STAGE" in
+  install|configure|all) require_macos ;;
+esac
 
 if [[ -z "$UV_BIN" ]]; then
   UV_BIN="$(find_uv)" || fail "uv is missing; run ./bootstrap prepare" "$PREPARE_REQUIRED"
