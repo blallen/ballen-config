@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import stat
 from collections.abc import Collection, Sequence
 from pathlib import Path
 
-from ballen_config.assistants.skills import hash_skill_tree
 from ballen_config.doctor import (
     CheckSeverity,
     DoctorCheck,
@@ -80,36 +80,50 @@ def _safe_home_path(home: Path, relative: Path) -> Path | None:
     return current
 
 
-def _safe_skill_tree(root: Path) -> bool:
+def _safe_skill_tree(root: Path) -> str | None:
     """Validate bounded regular skill content before hashing it."""
     entries = 0
     bytes_seen = 0
     pending = [root]
+    candidates: list[tuple[Path, os.stat_result]] = []
     while pending:
         try:
             with os.scandir(pending.pop()) as scan:
-                children = list(scan)
+                for child in scan:
+                    entries += 1
+                    if entries > _MAX_SKILL_TREE_ENTRIES:
+                        return None
+                    try:
+                        metadata = child.stat(follow_symlinks=False)
+                    except OSError:
+                        return None
+                    if stat.S_ISLNK(metadata.st_mode):
+                        return None
+                    candidate = Path(child.path)
+                    candidates.append((candidate, metadata))
+                    if stat.S_ISDIR(metadata.st_mode):
+                        pending.append(candidate)
+                    elif stat.S_ISREG(metadata.st_mode):
+                        bytes_seen += metadata.st_size
+                        if bytes_seen > _MAX_SKILL_TREE_BYTES:
+                            return None
+                    else:
+                        return None
         except OSError:
-            return False
-        for child in children:
+            return None
+    digest = hashlib.sha256()
+    for candidate, metadata in sorted(candidates, key=lambda item: item[0].as_posix()):
+        relative = candidate.relative_to(root).as_posix().encode()
+        if stat.S_ISDIR(metadata.st_mode):
+            digest.update(b"D\0" + relative + b"\0")
+        else:
+            executable = b"1" if metadata.st_mode & stat.S_IXUSR else b"0"
+            digest.update(b"F\0" + relative + b"\0" + executable + b"\0")
             try:
-                metadata = child.stat(follow_symlinks=False)
+                digest.update(candidate.read_bytes())
             except OSError:
-                return False
-            if stat.S_ISLNK(metadata.st_mode):
-                return False
-            entries += 1
-            if entries > _MAX_SKILL_TREE_ENTRIES:
-                return False
-            if stat.S_ISDIR(metadata.st_mode):
-                pending.append(Path(child.path))
-            elif stat.S_ISREG(metadata.st_mode):
-                bytes_seen += metadata.st_size
-                if bytes_seen > _MAX_SKILL_TREE_BYTES:
-                    return False
-            else:
-                return False
-    return True
+                return None
+    return digest.hexdigest()
 
 
 def _skill_entries(paths: RuntimePaths, agent: str) -> tuple[dict[str, set[str]], bool]:
@@ -138,14 +152,19 @@ def _skill_entries(paths: RuntimePaths, agent: str) -> tuple[dict[str, set[str]]
             unsafe = True
             continue
         try:
+            children = []
             with os.scandir(root) as scan:
-                children = sorted(scan, key=lambda child: child.name)
+                for child in scan:
+                    if len(children) >= _MAX_SKILL_ROOT_ENTRIES:
+                        unsafe = True
+                        break
+                    children.append(child)
         except OSError:
             unsafe = True
             continue
-        if len(children) > _MAX_SKILL_ROOT_ENTRIES:
-            unsafe = True
+        if unsafe and len(children) >= _MAX_SKILL_ROOT_ENTRIES:
             continue
+        children.sort(key=lambda child: child.name)
         for child in children:
             try:
                 metadata = child.stat(follow_symlinks=False)
@@ -161,11 +180,12 @@ def _skill_entries(paths: RuntimePaths, agent: str) -> tuple[dict[str, set[str]]
                 or not (candidate / "SKILL.md").is_file()
             ):
                 continue
-            if not _safe_skill_tree(candidate):
+            digest = _safe_skill_tree(candidate)
+            if digest is None:
                 unsafe = True
                 continue
             try:
-                entries.setdefault(child.name, set()).add(hash_skill_tree(candidate))
+                entries.setdefault(child.name, set()).add(digest)
             except (OSError, ValueError):
                 unsafe = True
                 continue
@@ -252,12 +272,8 @@ def _skill_findings(
         ):
             findings.append(drift_finding)
             continue
-        if not _safe_skill_tree(destination):
-            findings.append(drift_finding)
-            continue
-        try:
-            current_digest = hash_skill_tree(destination)
-        except (OSError, ValueError):
+        current_digest = _safe_skill_tree(destination)
+        if current_digest is None:
             findings.append(drift_finding)
             continue
         if current_digest != record.destination_digest:
