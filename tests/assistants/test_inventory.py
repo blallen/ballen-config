@@ -260,9 +260,11 @@ def test_core_invokes_each_supplier_once_with_resolved_skip(
     for component in resolved.components:
         if component.manager is Manager.GIT:
             assert component.destination is not None
-            (home / component.destination / ".git").mkdir(
-                parents=True,
-                mode=0o700,
+            assert component.revision is not None
+            fake_runner.add_git_checkout(
+                home / component.destination,
+                origin=component.package,
+                revision=component.revision,
             )
 
     def assert_setup(setup: ResolvedSetup) -> None:

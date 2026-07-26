@@ -25,6 +25,7 @@ class Component(BaseModel):
     package: str
     profiles: tuple[str, ...] = ("default",)
     destination: str | None = None
+    revision: str | None = Field(default=None, pattern=r"^[0-9a-f]{40}$")
     depends_on: tuple[str, ...] = ()
     application_paths: tuple[str, ...] = ()
     receipt_prefixes: tuple[str, ...] = ()
@@ -41,6 +42,10 @@ class Component(BaseModel):
             raise ValueError("optional components require include_key")
         if self.manager is Manager.GIT and self.destination is None:
             raise ValueError("git components require destination")
+        if self.manager is Manager.GIT and self.revision is None:
+            raise ValueError("git components require revision")
+        if self.manager is not Manager.GIT and self.revision is not None:
+            raise ValueError("only git components may declare revision")
         if self.destination is not None:
             destination = Path(self.destination)
             if destination.is_absolute() or ".." in destination.parts:

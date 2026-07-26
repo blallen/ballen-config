@@ -88,6 +88,22 @@ class StatefulAssistantFake:
         """Let already-tested core commands succeed without running them."""
         self.allow_unmodeled_core_commands = True
 
+    def add_git_checkout(self, path: Path, *, origin: str, revision: str) -> None:
+        """Model one clean checkout already converged to its reviewed revision."""
+        (path / ".git").mkdir(parents=True, exist_ok=True)
+        prefix = ("git", "-C", str(path))
+        self.add(
+            (*prefix, "remote", "get-url", "origin"),
+            returncode=0,
+            stdout=f"{origin}\n",
+        )
+        self.add((*prefix, "status", "--porcelain"), returncode=0)
+        self.add(
+            (*prefix, "rev-parse", "HEAD"),
+            returncode=0,
+            stdout=f"{revision}\n",
+        )
+
     def download(
         self,
         *,

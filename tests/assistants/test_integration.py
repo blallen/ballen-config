@@ -89,8 +89,14 @@ def run_with_assistants(
         )
     )
     for component in resolved.components:
-        if component.manager is Manager.GIT and component.destination is not None:
-            (home / component.destination / ".git").mkdir(parents=True, exist_ok=True)
+        if component.manager is Manager.GIT:
+            assert component.destination is not None
+            assert component.revision is not None
+            runner.add_git_checkout(
+                home / component.destination,
+                origin=component.package,
+                revision=component.revision,
+            )
     runner.cursor_extensions.update(
         {
             "velociraptor115.vscode-jj-graph",

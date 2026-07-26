@@ -173,6 +173,7 @@ def test_git_component_requires_non_symlink_git_checkout(
         manager=Manager.GIT,
         package="https://example.test/tool.git",
         destination=".tool",
+        revision="a" * 40,
     )
     finding = Doctor(FakeRunner({}), fake_home).component_checks((component,))[0]
     assert finding.status is FindingStatus.MISSING

@@ -18,6 +18,13 @@ from ballen_config.runner import CommandResult
 from ballen_config.runtime import RuntimePaths
 from ballen_config.state import StateStore
 
+_OH_MY_ZSH_REVISION = (
+    "b37dd49ca5bfe0d99b35607637152cb8cc8b29d7"  # pragma: allowlist secret
+)
+_FORGIT_REVISION = (
+    "15db0016623b87472c0b6ff7488b123a74b82c7e"  # pragma: allowlist secret
+)
+
 
 class FakeRunner:
     def __init__(self, results: list[CommandResult]) -> None:
@@ -27,6 +34,16 @@ class FakeRunner:
     def run(self, command: Sequence[str]) -> CommandResult:
         self.commands.append(tuple(command))
         return next(self.results)
+
+
+class StagingGitRunner(FakeRunner):
+    """Create the temporary checkout directory when Git initializes it."""
+
+    def run(self, command: Sequence[str]) -> CommandResult:
+        completed = super().run(command)
+        if tuple(command[:2]) == ("git", "init"):
+            Path(command[-1]).mkdir()
+        return completed
 
 
 class FakeDownloader:
@@ -118,6 +135,7 @@ def test_unmanaged_git_destination_is_preserved(tmp_path: Path) -> None:
         manager=Manager.GIT,
         package="https://github.com/ohmyzsh/ohmyzsh.git",
         destination=".oh-my-zsh",
+        revision=_OH_MY_ZSH_REVISION,
     )
     with pytest.raises(InstallError, match="unmanaged git destination"):
         Installer(FakeRunner([]), tmp_path).install(component)
@@ -134,10 +152,182 @@ def test_git_destination_rejects_symlinked_parent(tmp_path: Path) -> None:
         manager=Manager.GIT,
         package="https://github.com/wfxr/forgit.git",
         destination=".oh-my-zsh/custom/plugins/forgit",
+        revision=_FORGIT_REVISION,
     )
     with pytest.raises(ValueError, match="symlinked path component"):
         Installer(FakeRunner([]), tmp_path).install(component)
     assert list(outside.iterdir()) == []
+
+
+def test_git_install_publishes_only_a_verified_pinned_revision(tmp_path: Path) -> None:
+    """A new checkout fetches and verifies the configured immutable revision."""
+    revision = _OH_MY_ZSH_REVISION
+    destination = tmp_path / ".oh-my-zsh"
+    runner = StagingGitRunner(
+        [result(), result(), result(), result(), result(stdout=f"{revision}\n")]
+    )
+    component = Component(
+        id="oh-my-zsh",
+        manager=Manager.GIT,
+        package="https://github.com/ohmyzsh/ohmyzsh.git",
+        destination=".oh-my-zsh",
+        revision=revision,
+    )
+
+    assert Installer(runner, tmp_path).install(component).state == "installed"
+
+    stage = destination.with_name(f".{destination.name}.bootstrap-stage")
+    assert runner.commands == [
+        ("git", "init", str(stage)),
+        ("git", "-C", str(stage), "remote", "add", "origin", component.package),
+        (
+            "git",
+            "-C",
+            str(stage),
+            "fetch",
+            "--depth=1",
+            "--no-tags",
+            "origin",
+            revision,
+        ),
+        ("git", "-C", str(stage), "checkout", "--detach", "FETCH_HEAD"),
+        ("git", "-C", str(stage), "rev-parse", "HEAD"),
+    ]
+    assert destination.is_dir()
+    assert not stage.exists()
+
+
+def test_git_install_cleans_stage_after_failed_pin_fetch(tmp_path: Path) -> None:
+    """A failed pinned fetch leaves neither a destination nor a stage directory."""
+    revision = _OH_MY_ZSH_REVISION
+    runner = StagingGitRunner([result(), result(), result(1)])
+    component = Component(
+        id="oh-my-zsh",
+        manager=Manager.GIT,
+        package="https://github.com/ohmyzsh/ohmyzsh.git",
+        destination=".oh-my-zsh",
+        revision=revision,
+    )
+
+    with pytest.raises(InstallError, match="required install failed"):
+        Installer(runner, tmp_path).install(component)
+
+    assert not (tmp_path / ".oh-my-zsh").exists()
+    destination = tmp_path / ".oh-my-zsh"
+    stage = destination.with_name(f".{destination.name}.bootstrap-stage")
+    assert not destination.exists()
+    assert not stage.exists()
+
+
+def test_existing_clean_git_checkout_converges_to_configured_revision(
+    tmp_path: Path,
+) -> None:
+    """A clean checkout with the expected HTTPS origin advances to the pin."""
+    revision = _OH_MY_ZSH_REVISION
+    destination = tmp_path / ".oh-my-zsh"
+    (destination / ".git").mkdir(parents=True)
+    runner = FakeRunner(
+        [
+            result(stdout="https://github.com/ohmyzsh/ohmyzsh\n"),
+            result(),
+            result(stdout=f"{'0' * 40}\n"),
+            result(),
+            result(),
+            result(stdout=f"{revision}\n"),
+        ]
+    )
+    component = Component(
+        id="oh-my-zsh",
+        manager=Manager.GIT,
+        package="https://github.com/ohmyzsh/ohmyzsh.git",
+        destination=".oh-my-zsh",
+        revision=revision,
+    )
+
+    assert Installer(runner, tmp_path).install(component).state == "installed"
+    assert runner.commands == [
+        ("git", "-C", str(destination), "remote", "get-url", "origin"),
+        ("git", "-C", str(destination), "status", "--porcelain"),
+        ("git", "-C", str(destination), "rev-parse", "HEAD"),
+        (
+            "git",
+            "-C",
+            str(destination),
+            "fetch",
+            "--depth=1",
+            "--no-tags",
+            "origin",
+            revision,
+        ),
+        ("git", "-C", str(destination), "checkout", "--detach", "FETCH_HEAD"),
+        ("git", "-C", str(destination), "rev-parse", "HEAD"),
+    ]
+
+
+def test_existing_pinned_git_checkout_is_present_without_fetch(tmp_path: Path) -> None:
+    """An already pinned checkout remains usable without network access."""
+    revision = _OH_MY_ZSH_REVISION
+    destination = tmp_path / ".oh-my-zsh"
+    (destination / ".git").mkdir(parents=True)
+    runner = FakeRunner(
+        [
+            result(stdout="https://github.com/ohmyzsh/ohmyzsh.git\n"),
+            result(),
+            result(stdout=f"{revision}\n"),
+        ]
+    )
+    component = Component(
+        id="oh-my-zsh",
+        manager=Manager.GIT,
+        package="https://github.com/ohmyzsh/ohmyzsh.git",
+        destination=".oh-my-zsh",
+        revision=revision,
+    )
+
+    assert Installer(runner, tmp_path).install(component).state == "present"
+    assert runner.commands == [
+        ("git", "-C", str(destination), "remote", "get-url", "origin"),
+        ("git", "-C", str(destination), "status", "--porcelain"),
+        ("git", "-C", str(destination), "rev-parse", "HEAD"),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("origin", "status", "expected_commands"),
+    [
+        pytest.param(
+            "https://github.com/other/repository.git\n", "", 1, id="wrong-origin"
+        ),
+        pytest.param(
+            "https://github.com/ohmyzsh/ohmyzsh.git\n",
+            " M plugins/example\n",
+            2,
+            id="dirty-worktree",
+        ),
+    ],
+)
+def test_existing_git_checkout_rejects_untrusted_state(
+    tmp_path: Path,
+    origin: str,
+    status: str,
+    expected_commands: int,
+) -> None:
+    """An existing checkout must have the expected origin and no tracked changes."""
+    destination = tmp_path / ".oh-my-zsh"
+    (destination / ".git").mkdir(parents=True)
+    runner = FakeRunner([result(stdout=origin), result(stdout=status)])
+    component = Component(
+        id="oh-my-zsh",
+        manager=Manager.GIT,
+        package="https://github.com/ohmyzsh/ohmyzsh.git",
+        destination=".oh-my-zsh",
+        revision=_OH_MY_ZSH_REVISION,
+    )
+
+    with pytest.raises(InstallError, match="git checkout verification failed"):
+        Installer(runner, tmp_path).install(component)
+
+    assert len(runner.commands) == expected_commands
 
 
 def test_optional_failure_is_reported_without_raising(tmp_path: Path) -> None:
