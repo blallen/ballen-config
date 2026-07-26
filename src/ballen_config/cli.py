@@ -44,6 +44,7 @@ from ballen_config.doctor import (
 from ballen_config.install import (
     Downloader,
     HttpsDownloader,
+    InstallAction,
     InstallActionSupplier,
     run_install,
 )
@@ -213,6 +214,21 @@ def run(
         paths = RuntimePaths.from_roots(repo_root=repo_root, home=home)
         repository = ManifestRepository.load(repo_root / "manifests")
         resolved = repository.resolve(options.request)
+        actions: tuple[InstallAction, ...] = ()
+        if options.stage in {"install", "all"}:
+            actions = tuple(
+                action
+                for supplier in install_action_suppliers
+                for action in supplier(resolved, paths, runner)
+            )
+            identifiers = [component.id for component in resolved.components] + [
+                action.component_id for action in actions
+            ]
+            if len(identifiers) != len(set(identifiers)):
+                return RunResult(
+                    exit_code=2,
+                    report=StageReport(outcomes=("duplicate install action IDs",)),
+                )
 
         core = core_configuration(resolved, paths).model_copy(
             update={"validators": core_validators(runner)}
@@ -268,19 +284,6 @@ def run(
         return RunResult(exit_code=0, report=StageReport())
 
     def install_stage() -> RunResult:
-        actions = tuple(
-            action
-            for supplier in install_action_suppliers
-            for action in supplier(resolved, paths, runner)
-        )
-        identifiers = [component.id for component in resolved.components] + [
-            action.component_id for action in actions
-        ]
-        if len(identifiers) != len(set(identifiers)):
-            return RunResult(
-                exit_code=2,
-                report=StageReport(outcomes=("duplicate install action IDs",)),
-            )
         report = run_install(
             components=resolved.components,
             actions=actions,

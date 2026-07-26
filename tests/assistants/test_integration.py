@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import stat
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Literal, TypedDict
 
 import pytest
 
@@ -17,10 +19,43 @@ from ballen_config.assistants import (
 )
 from ballen_config.assistants.claude import ClaudePluginInspectionError
 from ballen_config.cli import RunResult, main, run
+from ballen_config.install import InstallAction
 from ballen_config.manifests import ManifestRepository
 from ballen_config.models import Manager, ResolutionRequest
 from ballen_config.runtime import RuntimePaths
 from tests.assistants.fakes import StatefulAssistantFake
+
+
+class SentinelSnapshot(TypedDict):
+    """One immutable observation of an excluded-state sentinel."""
+
+    kind: Literal["directory", "file"]
+    mode: int
+    data: bytes | None
+
+
+def snapshot_sentinels(
+    home: Path, paths: Sequence[Path]
+) -> dict[Path, SentinelSnapshot]:
+    """Capture explicit sentinel paths without following or inferring state.
+
+    Args:
+        home: Isolated fake home containing the sentinel paths.
+        paths: Relative paths whose exact file or directory state is observed.
+
+    Returns:
+        Relative-path snapshots including kind, mode, and file bytes.
+    """
+    snapshots: dict[Path, SentinelSnapshot] = {}
+    for relative_path in paths:
+        path = home / relative_path
+        metadata = path.stat()
+        snapshots[relative_path] = {
+            "kind": "directory" if path.is_dir() else "file",
+            "mode": stat.S_IMODE(metadata.st_mode),
+            "data": None if path.is_dir() else path.read_bytes(),
+        }
+    return snapshots
 
 
 def run_with_assistants(
@@ -443,3 +478,104 @@ def test_doctor_continues_after_cursor_native_inspection_failure(
     assert ("claude", "plugin", "list", "--json") in fake_runner.commands
     assert ("codex", "plugin", "list", "--json") in fake_runner.commands
     assert "token" not in rendered and "secret" not in rendered
+
+
+def test_work_all_preserves_excluded_agent_state_bytes_and_tree_identity(
+    repo_root: Path,
+    temporary_home: Path,
+    fake_runner: StatefulAssistantFake,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Aggregate work setup leaves explicit local-state sentinels untouched."""
+    monkeypatch.setattr(
+        "ballen_config.assistants.cursor.read_bundled_extensions",
+        lambda _root: frozenset(),
+    )
+    sentinel_paths = (
+        Path(".claude/sessions/session-opaque/blob.bin"),
+        Path(".claude/history/opaque.log"),
+        Path(".claude/auth/state.bin"),
+        Path(".codex/sessions/session-opaque/blob.bin"),
+        Path(".codex/memories/opaque.bin"),
+        Path(".codex/auth/state.bin"),
+        Path(".codex/projects/project-opaque/trust.bin"),
+        Path("Library/Application Support/Cursor/User/worktrees/tree-opaque/state.bin"),
+        Path("Library/Application Support/Cursor/cache/index/opaque.bin"),
+        Path("Library/Application Support/Cursor/User/globalStorage/runtime.sqlite3"),
+        Path(".cursor/plugins/runtime/generated-state.bin"),
+    )
+    payload = b"opaque-state-sentinel-v1\x00\xff"
+    for index, relative_path in enumerate(sentinel_paths):
+        destination = temporary_home / relative_path
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(payload + str(index).encode())
+        destination.chmod(0o640)
+    sentinel_directories = (
+        Path(".claude/sessions/session-opaque"),
+        Path(".codex/projects/project-opaque"),
+        Path("Library/Application Support/Cursor/User/worktrees/tree-opaque"),
+        Path(".cursor/plugins/runtime"),
+    )
+    for relative_path in sentinel_directories:
+        (temporary_home / relative_path).chmod(0o750)
+    before = snapshot_sentinels(
+        temporary_home, (*sentinel_directories, *sentinel_paths)
+    )
+
+    result = run_with_assistants(
+        ("all", "--profile", "work"),
+        repo_root=repo_root,
+        home=temporary_home,
+        runner=fake_runner,
+    )
+
+    assert result.exit_code == 0
+    assert (
+        snapshot_sentinels(temporary_home, (*sentinel_directories, *sentinel_paths))
+        == before
+    )
+
+
+def test_core_install_id_collision_stops_before_mutation(
+    repo_root: Path,
+    temporary_home: Path,
+    fake_runner: StatefulAssistantFake,
+) -> None:
+    """A supplied core-ID collision is rejected before install or state mutation."""
+    fake_runner.satisfy_core_commands()
+    resolved = ManifestRepository.load(repo_root / "manifests").resolve(
+        ResolutionRequest(profile="work")
+    )
+    core_component_id = resolved.components[0].id
+    state_path = (
+        RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home).state_root
+        / "state.json"
+    )
+    commands_before = tuple(fake_runner.commands)
+    state_before = state_path.read_bytes() if state_path.exists() else None
+
+    def duplicate_core_action(*_args: object) -> tuple[InstallAction, ...]:
+        """Supply one conflicting action without requiring a native command."""
+        return (
+            InstallAction(
+                component_id=core_component_id,
+                argv=("collision-safe",),
+            ),
+        )
+
+    result = cli.run(
+        ("install", "--profile", "work"),
+        repo_root=repo_root,
+        home=temporary_home,
+        runner=fake_runner,
+        downloader=fake_runner,
+        confirm=lambda _prompt: True,
+        output=lambda _line: None,
+        timestamp=lambda: "20260726T120000Z",
+        install_action_suppliers=(duplicate_core_action,),
+    )
+
+    assert result.exit_code == 2
+    assert result.report.outcomes == ("duplicate install action IDs",)
+    assert tuple(fake_runner.commands) == commands_before
+    assert (state_path.read_bytes() if state_path.exists() else None) == state_before
