@@ -689,6 +689,62 @@ def test_selected_dependency_cannot_target_only_a_skipped_agent(
         configuration(_resolved_setup("cursor"), skill_paths)
 
 
+def test_dependency_must_cover_consumer_enabled_targets(
+    skill_paths: RuntimePaths,
+) -> None:
+    """Reject a selected dependency that targets a different enabled agent."""
+    _write_skill(skill_paths.repo_root, "base")
+    _write_skill(skill_paths.repo_root, "consumer")
+    _write_catalog(
+        skill_paths,
+        [
+            _catalog_item("base", targets=("codex",)),
+            _catalog_item(
+                "consumer",
+                targets=("cursor",),
+                dependencies=("base",),
+            ),
+        ],
+    )
+    with pytest.raises(ValueError, match="dependency target coverage"):
+        configuration(_resolved_setup("cursor", "codex"), skill_paths)
+
+
+@pytest.mark.parametrize(
+    ("dependency_targets", "consumer_targets", "expected_spec_count"),
+    [
+        (("cursor",), ("cursor",), 2),
+        (("cursor", "codex"), ("cursor",), 3),
+        (("cursor", "codex"), ("cursor", "codex"), 4),
+    ],
+)
+def test_dependency_target_coverage_accepts_same_or_superset_targets(
+    skill_paths: RuntimePaths,
+    dependency_targets: tuple[str, ...],
+    consumer_targets: tuple[str, ...],
+    expected_spec_count: int,
+) -> None:
+    """Allow dependencies covering all enabled consumer targets."""
+    _write_skill(skill_paths.repo_root, "base")
+    _write_skill(skill_paths.repo_root, "consumer")
+    _write_catalog(
+        skill_paths,
+        [
+            _catalog_item("base", targets=dependency_targets),
+            _catalog_item(
+                "consumer",
+                targets=consumer_targets,
+                dependencies=("base",),
+            ),
+        ],
+    )
+    contribution = configuration(
+        _resolved_setup("cursor", "codex"),
+        skill_paths,
+    )
+    assert len(contribution.specs) == expected_spec_count
+
+
 def test_configuration_selects_all_eligible_skills_deterministically(
     skill_paths: RuntimePaths,
 ) -> None:

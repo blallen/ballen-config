@@ -349,11 +349,17 @@ def configuration(
         for skill in sorted(catalog.skills, key=lambda item: item.name)
         if (targets := _eligible_targets(skill, setup))
     )
-    selected_names = {skill.name for skill, _targets in selected}
-    for skill, _targets in selected:
-        missing = set(skill.dependencies).difference(selected_names)
-        if missing:
-            raise ValueError(f"skill dependency is not eligible: {skill.name}")
+    selected_targets = {skill.name: frozenset(targets) for skill, targets in selected}
+    for skill, targets in selected:
+        consumer_targets = frozenset(targets)
+        for dependency in skill.dependencies:
+            dependency_targets = selected_targets.get(dependency)
+            if dependency_targets is None:
+                raise ValueError(f"skill dependency is not eligible: {skill.name}")
+            if not consumer_targets.issubset(dependency_targets):
+                raise ValueError(
+                    f"skill dependency target coverage is incomplete: {skill.name}"
+                )
 
     state = StateStore(paths).load()
     contributions: list[ConfigurationContribution] = []
