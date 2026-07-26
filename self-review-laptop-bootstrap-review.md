@@ -216,9 +216,17 @@ removed five redundant test functions and five collected cases.
     a canonical extension identity while retaining strict validation for
     identities that are present.
 
+18. **Mutable Git heads supply shell code executed on every login**
+
+    Six default-profile shell components clone the current upstream default
+    branch, after which `.zshrc` sources or activates their code. This leaves
+    both reproducibility and the supply-chain boundary weaker than the pinned
+    stage-zero installer. Require an immutable commit for every Git component
+    and clone that exact revision before publishing the staged checkout.
+
 ### Important
 
-18. **JJ fix tools are unsafe global content transformers**
+19. **JJ fix tools are unsafe global content transformers**
 
     `dotfiles/vcs/jj-config.toml` configures `pre-commit` and Ruff commands as
     `jj fix` content filters even though they do not read one file from stdin
@@ -227,14 +235,14 @@ removed five redundant test functions and five collected cases.
     filenames in the explicit aliases, and install the remaining
     `pre-commit` dependency through the default profile.
 
-19. **CI does not run the complete pre-commit contract**
+20. **CI does not run the complete pre-commit contract**
 
     CI invokes two security hooks and duplicates several later checks, but it
     omits trailing-whitespace, end-of-file, YAML, TOML, and large-file hooks.
     Run the complete pre-commit suite in CI while retaining the deeper type and
     test stages.
 
-20. **The approved design describes deferred memory support as implemented**
+21. **The approved design describes deferred memory support as implemented**
 
     The design's CLI and repository-layout sections name memory commands and
     `memory-source-ids.txt`, while the implementation plans correctly defer
@@ -243,7 +251,7 @@ removed five redundant test functions and five collected cases.
 
 ### Minor
 
-21. **Two archival plans use Unicode directory trees**
+22. **Two archival plans use Unicode directory trees**
 
     The Plato documentation standard prefers Mermaid for diagrams. Replace the
     two small repository trees with compact tables, which are easier to keep
