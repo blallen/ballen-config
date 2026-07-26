@@ -267,12 +267,13 @@ def test_renderers_preserve_unrelated_cursor_native_state(
     settings = json.loads(
         contribution.renderers["cursor-settings"](
             specs["cursor-settings"].source.read_bytes(),
-            b'{"native":{"keep":true}}',
+            b'// Cursor user settings\n{"native":{"keep":true}}',
         )
     )
     bindings = json.loads(
         contribution.renderers["cursor-keybindings"](
             specs["cursor-keybindings"].source.read_bytes(),
+            b"// Place your key bindings in this file to override the defaults\n"
             b'[{"key":"cmd+x","command":"native.keep"}]',
         )
     )

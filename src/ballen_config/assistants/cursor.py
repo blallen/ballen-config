@@ -79,6 +79,15 @@ def _decode_json(source: bytes, *, label: str) -> object:
         raise ValueError(f"invalid {label} JSON") from error
 
 
+def _decode_cursor_native_json(source: bytes, *, label: str) -> object:
+    """Decode native Cursor JSON after its generated comment preamble."""
+    lines = source.splitlines(keepends=True)
+    for index, line in enumerate(lines):
+        if line.strip() and not line.lstrip().startswith(b"//"):
+            return _decode_json(b"".join(lines[index:]), label=label)
+    return _decode_json(b"", label=label)
+
+
 def _load_json_object(path: Path, *, label: str) -> JsonObject:
     """Load one reviewed JSON object.
 
@@ -381,7 +390,9 @@ def cursor_settings_renderer(
         if overlay is not None:
             document = deep_merge(document, overlay)
         existing = (
-            {} if current is None else _decode_json(current, label="Cursor settings")
+            {}
+            if current is None
+            else _decode_cursor_native_json(current, label="Cursor settings")
         )
         if not isinstance(existing, dict):
             raise ValueError("Cursor settings must be a JSON object")
@@ -431,8 +442,10 @@ def cursor_keybindings_renderer() -> Renderer:
         existing = (
             []
             if current is None
-            else _load_json_array_bytes(current, label="Cursor keybindings")
+            else _decode_cursor_native_json(current, label="Cursor keybindings")
         )
+        if not isinstance(existing, list):
+            raise ValueError("Cursor keybindings must be a JSON array")
 
         def identity(item: object) -> tuple[object, object] | None:
             if not isinstance(item, dict) or not isinstance(item.get("key"), str):
