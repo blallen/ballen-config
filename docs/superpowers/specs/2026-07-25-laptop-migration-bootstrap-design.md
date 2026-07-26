@@ -4,6 +4,9 @@
 
 **Date:** 2026-07-25
 
+**Implementation status:** The core bootstrap and coding-agent defaults are
+implemented. Encrypted memory transfer remains a deferred add-on.
+
 ## Objective
 
 Turn `ballen-config` from a mostly manual dotfile snapshot into a small,
@@ -100,10 +103,11 @@ applications are selected explicitly:
 ```
 
 The option parser accepts repeated `--skip` and `--include` component values
-and rejects unknown components before making changes. Memory subcommands use a
-separate repeated `--source` option. `plan` prints the resolved profile,
-packages, applications, configuration actions, expected prompts, and deferred
-manual work.
+and rejects unknown components before making changes. `plan` prints the
+resolved profile, packages, applications, configuration actions, expected
+prompts, and deferred manual work. A future memory-transfer add-on may
+introduce a separate repeated `--source` option; it is not part of the current
+command grammar or manifests.
 
 A skipped component is removed as a unit from installation, configuration,
 extensions, plugins, hooks, authentication prompts, and required diagnostics.
@@ -120,8 +124,7 @@ The top-level `bootstrap` file is a deliberately small Zsh script. It:
 2. Pre-parses the stage and supported option grammar.
 3. Validates profile, include, and skip identifiers against a small
    `component-ids.txt` interface generated from and tested against the
-   authoritative manifests. For memory subcommands, it instead validates
-   `--source` values against `memory-source-ids.txt`.
+   authoritative manifests.
 4. Reports whether Xcode Command Line Tools, Homebrew, `uv`, and Python 3.12
    are available.
 5. Runs the typed Python CLI with the original arguments when the runtime is
@@ -165,46 +168,19 @@ requiring updates to this repository.
 
 ### Repository layout
 
-```text
-ballen-config/
-├── bootstrap
-├── pyproject.toml
-├── uv.lock
-├── src/ballen_config/
-│   ├── cli.py
-│   ├── models.py
-│   ├── install.py
-│   ├── configure.py
-│   ├── doctor.py
-│   └── memories.py              # optional post-MVP capability
-├── manifests/
-│   ├── component-ids.txt
-│   ├── memory-source-ids.txt    # optional post-MVP capability
-│   ├── profiles/
-│   │   ├── default.yaml
-│   │   └── work.yaml
-│   ├── packages.yaml
-│   ├── applications.yaml
-│   └── memories.yaml            # optional post-MVP capability
-├── dotfiles/
-│   ├── shell/
-│   └── vcs/
-├── assistants/
-│   ├── inventory.yaml
-│   ├── shared/
-│   │   ├── skills/
-│   │   ├── hooks/
-│   │   └── instructions/
-│   ├── cursor/
-│   ├── claude/
-│   └── codex/
-├── terminal/
-│   └── wave/
-└── docs/
-    ├── manual-steps.md
-    ├── ssh-transfer.md
-    └── memory-transfer.md
-```
+| Path | Responsibility |
+|---|---|
+| `bootstrap` | Cross the stage-zero runtime gap and dispatch the typed CLI. |
+| `pyproject.toml`, `uv.lock` | Pin the Python 3.12 application environment. |
+| `src/ballen_config/` | Resolve, install, configure, diagnose, and enforce policy. |
+| `manifests/` | Define profiles, packages, applications, and stable component IDs. |
+| `dotfiles/` | Store portable shell and version-control defaults. |
+| `assistants/` | Store shared and agent-native reviewed configuration. |
+| `terminal/wave/` | Store Wave Terminal settings. |
+| `docs/` | Explain operation, manual work, and secure SSH transfer. |
+
+The future memory-transfer add-on may add a Python module, manifests, commands,
+and documentation after its encryption and conflict contracts are designed.
 
 Tests mirror the Python package under `tests/`.
 
@@ -225,6 +201,7 @@ The default command-line inventory includes:
 - `node`;
 - `ripgrep`;
 - `rtk`;
+- `pre-commit`;
 - Oh My Zsh, Powerlevel10k, `zsh-autosuggestions`, `zsh-completions`,
   `zsh-syntax-highlighting`, and `forgit`.
 

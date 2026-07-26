@@ -56,93 +56,40 @@ This plan deliberately excludes:
 
 Create:
 
-```text
-assistants/
-├── inventory.yaml
-├── shared/
-│   ├── hooks/
-│   │   └── rtk-hook
-│   ├── instructions/
-│   │   ├── engineering.md
-│   │   └── rtk.md
-│   └── skills/
-│       └── catalog.yaml
-├── cursor/
-│   ├── extensions.yaml
-│   ├── hooks.json
-│   ├── keybindings.json
-│   ├── settings.base.json
-│   ├── settings.work.json
-│   └── user-rules.md
-├── claude/
-│   ├── CLAUDE.md
-│   ├── plugins.yaml
-│   └── settings.json
-└── codex/
-    ├── AGENTS.md
-    ├── config.overlay.toml
-    └── plugins.yaml
-docs/
-└── promoting-shared-skills.md
-src/ballen_config/assistants/
-├── __init__.py
-├── checks.py
-├── claude.py
-├── codex.py
-├── cursor.py
-├── hooks.py
-├── instructions.py
-├── inventory.py
-├── models.py
-└── skills.py
-tests/assistants/
-├── __init__.py
-├── conftest.py
-├── fakes.py
-├── test_checks.py
-├── test_claude.py
-├── test_codex.py
-├── test_cursor.py
-├── test_hooks.py
-├── test_integration.py
-├── test_inventory.py
-├── test_models.py
-└── test_skills.py
-```
+| Path | Contents |
+|---|---|
+| `assistants/inventory.yaml` | Agent ownership and capability inventory. |
+| `assistants/shared/` | RTK hook, portable instructions, and shared-skill catalog. |
+| `assistants/cursor/` | Extensions, hooks, keybindings, settings, and user rules. |
+| `assistants/claude/` | Claude instructions, plugins, and native settings. |
+| `assistants/codex/` | Codex instructions, plugins, and TOML overlay. |
+| `docs/promoting-shared-skills.md` | Promotion workflow for portable skills. |
+| `src/ballen_config/assistants/` | Typed adapters, checks, renderers, and planners. |
+| `tests/assistants/` | Fixtures and behavioral coverage for those adapters. |
 
 Modify:
 
-```text
-README.md
-CLAUDE.md
-docs/manual-steps.md
-src/ballen_config/cli.py
-src/ballen_config/configure.py
-src/ballen_config/doctor.py
-src/ballen_config/install.py
-src/ballen_config/policy.py
-tests/test_docs.py
-tests/test_policy.py
-```
+| Area | Paths |
+|---|---|
+| User guidance | `README.md`, `CLAUDE.md`, `docs/manual-steps.md` |
+| Core integration | `src/ballen_config/cli.py`, `configure.py`, `doctor.py`, `install.py`, `policy.py` |
+| Cross-cutting tests | `tests/test_docs.py`, `tests/test_policy.py` |
 
 Move reviewed legacy sources:
 
-```text
-cursor/settings.json
-  -> assistants/cursor/settings.base.json
-cursor/keybindings.json
-  -> assistants/cursor/keybindings.json
-claude-code/settings.json
-  -> assistants/claude/settings.json
-```
+| From | To |
+|---|---|
+| `cursor/settings.json` | `assistants/cursor/settings.base.json` |
+| `cursor/keybindings.json` | `assistants/cursor/keybindings.json` |
+| `claude-code/settings.json` | `assistants/claude/settings.json` |
 
 Delete after the replacement tests pass:
 
-```text
-cursor/extensions.txt
-claude-code/
-cursor/                         # only after it is empty
-```
+| Path | Condition |
+|---|---|
+| `cursor/extensions.txt` | The reviewed YAML catalog replaces it. |
+| `claude-code/` | Its settings have moved and replacement tests pass. |
+| `cursor/` | It is empty after all reviewed sources move. |
 
 Do not copy files out of `~/.cursor`, `~/.claude`, `~/.codex`, or plugin cache
 directories wholesale. Every tracked source in `assistants/` must be authored
