@@ -119,3 +119,39 @@ resources:
       - superpowers-developing-for-claude-code@superpowers-marketplace
       - ami-qsp-tools@piste
       - fieldkit@piste
+
+  - id: codex.config
+    kind: file
+    owner: codex
+    source: assistants/codex/config.overlay.toml
+    destination: .codex/config.toml
+    role: overlay
+
+  - id: codex.instructions
+    kind: file
+    owner: codex
+    source: assistants/codex/AGENTS.md
+    destination: .codex/AGENTS.md
+    role: suffix
+
+  - id: codex.rtk
+    kind: file
+    owner: codex
+    source: assistants/shared/instructions/rtk.md
+    destination: .codex/RTK.md
+
+  - id: codex.plugins.catalog
+    kind: catalog
+    owner: codex
+    source: assistants/codex/plugins.yaml
+    catalog_kind: plugin
+    item_ids:
+      - bigspin@bigspinai
+      - context-mode@context-mode
+      - frontend-design@claude-plugins-official
+      - github@claude-plugins-official
+      - logfire@claude-plugins-official
+      - superpowers@claude-plugins-official
+      - superpowers-developing-for-claude-code@superpowers-marketplace
+      - ami-qsp-tools@piste
+      - fieldkit@piste

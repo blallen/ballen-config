@@ -82,7 +82,7 @@ def _catalog_ids(resource: CatalogResource, source: Path) -> tuple[str, ...]:
     return tuple(item.name for item in skills.skills)
 
 
-def load_inventory(path: Path, repo_root: Path) -> AssistantInventory:
+def load_inventory(path: Path, repo_root: Path | None = None) -> AssistantInventory:
     """Load an assistant inventory and validate all local sources.
 
     Inventory schema validation deliberately precedes filesystem inspection so
@@ -90,7 +90,8 @@ def load_inventory(path: Path, repo_root: Path) -> AssistantInventory:
 
     Args:
         path: Inventory YAML path.
-        repo_root: Checkout root used to resolve resource sources.
+        repo_root: Optional checkout root used to resolve resource sources. When
+            omitted, the parent of the ``assistants`` directory is used.
 
     Returns:
         Validated assistant inventory.
@@ -100,7 +101,7 @@ def load_inventory(path: Path, repo_root: Path) -> AssistantInventory:
             flattened catalog identifiers.
     """
     inventory = AssistantInventory.model_validate(yaml.safe_load(path.read_text()))
-    root = repo_root.resolve(strict=True)
+    root = (repo_root or path.parent.parent).resolve(strict=True)
     for resource in inventory.resources:
         source = resource.source
         if source is None:
