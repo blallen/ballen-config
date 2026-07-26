@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import stat
 from collections.abc import Collection, Sequence
 from pathlib import Path
 
@@ -23,6 +25,9 @@ _AGENT_ROOTS: dict[str, tuple[Path, ...]] = {
     "claude-code": (Path(".claude/skills"),),
     "codex": (Path(".agents/skills"), Path(".codex/skills")),
 }
+_MAX_SKILL_ROOT_ENTRIES = 512
+_MAX_SKILL_TREE_ENTRIES = 2048
+_MAX_SKILL_TREE_BYTES = 32 * 1024 * 1024
 
 
 def _enabled(enabled: Collection[object], name: str) -> bool:
@@ -58,45 +63,118 @@ def _skill_roots(paths: RuntimePaths, agent: str) -> tuple[Path, ...]:
     return tuple(paths.home / relative for relative in _AGENT_ROOTS[agent])
 
 
-def _skill_entries(paths: RuntimePaths, agent: str) -> dict[str, str]:
+def _safe_skill_tree(root: Path) -> bool:
+    """Validate bounded regular skill content before hashing it."""
+    entries = 0
+    bytes_seen = 0
+    pending = [root]
+    while pending:
+        try:
+            with os.scandir(pending.pop()) as scan:
+                children = list(scan)
+        except OSError:
+            return False
+        for child in children:
+            try:
+                metadata = child.stat(follow_symlinks=False)
+            except OSError:
+                return False
+            if stat.S_ISLNK(metadata.st_mode):
+                return False
+            entries += 1
+            if entries > _MAX_SKILL_TREE_ENTRIES:
+                return False
+            if stat.S_ISDIR(metadata.st_mode):
+                pending.append(Path(child.path))
+            elif stat.S_ISREG(metadata.st_mode):
+                bytes_seen += metadata.st_size
+                if bytes_seen > _MAX_SKILL_TREE_BYTES:
+                    return False
+            else:
+                return False
+    return True
+
+
+def _skill_entries(paths: RuntimePaths, agent: str) -> tuple[dict[str, set[str]], bool]:
     """Collect immediate valid skill directories as name-to-digest mappings.
 
     Invalid or unavailable native state is deliberately ignored because this is
     an advisory, non-mutating inspection.
     """
-    entries: dict[str, str] = {}
+    entries: dict[str, set[str]] = {}
+    unsafe = False
     for root in _skill_roots(paths, agent):
-        if not root.is_dir():
+        try:
+            root_metadata = os.lstat(root)
+        except FileNotFoundError:
+            continue
+        except OSError:
+            unsafe = True
+            continue
+        if stat.S_ISLNK(root_metadata.st_mode) or not stat.S_ISDIR(
+            root_metadata.st_mode
+        ):
+            unsafe = True
             continue
         try:
-            children = sorted(root.iterdir(), key=lambda child: child.name)
+            with os.scandir(root) as scan:
+                children = sorted(scan, key=lambda child: child.name)
         except OSError:
+            unsafe = True
+            continue
+        if len(children) > _MAX_SKILL_ROOT_ENTRIES:
+            unsafe = True
             continue
         for child in children:
-            if not child.is_dir() or not (child / "SKILL.md").is_file():
+            try:
+                metadata = child.stat(follow_symlinks=False)
+            except OSError:
+                unsafe = True
+                continue
+            if stat.S_ISLNK(metadata.st_mode):
+                unsafe = True
+                continue
+            candidate = Path(child.path)
+            if (
+                not stat.S_ISDIR(metadata.st_mode)
+                or not (candidate / "SKILL.md").is_file()
+            ):
+                continue
+            if not _safe_skill_tree(candidate):
+                unsafe = True
                 continue
             try:
-                entries.setdefault(child.name, hash_skill_tree(child))
+                entries.setdefault(child.name, set()).add(hash_skill_tree(candidate))
             except (OSError, ValueError):
+                unsafe = True
                 continue
-    return entries
+    return entries, unsafe
 
 
 def _skill_findings(
     paths: RuntimePaths, enabled: Collection[object]
 ) -> list[DoctorCheck]:
     """Return collision and recorded-drift findings for enabled agents only."""
-    by_name: dict[str, set[str]] = {}
-    per_agent: dict[str, dict[str, str]] = {}
-    for agent in sorted(_AGENT_ROOTS):
-        if not _enabled(enabled, agent):
-            continue
-        skills = _skill_entries(paths, agent)
-        per_agent[agent] = skills
-        for name, digest in skills.items():
-            by_name.setdefault(name, set()).add(digest)
-
     findings: list[DoctorCheck] = []
+    enabled_agents = tuple(
+        agent for agent in sorted(_AGENT_ROOTS) if _enabled(enabled, agent)
+    )
+    if not enabled_agents:
+        return findings
+    by_name: dict[str, set[str]] = {}
+    for agent in enabled_agents:
+        skills, unsafe = _skill_entries(paths, agent)
+        if unsafe:
+            findings.append(
+                _finding(
+                    f"skill-scan.{agent}",
+                    FindingStatus.DRIFT,
+                    CheckSeverity.WARNING,
+                    "Native skill state requires manual review",
+                )
+            )
+        for name, digests in skills.items():
+            by_name.setdefault(name, set()).update(digests)
     for name, digests in sorted(by_name.items()):
         if len(digests) > 1:
             findings.append(
@@ -113,38 +191,47 @@ def _skill_findings(
     except (OSError, ValueError):
         return findings
     for resource_id, record in sorted(state.managed.items()):
-        prefix, separator, agent = resource_id.rpartition(":")
-        if (
-            not separator
-            or not prefix.startswith("skill:")
-            or not _enabled(enabled, agent)
-        ):
+        if not resource_id.startswith("shared-skill-"):
             continue
+        state_agent = next(
+            (item for item in _AGENT_ROOTS if resource_id.endswith(f"-{item}")), None
+        )
+        if state_agent is None or not _enabled(enabled, state_agent):
+            continue
+        name = (
+            resource_id.removeprefix("shared-skill-").removesuffix(f"-{state_agent}")
+            or "managed"
+        )
+        finding_id = f"skill-drift.{name}"
+        drift_finding = _finding(
+            finding_id,
+            FindingStatus.DRIFT,
+            CheckSeverity.WARNING,
+            f"Managed skill {name} differs from recorded state",
+        )
+
         relative_destination = Path(record.destination)
         if relative_destination.is_absolute() or ".." in relative_destination.parts:
+            findings.append(drift_finding)
             continue
         try:
             destination = assert_contained(paths.home / record.destination, paths.home)
         except ValueError:
+            findings.append(drift_finding)
             continue
-        if destination.parent not in _skill_roots(paths, agent):
+        if destination != paths.home / _AGENT_ROOTS[state_agent][0] / name:
+            findings.append(drift_finding)
             continue
         if not destination.is_dir() or not (destination / "SKILL.md").is_file():
+            findings.append(drift_finding)
             continue
         try:
             current_digest = hash_skill_tree(destination)
         except (OSError, ValueError):
+            findings.append(drift_finding)
             continue
         if current_digest != record.destination_digest:
-            name = destination.name
-            findings.append(
-                _finding(
-                    f"skill-drift.{name}",
-                    FindingStatus.DRIFT,
-                    CheckSeverity.WARNING,
-                    f"Managed skill {name} differs from recorded state",
-                )
-            )
+            findings.append(drift_finding)
     return findings
 
 

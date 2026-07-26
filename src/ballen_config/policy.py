@@ -83,7 +83,7 @@ _REPOSITORY_IMPORT_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _LOCAL_MARKETPLACE_PATTERN = re.compile(
-    rb"(?:trust_level\s*=\s*['\"]trusted['\"]|(?:marketplace|source)\s*[:=][^\r\n]*?/Users/)",
+    rb"(?:trust_level\s*=\s*['\"]trusted['\"]|(?:local_marketplace|marketplace|source)\s*[:=]\s*['\"]?/)",
     re.IGNORECASE,
 )
 
@@ -171,6 +171,18 @@ def _checkout_root(root: Path) -> Path:
         PolicyError: If the root is unavailable, a symlink, or not a directory.
     """
     checkout = Path(os.path.abspath(root))
+    current = Path(checkout.anchor)
+    for part in checkout.parts[1:]:
+        current /= part
+        if current == Path("/private"):
+            continue
+        try:
+            if stat.S_ISLNK(current.lstat().st_mode):
+                raise PolicyError
+        except FileNotFoundError:
+            break
+        except OSError:
+            raise PolicyError from None
     try:
         root_mode = checkout.lstat().st_mode
     except OSError:

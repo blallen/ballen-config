@@ -154,6 +154,31 @@ def test_core_policy_rejects_legacy_mcp_strings(
     }
 
 
+@pytest.mark.parametrize(
+    "content", ["local_marketplace: /tmp/x", "local_marketplace = '/opt/local'"]
+)
+def test_policy_rejects_absolute_local_marketplace_values(
+    tmp_path: Path, content: str
+) -> None:
+    """Reject local marketplace paths without treating documentation as config."""
+    path = tmp_path / "assistants/config.yaml"
+    path.parent.mkdir()
+    path.write_text(content)
+    assert Violation(
+        rule="local-marketplace", path="assistants/config.yaml"
+    ) in scan_paths(tmp_path, (Path("assistants/config.yaml"),))
+
+
+def test_policy_rejects_root_with_a_symlinked_ancestor(tmp_path: Path) -> None:
+    """Fail closed when the requested checkout root traverses a symlink."""
+    real = tmp_path / "real"
+    real.mkdir()
+    linked = tmp_path / "linked"
+    linked.symlink_to(real, target_is_directory=True)
+    with pytest.raises(PolicyError):
+        scan_paths(linked / "nested", ())
+
+
 def test_violations_are_deterministically_sorted(tmp_path: Path) -> None:
     """Violation order is stable regardless of caller path order."""
     (tmp_path / "z.pem").write_text("-----BEGIN " + "RSA PRIVATE KEY-----\nvalue\n")

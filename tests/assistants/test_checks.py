@@ -144,8 +144,8 @@ def test_skills_report_names_only_collisions_and_managed_drift(
     StateStore(paths).write(
         BootstrapState(
             managed={
-                "skill:managed:claude-code": ManagedRecord(
-                    resource_id="skill:managed:claude-code",
+                "shared-skill-managed-claude-code": ManagedRecord(
+                    resource_id="shared-skill-managed-claude-code",
                     source_digest="0" * 64,
                     destination_digest="1" * 64,
                     destination=".claude/skills/managed",
@@ -172,6 +172,79 @@ def test_skills_report_names_only_collisions_and_managed_drift(
     assert ".claude" not in rendered
     assert "current" not in rendered
     assert ".cursor" not in rendered
+
+
+def test_codex_roots_detect_same_name_conflict_but_not_identical_content(
+    paths: RuntimePaths,
+) -> None:
+    """Compare each enabled Codex native root without first-value suppression."""
+    for root, body in (
+        (paths.home / ".agents/skills/same", "one"),
+        (paths.home / ".codex/skills/same", "two"),
+    ):
+        root.mkdir(parents=True)
+        (root / "SKILL.md").write_text(f"---\nname: same\n---\n{body}\n")
+    findings = assistant_checks(
+        enabled=frozenset({"codex"}),
+        paths=paths,
+        runner=StatefulAssistantFake(paths.home),
+    )
+    assert (
+        run_doctor(findings).finding("skill-collision.same").status
+        is FindingStatus.DRIFT
+    )
+
+    (paths.home / ".codex/skills/same/SKILL.md").write_text(
+        "---\nname: same\n---\none\n"
+    )
+    findings = assistant_checks(
+        enabled=frozenset({"codex"}),
+        paths=paths,
+        runner=StatefulAssistantFake(paths.home),
+    )
+    assert all(item.id != "skill-collision.same" for item in findings)
+
+
+def test_no_enabled_agent_avoids_state_and_native_skill_lookups(
+    paths: RuntimePaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Avoid all skill state inspection when every supported agent is disabled."""
+    monkeypatch.setattr(
+        StateStore,
+        "load",
+        lambda _self: (_ for _ in ()).throw(AssertionError("state read")),
+    )
+    monkeypatch.setattr(
+        Path,
+        "iterdir",
+        lambda _self: (_ for _ in ()).throw(AssertionError("root lookup")),
+    )
+    assert (
+        assistant_checks(
+            enabled=frozenset(), paths=paths, runner=StatefulAssistantFake(paths.home)
+        )
+        == ()
+    )
+
+
+def test_symlinked_skill_root_is_not_traversed(
+    paths: RuntimePaths, tmp_path: Path
+) -> None:
+    """Report unsafe native skill roots without reading their target trees."""
+    outside = tmp_path / "outside"
+    (outside / "secret").mkdir(parents=True)
+    (outside / "secret/SKILL.md").write_text("---\nname: secret\n---\nsecret\n")
+    (paths.home / ".agents").mkdir()
+    (paths.home / ".agents/skills").symlink_to(outside)
+    findings = assistant_checks(
+        enabled=frozenset({"codex"}),
+        paths=paths,
+        runner=StatefulAssistantFake(paths.home),
+    )
+    assert (
+        run_doctor(findings).finding("skill-scan.codex").severity
+        is CheckSeverity.WARNING
+    )
 
 
 def test_inventory_manual_resources_are_exact_and_unique(repo_root: Path) -> None:
