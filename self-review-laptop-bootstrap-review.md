@@ -2,7 +2,7 @@
 
 ## Verdict
 
-**REMEDIATION IN PROGRESS** after expanding the review to the complete stack.
+**CLEAN** after reviewing and validating the complete stack.
 
 The initial review found several high-confidence opportunities to remove
 framework theater, consolidate repeated boundary code, and make documentation
@@ -13,14 +13,15 @@ standards reason.
 A follow-up review then covered every non-Python file in
 `main..laptop-bootstrap-review`, including assistant defaults, manifests,
 shell and VCS configuration, CI, deleted legacy files, and documentation. That
-pass found the additional issues recorded under **Full-stack follow-up**.
+pass found the additional issues recorded under **Full-stack follow-up**. All
+findings were remediated and revalidated.
 
 ## Scope
 
-- Compared: `main...laptop-bootstrap-agents`
+- Compared: `main..laptop-bootstrap-review`
 - Review branch: `laptop-bootstrap-review`
-- Change size: 104 files, 28,452 additions, 506 deletions
-- Python: 24 source files and 28 test files
+- Change size: 110 files, 29,229 additions, 648 deletions
+- Python: 26 source files and 29 test files
 - Review batches:
   - core source and docstrings
   - core tests
@@ -55,13 +56,13 @@ at validated boundaries and lighter internal containers; Google-style
 docstrings that add semantic value; pytest fixtures; parameter IDs; and tests
 of business behavior rather than framework mechanics.
 
-## Baseline verification
+## Initial baseline verification
 
 - `uv run pytest -q`: passed
 - `uv run ruff check .`: passed
 - `uv run mypy`: passed, 24 source files
 
-## Final result
+## Initial cleanup result
 
 - Source: 18 files, 178 additions, 384 deletions (**net -206 lines**)
 - Tests: 17 files, 329 additions, 238 deletions (**net +91 lines**)
@@ -69,16 +70,26 @@ of business behavior rather than framework mechanics.
 - Test functions: 294 to 289
 - Collected test cases: 451 to 446
 - Test docstrings: 0 missing and 0 stray string literals
-- Final verification:
-  - `uv run pytest -q`: 446 passed
-  - `uv run ruff check .`: passed
-  - `uv run ruff format --check src/ballen_config tests`: passed
-  - `uv run mypy`: passed, 26 source files
-  - `uv run pre-commit run --all-files`: all 11 hooks passed
 
 The test line increase comes from the Plato requirement that every test function
 carry an intent docstring and from stable parameter IDs. Consolidation still
 removed five redundant test functions and five collected cases.
+
+The full-stack follow-up then added 13 focused regression cases for issues that
+were only visible once the executable defaults and live machine state were
+reviewed, bringing the final suite to 459 cases.
+
+## Final verification
+
+- `uv run --frozen pytest -q`: 459 passed
+- `uv run --frozen ruff check .`: passed
+- `uv run --frozen ruff format --check src/ballen_config tests`: passed
+- `uv run --frozen mypy`: passed, 26 source files
+- `uv run --frozen pre-commit run --all-files`: all 11 hooks passed
+- `uv lock --check`: passed
+- Clean-home default plan: passed, 114 actions
+- Clean-home work plan: passed, 124 actions
+- Current-laptop work plan: passed
 
 ## Findings
 
@@ -294,3 +305,33 @@ standalone string literals remain.
    one decoder bypass.
 7. Ran focused checks, the complete suite, and independent source, test, and
    Ponytail reviews.
+8. Accepted Cursor's native leading comment preamble without weakening strict
+   decoding for reviewed repository JSON.
+9. Pinned and checksum-verified the stage-zero Homebrew installer.
+10. Removed unsafe global JJ content filters, safely quoted changed filenames,
+    installed `pre-commit`, and made CI exercise the full hook contract.
+11. Corrected the design's deferred-memory claims and replaced archival Unicode
+    directory trees with maintainable tables.
+12. Ignored bundled Cursor packages that are not extensions while preserving
+    strict validation for packages that expose an extension identity.
+13. Pinned all six Git-managed shell components to reviewed commits and made
+    clean, expected-origin checkouts converge safely to those pins.
+14. Validated the public package, cask, Git, plugin, extension, and VSIX
+    references against their live sources.
+
+## Live-source validation boundary
+
+- Every declared Homebrew formula and cask resolved and was neither deprecated
+  nor disabled.
+- All six shell repositories resolved, and each pinned commit was fetched and
+  checked out in an isolated smoke test.
+- Public Claude and Codex marketplace repositories resolved, and declared
+  public plugin identifiers matched their upstream manifests.
+- Twenty-four curated Cursor extensions resolved through the Visual Studio
+  Marketplace. The two Cursor-specific identifiers were validated against the
+  installed Cursor packages. The pinned JJ Graph VSIX matched both its declared
+  byte size and SHA-256 digest.
+- The private Piste GitLab remote was not contacted because authentication is
+  deliberately outside this repository's portability boundary. The current
+  local cache confirms the declared `ami-qsp-tools` and `fieldkit` package
+  versions.
