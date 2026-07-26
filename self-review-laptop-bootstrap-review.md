@@ -207,23 +207,34 @@ removed five redundant test functions and five collected cases.
     pinned revision or integrity check. Replace the mutable execution path with
     a pinned installer revision and verify its SHA-256 digest before execution.
 
+17. **One unrelated bundled Cursor package blocks extension inspection**
+
+    Cursor 3.13.10 includes `theme-cursor/package.json` without a `publisher`
+    field. `read_bundled_extensions()` treats that as a malformed extension and
+    aborts the complete scan, so extension installation cannot inspect this
+    otherwise valid Cursor build. Ignore package directories that do not expose
+    a canonical extension identity while retaining strict validation for
+    identities that are present.
+
 ### Important
 
-17. **JJ Ruff fix tools reference a deleted configuration file**
+18. **JJ fix tools are unsafe global content transformers**
 
-    `dotfiles/vcs/jj-config.toml` passes `--config ruff.toml` to both Ruff
-    tools, but this stack deleted `ruff.toml` after moving policy to
-    `pyproject.toml`. Point the portable aliases at the current configuration
-    and add a regression that prevents the paths from drifting again.
+    `dotfiles/vcs/jj-config.toml` configures `pre-commit` and Ruff commands as
+    `jj fix` content filters even though they do not read one file from stdin
+    and emit only its replacement on stdout. The Ruff commands also reference
+    the deleted `ruff.toml`. Remove these global transformers, safely quote
+    filenames in the explicit aliases, and install the remaining
+    `pre-commit` dependency through the default profile.
 
-18. **CI does not run the complete pre-commit contract**
+19. **CI does not run the complete pre-commit contract**
 
     CI invokes two security hooks and duplicates several later checks, but it
     omits trailing-whitespace, end-of-file, YAML, TOML, and large-file hooks.
     Run the complete pre-commit suite in CI while retaining the deeper type and
     test stages.
 
-19. **The approved design describes deferred memory support as implemented**
+20. **The approved design describes deferred memory support as implemented**
 
     The design's CLI and repository-layout sections name memory commands and
     `memory-source-ids.txt`, while the implementation plans correctly defer
@@ -232,7 +243,7 @@ removed five redundant test functions and five collected cases.
 
 ### Minor
 
-20. **Two archival plans use Unicode directory trees**
+21. **Two archival plans use Unicode directory trees**
 
     The Plato documentation standard prefers Mermaid for diagrams. Replace the
     two small repository trees with compact tables, which are easier to keep
