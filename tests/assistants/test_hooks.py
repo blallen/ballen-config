@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import stat
 import subprocess
 from pathlib import Path
@@ -68,8 +69,9 @@ def test_static_cursor_registration_is_exact_and_renderer_is_literal(
     repo_root: Path,
     temporary_home: Path,
 ) -> None:
-    """Replace only the command's leading home marker without shell expansion."""
+    """Replace only the reviewed path token in the authored source bytes."""
     source = (repo_root / "assistants/cursor/hooks.json").read_bytes()
+    reviewed_path = b"~/.local/share/ballen-config/hooks/rtk-hook"
     assert json.loads(source) == {
         "version": 1,
         "hooks": {
@@ -81,9 +83,86 @@ def test_static_cursor_registration_is_exact_and_renderer_is_literal(
             ]
         },
     }
+    assert source.count(reviewed_path) == 1
+    absolute_path = (
+        temporary_home / ".local/share/ballen-config/hooks/rtk-hook"
+    ).as_posix()
+    assert shlex.quote(absolute_path) == absolute_path
+
     rendered = cursor_hook_renderer(temporary_home)(source, None)
-    assert json.loads(rendered) == cursor_registration(temporary_home)
-    assert rendered.endswith(b"\n")
+    assert rendered == source.replace(reviewed_path, absolute_path.encode(), 1)
+
+
+def test_native_hook_commands_quote_a_hostile_home_path(
+    repo_root: Path,
+    tmp_path: Path,
+) -> None:
+    """Keep shell metacharacters inside one executable-path argument."""
+    hostile_home = tmp_path / "home path;$(printf injected)&'"
+    absolute_hook = (
+        hostile_home / ".local/share/ballen-config/hooks/rtk-hook"
+    ).as_posix()
+    cursor_command = cursor_registration(hostile_home)["hooks"]["preToolUse"][0][
+        "command"
+    ]
+    claude_command = claude_hook_fragment(hostile_home)["hooks"]["PreToolUse"][0][
+        "hooks"
+    ][0]["command"]
+
+    assert shlex.split(cursor_command) == [absolute_hook, "cursor"]
+    assert shlex.split(claude_command) == [absolute_hook, "claude"]
+
+    source = (repo_root / "assistants/cursor/hooks.json").read_bytes()
+    rendered = cursor_hook_renderer(hostile_home)(source, None)
+    assert json.loads(rendered) == cursor_registration(hostile_home)
+
+
+@pytest.mark.parametrize("token_count", [0, 2])
+def test_cursor_renderer_rejects_wrong_reviewed_path_token_count(
+    repo_root: Path,
+    temporary_home: Path,
+    token_count: int,
+) -> None:
+    """Reject semantically equivalent JSON without exactly one literal token."""
+    source = (repo_root / "assistants/cursor/hooks.json").read_bytes()
+    reviewed_path = b"~/.local/share/ballen-config/hooks/rtk-hook"
+    if token_count == 0:
+        source = source.replace(
+            reviewed_path, b"\\u007e/.local/share/ballen-config/hooks/rtk-hook"
+        )
+    else:
+        command_line = (
+            b'        "command": "~/.local/share/ballen-config/hooks/rtk-hook cursor",'
+        )
+        source = source.replace(command_line, command_line + b"\n" + command_line)
+
+    assert json.loads(source) == {
+        "version": 1,
+        "hooks": {
+            "preToolUse": [
+                {
+                    "command": "~/.local/share/ballen-config/hooks/rtk-hook cursor",
+                    "matcher": "Shell",
+                }
+            ]
+        },
+    }
+    assert source.count(reviewed_path) == token_count
+
+    with pytest.raises(ValueError, match="invalid Cursor hook source"):
+        cursor_hook_renderer(temporary_home)(source, None)
+
+
+def test_cursor_renderer_rejects_unreviewed_structure(
+    repo_root: Path,
+    temporary_home: Path,
+) -> None:
+    """Reject a source document whose native registration was changed."""
+    source = (repo_root / "assistants/cursor/hooks.json").read_bytes()
+    changed_source = source.replace(b'"matcher": "Shell"', b'"matcher": "Bash"')
+
+    with pytest.raises(ValueError, match="invalid Cursor hook source"):
+        cursor_hook_renderer(temporary_home)(changed_source, None)
 
 
 @pytest.mark.parametrize(

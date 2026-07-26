@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import json
+import shlex
 from pathlib import Path
-from typing import TypedDict
+from typing import Literal, TypedDict
 
 from ballen_config.configure import (
     ApplyMethod,
@@ -71,6 +72,10 @@ _STATIC_CURSOR_REGISTRATION: CursorRegistration = {
         ]
     },
 }
+_REVIEWED_HOOK_PATH = "~/.local/share/ballen-config/hooks/rtk-hook"
+_REVIEWED_HOOK_PATH_BYTES = _REVIEWED_HOOK_PATH.encode()
+_HookAgent = Literal["cursor", "claude"]
+_ALLOWED_HOOK_AGENTS: frozenset[str] = frozenset({"cursor", "claude"})
 _FORBIDDEN_SOURCE_PARTS = frozenset({"cache", "generated", "machine", "plugins"})
 
 
@@ -95,10 +100,17 @@ def validate_hook_source(source: Path) -> None:
         raise ValueError("hook must use a reviewed source")
 
 
-def _hook_command(home: Path, agent: str) -> str:
-    """Return one injected absolute native hook command."""
+def _quoted_hook_path(home: Path) -> str:
+    """Return the absolute hook executable as one shell-safe argument."""
     executable = home / ".local/share/ballen-config/hooks/rtk-hook"
-    return f"{executable.as_posix()} {agent}"
+    return shlex.quote(executable.as_posix())
+
+
+def _hook_command(home: Path, agent: _HookAgent) -> str:
+    """Return one injected absolute native hook command."""
+    if agent not in _ALLOWED_HOOK_AGENTS:
+        raise ValueError("unsupported hook agent")
+    return f"{_quoted_hook_path(home)} {agent}"
 
 
 def cursor_registration(home: Path) -> CursorRegistration:
@@ -156,23 +168,24 @@ def cursor_hook_renderer(home: Path) -> Renderer:
         home: Injected absolute user home.
 
     Returns:
-        Renderer replacing only the reviewed command's leading ``~/``.
+        Renderer replacing exactly one reviewed command-path token.
     """
 
     def render(source: bytes, _current: bytes | None) -> bytes:
+        if source.count(_REVIEWED_HOOK_PATH_BYTES) != 1:
+            raise ValueError("invalid Cursor hook source")
         try:
             payload = json.loads(source)
         except json.JSONDecodeError as error:
             raise ValueError("invalid Cursor hook source") from error
         if payload != _STATIC_CURSOR_REGISTRATION:
             raise ValueError("invalid Cursor hook source")
-        return (
-            json.dumps(
-                cursor_registration(home),
-                indent=2,
-                sort_keys=True,
-            ).encode()
-            + b"\n"
+        # Preserve the document while escaping the shell word for its JSON string.
+        replacement = json.dumps(_quoted_hook_path(home))[1:-1].encode()
+        return source.replace(
+            _REVIEWED_HOOK_PATH_BYTES,
+            replacement,
+            1,
         )
 
     return render
