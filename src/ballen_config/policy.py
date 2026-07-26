@@ -39,7 +39,6 @@ _OPERATIONAL_DOCS = frozenset(
         PurePath("docs/ssh-transfer.md"),
     }
 )
-_AGENT_DIRECTORIES = frozenset({"assistants", "claude-code", "cursor"})
 
 _PRIVATE_KEY_PATTERN = re.compile(
     rb"-----BEGIN (?:(?:OPENSSH|RSA|EC|DSA) )?PRIVATE KEY-----"
@@ -59,24 +58,7 @@ _FORBIDDEN_MCP_PATTERN = re.compile(
     rb"(?:"
     rb"gitlab-mr-mcp"
     rb"|@playwright/mcp"
-    rb"|mcp\.notion\.com"
     rb"|MR_MCP_GITLAB_TOKEN"
-    rb")",
-    re.IGNORECASE,
-)
-_MCP_CONFIG_PATTERN = re.compile(rb"(?:mcpServers|mcp\.json)", re.IGNORECASE)
-_REPOSITORY_SPECIFIC_PATTERN = re.compile(
-    rb"(?:\bplato\b|\bavogadro\b|repo(?:sitory)?[-_ ]specific)",
-    re.IGNORECASE,
-)
-_LOCAL_TRUST_PATTERN = re.compile(
-    rb"(?:"
-    rb"knownMarketplaces"
-    rb"|extraKnownMarketplaces"
-    rb"|trustedDirectories"
-    rb"|trustedFolders"
-    rb"|trustDialog"
-    rb"|workspaceTrust"
     rb")",
     re.IGNORECASE,
 )
@@ -236,11 +218,6 @@ def _is_operational(path: Path) -> bool:
     return bool(path.parts and path.parts[0] in _OPERATIONAL_DIRECTORIES)
 
 
-def _is_agent_surface(path: Path) -> bool:
-    """Return whether agent-specific portability rules apply to the path."""
-    return bool(path.parts and path.parts[0] in _AGENT_DIRECTORIES)
-
-
 def _content_rules(path: Path, content: bytes) -> set[str]:
     """Collect content policy rules that a validated file violates.
 
@@ -264,14 +241,6 @@ def _content_rules(path: Path, content: bytes) -> set[str]:
         rules.add("machine-path")
     if _FORBIDDEN_MCP_PATTERN.search(content):
         rules.add("forbidden-mcp")
-    if path.name.casefold() == "mcp.json" or _MCP_CONFIG_PATTERN.search(content):
-        rules.add("mcp-config")
-
-    if _is_agent_surface(path):
-        if _REPOSITORY_SPECIFIC_PATTERN.search(content):
-            rules.add("repo-specific")
-        if _LOCAL_TRUST_PATTERN.search(content):
-            rules.add("local-trust-state")
     return rules
 
 

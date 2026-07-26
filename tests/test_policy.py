@@ -101,30 +101,51 @@ def test_portability_rules_apply_only_to_operational_surfaces(
     assert violations == (Violation(rule="machine-path", path="README.md"),)
 
 
-def test_agent_surfaces_reject_mcp_repo_and_trust_state(tmp_path: Path) -> None:
-    """Operational agent files reject MCP, repository, and local trust state."""
-    config = tmp_path / "assistants/config.json"
-    config.parent.mkdir()
-    config.write_text(
-        '{"mcpServers": {}, "knownMarketplaces": {}, "instruction": "import plato"}'
-    )
-    assert {
-        violation.rule
-        for violation in scan_paths(
-            tmp_path,
-            (Path("assistants/config.json"),),
-        )
-    } == {"mcp-config", "repo-specific", "local-trust-state"}
+@pytest.mark.parametrize(
+    ("relative", "content"),
+    [
+        ("cursor/mcp.json", "{}"),
+        ("assistants/config.json", '{"mcpServers": {}}'),
+        ("assistants/config.json", '{"command": "https://mcp.notion.com"}'),
+        ("assistants/instructions.md", "import plato"),
+        ("assistants/instructions.md", "from avogadro import model"),
+        ("assistants/instructions.md", "use this repo-specific helper"),
+        ("assistants/config.json", '{"knownMarketplaces": {}}'),
+        ("assistants/config.json", '{"trustedFolders": ["/tmp/project"]}'),
+    ],
+)
+def test_core_policy_defers_agent_specific_operational_rules(
+    tmp_path: Path,
+    relative: str,
+    content: str,
+) -> None:
+    """Leave coding-agent MCP, repository, and trust rules to Agent Task 7."""
+    path = tmp_path / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content)
+    assert scan_paths(tmp_path, (Path(relative),)) == ()
 
 
-def test_mcp_json_path_is_rejected_even_when_empty(tmp_path: Path) -> None:
-    """A tracked MCP configuration file is never a portable core source."""
-    path = tmp_path / "cursor/mcp.json"
+@pytest.mark.parametrize(
+    "content",
+    [
+        "command: gitlab-mr-mcp",
+        "command: @playwright/mcp",
+        "token: MR_MCP_GITLAB_TOKEN",
+    ],
+)
+def test_core_policy_rejects_legacy_mcp_strings(
+    tmp_path: Path,
+    content: str,
+) -> None:
+    """Keep the legacy MCP exclusions owned by the core bootstrap plan."""
+    path = tmp_path / "assistants/config.yaml"
     path.parent.mkdir()
-    path.write_text("{}")
-    assert scan_paths(tmp_path, (Path("cursor/mcp.json"),)) == (
-        Violation(rule="mcp-config", path="cursor/mcp.json"),
-    )
+    path.write_text(content)
+    assert "forbidden-mcp" in {
+        violation.rule
+        for violation in scan_paths(tmp_path, (Path("assistants/config.yaml"),))
+    }
 
 
 def test_violations_are_deterministically_sorted(tmp_path: Path) -> None:
@@ -268,3 +289,10 @@ def test_policy_main_returns_zero_for_clean_tree(
 def test_repository_passes_policy(repo_root: Path) -> None:
     """The complete working copy satisfies the tracked-tree policy."""
     assert scan_tree(repo_root) == ()
+
+
+def test_ci_runs_secret_hooks_across_all_files(repo_root: Path) -> None:
+    """CI independently enforces both non-mutating credential hooks."""
+    workflow = (repo_root / ".github/workflows/ci.yml").read_text()
+    for hook in ("detect-secrets", "detect-private-key"):
+        assert f"run: uv run --frozen pre-commit run {hook} --all-files" in workflow

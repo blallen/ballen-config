@@ -23,6 +23,12 @@ jobs:
       - name: Sync frozen environment
         run: uv sync --frozen
 
+      - name: Detect secrets
+        run: uv run --frozen pre-commit run detect-secrets --all-files
+
+      - name: Detect private keys
+        run: uv run --frozen pre-commit run detect-private-key --all-files
+
       - name: Lint Python
         run: uv run --frozen ruff check src tests
 
