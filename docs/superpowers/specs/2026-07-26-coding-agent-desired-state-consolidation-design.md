@@ -1,7 +1,7 @@
 # Coding-Agent Desired-State Consolidation Design
 
 **Date:** 2026-07-26
-**Status:** Draft for written-spec review; conversational design approved
+**Status:** Approved for implementation
 **Stack:** `laptop-bootstrap-agents` → `laptop-bootstrap-review` →
 `laptop-bootstrap-agent-consolidation`
 
