@@ -544,10 +544,11 @@ class ConfigurationPlanContributor:
         ]
         actions.extend(
             PlanAction(
-                component_id=f"{spec.id}-brittle-path",
+                component_id=f"{spec.id}.brittle-path",
                 category="diagnostic",
-                action="brittle-path",
+                action="replace-brittle-path",
                 owner="bootstrap",
+                path=str(spec.source.relative_to(self.engine.paths.repo_root)),
                 required=False,
             )
             for spec in contribution.specs

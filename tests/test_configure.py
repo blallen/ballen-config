@@ -14,6 +14,7 @@ from ballen_config.configure import (
     ApplyMethod,
     ConfigurationContribution,
     ConfigurationEngine,
+    ConfigurationPlanContributor,
     ManagedFileSpec,
     ManagedTreeSpec,
     Renderer,
@@ -22,6 +23,7 @@ from ballen_config.configure import (
     merge_configuration_contributions,
 )
 from ballen_config.models import ResolvedSetup
+from ballen_config.planning import PlanAction
 from ballen_config.runtime import RuntimePaths
 from ballen_config.state import StateStore
 
@@ -322,3 +324,58 @@ def test_skip_wave_removes_wave_spec(config_paths: RuntimePaths) -> None:
         configuration_specs(manifest / "configuration.yaml", resolved, config_paths)
         == ()
     )
+
+
+def test_configuration_plan_contributor_returns_structural_action_read_only(
+    config_paths: RuntimePaths,
+) -> None:
+    """A normal managed spec becomes a redacted configure plan action."""
+    spec = file_spec(config_paths)
+    contributor = ConfigurationPlanContributor(
+        engine(config_paths),
+        lambda _resolved, _paths: ConfigurationContribution(specs=(spec,)),
+    )
+    resolved = ResolvedSetup(profiles=("default",), components=(), skipped=())
+
+    actions = contributor.actions(resolved)
+
+    assert actions == (
+        PlanAction(
+            component_id="example",
+            category="configure",
+            action="created",
+            owner="bootstrap",
+            path="~/.config/example",
+        ),
+    )
+    assert not (config_paths.home / spec.destination).exists()
+    assert not config_paths.state_root.exists()
+
+
+def test_configuration_plan_contributor_reports_redacted_brittle_path(
+    config_paths: RuntimePaths,
+) -> None:
+    """Brittle paths emit one redacted diagnostic without source contents."""
+    spec = file_spec(config_paths)
+    spec.source.write_text('export TOOL_PATH="/Users/name/tool"\n')
+    contributor = ConfigurationPlanContributor(
+        engine(config_paths),
+        lambda _resolved, _paths: ConfigurationContribution(specs=(spec,)),
+    )
+
+    actions = contributor.actions(
+        ResolvedSetup(profiles=("default",), components=(), skipped=())
+    )
+
+    diagnostic = actions[1]
+    assert diagnostic == PlanAction(
+        component_id="example.brittle-path",
+        category="diagnostic",
+        action="replace-brittle-path",
+        owner="bootstrap",
+        path="source",
+        required=False,
+    )
+    assert "/Users/" not in str(diagnostic)
+    assert spec.source.read_text() not in str(diagnostic)
+    assert not (config_paths.home / spec.destination).exists()
