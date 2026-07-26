@@ -252,10 +252,13 @@ class Installer:
 
     def _run_verified_download(self, action: InstallAction) -> CommandResult:
         """Download, verify, invoke, and remove a private artifact."""
-        assert action.url is not None
-        assert action.artifact_name is not None
-        assert action.size_bytes is not None
-        assert action.sha256 is not None
+        if (
+            action.url is None
+            or action.artifact_name is None
+            or action.size_bytes is None
+            or action.sha256 is None
+        ):
+            raise InstallError("verified-download action metadata is incomplete")
         workspace: Path | None = None
         try:
             try:
@@ -335,7 +338,8 @@ class Installer:
 
     def _git(self, component: Component) -> InstallOutcome:
         """Clone a git component into a safe sibling stage directory."""
-        assert component.destination is not None
+        if component.destination is None:
+            raise InstallError(f"git component lacks destination: {component.id}")
         destination = assert_contained(self.home / component.destination, self.home)
         assert_no_symlink_components(destination, stop=self.home)
         if destination.is_symlink():

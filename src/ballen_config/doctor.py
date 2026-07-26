@@ -166,7 +166,8 @@ class Doctor:
                     self.path_exists(Path(path)) for path in component.application_paths
                 )
             else:
-                assert component.destination is not None
+                if component.destination is None:
+                    raise ValueError(f"git component lacks destination: {component.id}")
                 destination = self.home / component.destination
                 present = (
                     not destination.is_symlink() and (destination / ".git").is_dir()

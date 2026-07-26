@@ -6,18 +6,7 @@ from pathlib import Path
 
 
 def assert_contained(path: Path, root: Path) -> Path:
-    """Return an absolute lexical path only when it is beneath ``root``.
-
-    Args:
-        path: Candidate path that must remain inside the approved root.
-        root: Approved root path.
-
-    Returns:
-        The normalized absolute candidate path.
-
-    Raises:
-        ValueError: If the candidate escapes the approved root.
-    """
+    """Return an absolute lexical path only when it is beneath ``root``."""
     normalized_root = root.resolve()
     normalized_path = Path(os.path.abspath(path))
     try:
@@ -33,16 +22,7 @@ def assert_no_symlink_components(
     stop: Path,
     include_leaf: bool = False,
 ) -> None:
-    """Reject existing symlinks and non-directory intermediate components.
-
-    Args:
-        path: Path whose existing components must be inspected.
-        stop: Existing approved root at which inspection starts.
-        include_leaf: Whether to inspect ``path`` itself as a component.
-
-    Raises:
-        ValueError: If an inspected component is a symlink or non-directory.
-    """
+    """Reject existing symlinks and non-directory intermediate components."""
     relative = path.relative_to(stop)
     current = stop
     parts = relative.parts if include_leaf else relative.parts[:-1]

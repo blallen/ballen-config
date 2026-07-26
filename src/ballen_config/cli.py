@@ -6,7 +6,7 @@ import argparse
 import os
 import sys
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
@@ -71,7 +71,7 @@ from ballen_config.planning import (
     build_resolved_plan,
     format_plan,
 )
-from ballen_config.runner import CommandRunner, SubprocessRunner
+from ballen_config.runner import Runner, SubprocessRunner
 from ballen_config.runtime import RuntimePaths
 from ballen_config.state import StateStore
 
@@ -134,7 +134,7 @@ class ResolvedInspector:
 
     def __init__(
         self,
-        runner: CommandRunner,
+        runner: Runner,
         components: Sequence[Component],
         home: Path,
     ) -> None:
@@ -172,7 +172,8 @@ class ResolvedInspector:
                 if result["returncode"] == 0
                 else ComponentState.MISSING
             )
-        assert component.destination is not None
+        if component.destination is None:
+            raise ValueError(f"git component lacks destination: {component.id}")
         destination = self.home / component.destination
         return (
             ComponentState.PRESENT
@@ -211,7 +212,7 @@ def run(
     *,
     repo_root: Path,
     home: Path,
-    runner: CommandRunner,
+    runner: Runner,
     downloader: Downloader,
     confirm: Callable[[str], bool],
     output: Callable[[str], None],
@@ -270,8 +271,8 @@ def run(
                     report=StageReport(outcomes=("duplicate install action IDs",)),
                 )
 
-        core = core_configuration(resolved, paths).model_copy(
-            update={"validators": core_validators(runner)}
+        core = replace(
+            core_configuration(resolved, paths), validators=core_validators(runner)
         )
         supplied = tuple(
             supplier(resolved, paths) for supplier in configuration_suppliers
