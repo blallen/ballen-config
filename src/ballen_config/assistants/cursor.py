@@ -48,6 +48,10 @@ class ExtensionState(BaseModel):
     unmanaged_extra: tuple[str, ...]
 
 
+class CursorExtensionInspectionError(RuntimeError):
+    """A normalized failure to inspect installed Cursor extensions."""
+
+
 def _catalog(path: Path) -> ExtensionCatalog:
     """Load the reviewed extension catalog."""
     return ExtensionCatalog.model_validate(
@@ -321,14 +325,12 @@ def install_actions(
     if not setup.is_enabled("cursor"):
         return ()
     listed = runner.run(("cursor", "--list-extensions"))
-    installed = (
-        frozenset(
-            line.strip().casefold()
-            for line in listed["stdout"].splitlines()
-            if line.strip()
-        )
-        if listed["returncode"] == 0
-        else frozenset()
+    if listed["returncode"] != 0:
+        raise CursorExtensionInspectionError("Cursor extension inspection failed")
+    installed = frozenset(
+        line.strip().casefold()
+        for line in listed["stdout"].splitlines()
+        if line.strip()
     )
     bundled = read_bundled_extensions(bundled_root)
     enabled_agents = frozenset(

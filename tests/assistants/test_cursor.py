@@ -25,6 +25,7 @@ from ballen_config.assistants.inventory import load_inventory
 from ballen_config.assistants.models import (
     CatalogResource,
     ExtensionCatalog,
+    ExtensionSpec,
     FileResource,
     ManualResource,
 )
@@ -617,6 +618,74 @@ def test_skipped_cursor_returns_before_native_or_bundled_inspection(
     )
     assert actions == ()
     assert fake_runner.commands == []
+
+
+def test_failed_cursor_extension_inspection_never_plans_installs(
+    repo_root: Path,
+    fake_runner: StatefulAssistantFake,
+    temporary_home: Path,
+    tmp_path: Path,
+) -> None:
+    """Fail closed without exposing native output or producing install actions."""
+    command = ("cursor", "--list-extensions")
+    fake_runner.add(
+        command,
+        returncode=1,
+        stdout="sensitive stdout",
+        stderr="sensitive stderr",
+    )
+    paths = RuntimePaths.from_roots(
+        repo_root=repo_root,
+        home=temporary_home,
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match=r"^Cursor extension inspection failed$",
+    ) as error:
+        install_actions(
+            _resolved_setup("cursor"),
+            paths,
+            fake_runner,
+            bundled_root=tmp_path / "must-not-be-read",
+        )
+
+    assert str(error.value) == "Cursor extension inspection failed"
+    assert "sensitive" not in str(error.value)
+    assert fake_runner.commands == [command]
+    assert fake_runner.downloads == []
+
+
+@pytest.mark.parametrize(
+    "identifier",
+    [
+        "missing-dot",
+        "Publisher.extension",
+        "publisher.Extension",
+        ".extension",
+        "publisher.",
+        "publisher.extension.extra",
+        "publisher/extension",
+        "publisher_name.extension",
+    ],
+)
+def test_extension_spec_rejects_non_normalized_identifiers(
+    identifier: str,
+) -> None:
+    """Require lowercase publisher.name extension identifiers."""
+    with pytest.raises(ValueError):
+        ExtensionSpec(id=identifier)
+
+
+def test_extension_spec_rejects_unknown_agent_condition() -> None:
+    """Limit extension conditions to supported coding-agent identifiers."""
+    with pytest.raises(ValueError):
+        ExtensionSpec.model_validate(
+            {
+                "id": "publisher.extension",
+                "condition": "unknown-agent",
+            }
+        )
 
 
 def test_inventory_is_synchronized_with_cursor_sources_and_catalog(

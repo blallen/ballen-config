@@ -171,8 +171,13 @@ class ExtensionSpec(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    id: str = Field(min_length=1)
-    condition: str | None = None
+    id: str = Field(
+        pattern=(
+            r"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?"
+            r"\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$"
+        )
+    )
+    condition: Literal["cursor", "claude-code", "codex"] | None = None
     install_mode: Literal["gallery", "vsix"] = "gallery"
     required: bool = True
     version: str | None = Field(default=None, min_length=1)
