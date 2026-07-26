@@ -33,7 +33,16 @@ def ids(repository: ManifestRepository, request: ResolutionRequest) -> set[str]:
 def test_work_profile_extends_default(manifest_repository: ManifestRepository) -> None:
     """Work includes its inherited tools without optional personal apps."""
     resolved = ids(manifest_repository, ResolutionRequest(profile="work"))
-    assert {"uv", "gh", "glab", "jj", "wave", "libmagic", "awscli"} <= resolved
+    assert {
+        "uv",
+        "gh",
+        "glab",
+        "jj",
+        "pre-commit",
+        "wave",
+        "libmagic",
+        "awscli",
+    } <= resolved
     assert {"obsidian", "signal", "mactex"}.isdisjoint(resolved)
 
 

@@ -19,10 +19,13 @@ p = ["git", "push"]
 cc = ["util", "exec", "--", "bash", "-c", '''
 set -e
 echo "Running pre-commit checks..."
-CHANGED_FILES=$(jj diff --name-only --revision @)
-if [ -n "$CHANGED_FILES" ]; then
-    echo "Checking files: $CHANGED_FILES"
-    pre-commit run --files $CHANGED_FILES || {
+CHANGED_FILES=()
+while IFS= read -r file; do
+    CHANGED_FILES+=("$file")
+done < <(jj diff --name-only --revision @)
+if (( ${#CHANGED_FILES[@]} > 0 )); then
+    printf 'Checking %s changed file(s).\n' "${#CHANGED_FILES[@]}"
+    pre-commit run --files "${CHANGED_FILES[@]}" || {
         echo "Pre-commit checks failed. Please fix the issues and try again."
         exit 1
     }
@@ -43,20 +46,6 @@ pre-commit run --all-files --show-diff-on-failure || {
 echo "Pre-commit checks passed! Pushing..."
 jj git push "$@"
 ''', ""]
-
-# jj fix integration for running pre-commit across all mutable commits
-[fix.tools.pre-commit]
-command = ["pre-commit", "run", "--files"]
-patterns = ["**"]
-
-# Direct ruff integration for jj fix (alternative to pre-commit)
-[fix.tools.ruff]
-command = ["ruff", "check", "--fix", "--config", "ruff.toml"]
-patterns = ["**/*.py"]
-
-[fix.tools.ruff-format]
-command = ["ruff", "format", "--config", "ruff.toml"]
-patterns = ["**/*.py"]
 
 [remotes.origin]
 auto-track-bookmarks = "glob:*"

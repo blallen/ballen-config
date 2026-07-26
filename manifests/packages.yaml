@@ -6,6 +6,7 @@ components:
   - {id: node, manager: brew_formula, package: node, profiles: [default]}
   - {id: ripgrep, manager: brew_formula, package: ripgrep, profiles: [default]}
   - {id: rtk, manager: brew_formula, package: rtk, profiles: [default]}
+  - {id: pre-commit, manager: brew_formula, package: pre-commit, profiles: [default]}
   - {id: libmagic, manager: brew_formula, package: libmagic, profiles: [work]}
   - {id: awscli, manager: brew_formula, package: awscli, profiles: [work]}
   - id: oh-my-zsh
