@@ -10,10 +10,15 @@ Transfer only through an encrypted local medium or a trusted direct connection.
 Never use a plaintext cloud folder, unencrypted USB drive, or other unencrypted
 removable media.
 
+The bootstrap owns `~/.ssh/config`, where it installs public GitHub and GitLab
+defaults and includes `~/.ssh/config.local`. Move private hosts, aliases, jump
+hosts, internal usernames, and machine-specific identity paths into
+`config.local`; do not add them to the repository template.
+
 On the destination:
 
 - Set `~/.ssh` to mode `0700`.
-- Set private keys and `config` to mode `0600`.
+- Set private keys, `config`, and `config.local` to mode `0600`.
 - Set public keys to mode `0644`.
 - Load the selected private key into the macOS agent and Keychain with
   `ssh-add --apple-use-keychain <private-key-path>`.

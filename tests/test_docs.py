@@ -53,6 +53,22 @@ def test_legacy_secret_and_mcp_guidance_is_gone(repo_root: Path) -> None:
     assert not (repo_root / "ssh/config").exists()
 
 
+def test_portable_ssh_config_keeps_public_git_hosts(repo_root: Path) -> None:
+    """Keep public Git hosts portable without fixing a machine-specific key."""
+    text = (repo_root / "dotfiles/ssh/config").read_text(encoding="utf-8")
+
+    for directive in (
+        "Include ~/.ssh/config.local",
+        "Host github.com gitlab.com",
+        "User git",
+        "AddKeysToAgent yes",
+        "UseKeychain yes",
+    ):
+        assert directive in text
+    for machine_specific in ("IdentityFile", "HostName", "ProxyJump"):
+        assert machine_specific not in text
+
+
 def test_agent_guardrail_is_short_and_operational(repo_root: Path) -> None:
     """CLAUDE delegates canonical guidance and retains core safety rules."""
     text = (repo_root / "CLAUDE.md").read_text(encoding="utf-8")

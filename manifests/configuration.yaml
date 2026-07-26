@@ -40,6 +40,12 @@ files:
     mode: "0600"
     component: jj
     validator_id: toml
+  - id: ssh-config
+    source: dotfiles/ssh/config
+    destination: .ssh/config
+    method: copy
+    mode: "0600"
+    component: ssh
   - id: wave-settings
     source: terminal/wave/settings.json
     destination: .config/waveterm/settings.json

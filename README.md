@@ -83,6 +83,8 @@ rejected before mutation.
 
 Use [manual steps](docs/manual-steps.md) for GitHub, GitLab, work AWS, SSH, and
 IT-managed applications. Use the
-[SSH transfer guide](docs/ssh-transfer.md) for keys; the repository never
-stores them. The approved design remains in the
+[SSH transfer guide](docs/ssh-transfer.md) for keys and private host entries;
+the repository never stores keys. The bootstrap installs portable GitHub and
+GitLab SSH defaults in `~/.ssh/config` and keeps machine-specific entries in
+the included `~/.ssh/config.local`. The approved design remains in the
 [laptop migration bootstrap design](docs/superpowers/specs/2026-07-25-laptop-migration-bootstrap-design.md).

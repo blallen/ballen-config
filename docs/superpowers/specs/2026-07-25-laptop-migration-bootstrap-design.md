@@ -583,11 +583,13 @@ trusted connection. `docs/ssh-transfer.md` explains:
 - how to remove any temporary encrypted transfer copy after verification;
 - how to generate a fresh key instead.
 
-The repository retains at most a sanitized, host-neutral SSH configuration
-template. Hostnames, usernames, jump hosts, and other remote-login details are
-not treated as portable dotfiles. The destination directory is mode `0700`,
-private keys are mode `0600`, and those permissions are applied before the
-first SSH use.
+The repository retains a sanitized SSH configuration template with portable
+defaults for the public GitHub and GitLab endpoints. Private or internal
+hostnames, usernames, aliases, jump hosts, identity paths, and other
+remote-login details stay in the included `~/.ssh/config.local` and are not
+treated as portable dotfiles. The destination directory is mode `0700`; the
+configuration and private keys are mode `0600`; and those permissions are
+applied before the first SSH use.
 
 ## Optional Memory Transfer
 

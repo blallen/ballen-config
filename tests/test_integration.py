@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Literal, TypedDict
 
 from ballen_config.configure import (
+    ApplyMethod,
     ConfigurationEngine,
     configuration_specs,
     core_validators,
@@ -109,11 +110,15 @@ def test_complete_configure_flow_is_idempotent(
     )
 
     first_plan = first_engine.plan(specs)
+    ssh_spec = next(spec for spec in specs if spec.id == "ssh-config")
     expected_outcomes = {
         spec.id: ("updated" if spec.id in {"gitconfig", "gitignore"} else "created")
         for spec in specs
     }
-    assert len(specs) == 7
+    assert ssh_spec.destination == Path(".ssh/config")
+    assert ssh_spec.method is ApplyMethod.COPY
+    assert ssh_spec.mode == 0o600
+    assert len(specs) == 8
     assert {action.id: action.outcome for action in first_plan} == expected_outcomes
     first_report = run_configure(first_engine, specs)
     assert {
@@ -124,6 +129,10 @@ def test_complete_configure_flow_is_idempotent(
     first_backup = paths.backup_root / "20260725T120000Z"
     assert (first_backup / ".gitconfig").read_bytes() == existing_gitconfig
     assert (first_backup / ".config/git/ignore").read_bytes() == existing_gitignore
+    ssh_config = fake_home / ".ssh/config"
+    assert ssh_config.read_bytes() == (repo_root / "dotfiles/ssh/config").read_bytes()
+    assert stat.S_IMODE(ssh_config.stat().st_mode) == 0o600
+    assert stat.S_IMODE(ssh_config.parent.stat().st_mode) == 0o700
     after_first = snapshot_tree(fake_home)
     state_after_first = state_store.load()
     backups_after_first = snapshot_tree(paths.backup_root)
