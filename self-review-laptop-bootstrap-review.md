@@ -14,13 +14,15 @@ A follow-up review then covered every non-Python file in
 `main..laptop-bootstrap-review`, including assistant defaults, manifests,
 shell and VCS configuration, CI, deleted legacy files, and documentation. That
 pass found the additional issues recorded under **Full-stack follow-up**. All
-findings were remediated and revalidated.
+findings were remediated and revalidated. A final application against the
+current laptop then exercised the actual package, plugin, configuration,
+backup, and diagnostic boundaries.
 
 ## Scope
 
 - Compared: `main..laptop-bootstrap-review`
 - Review branch: `laptop-bootstrap-review`
-- Change size: 110 files, 29,229 additions, 648 deletions
+- Change size: 110 files, 29,701 additions, 648 deletions
 - Python: 26 source files and 29 test files
 - Review batches:
   - core source and docstrings
@@ -75,13 +77,15 @@ The test line increase comes from the Plato requirement that every test function
 carry an intent docstring and from stable parameter IDs. Consolidation still
 removed five redundant test functions and five collected cases.
 
-The full-stack follow-up then added 13 focused regression cases for issues that
-were only visible once the executable defaults and live machine state were
-reviewed, bringing the final suite to 459 cases.
+The full-stack follow-up added 13 focused regression cases for issues that were
+only visible once the executable defaults and live machine state were reviewed.
+Applying the result to the current laptop exposed three additional native
+integration defects and added another 13 cases, bringing the final suite to
+472 cases.
 
 ## Final verification
 
-- `uv run --frozen pytest -q`: 459 passed
+- `uv run --frozen pytest -q`: 472 passed
 - `uv run --frozen ruff check .`: passed
 - `uv run --frozen ruff format --check src/ballen_config tests`: passed
 - `uv run --frozen mypy`: passed, 26 source files
@@ -268,6 +272,33 @@ reviewed, bringing the final suite to 459 cases.
     two small repository trees with compact tables, which are easier to keep
     accurate and accessible in these archival plans.
 
+## Local-application findings
+
+23. **Native plugin schemas differ from the synthetic test contract**
+
+    Current Claude Code returns separate top-level plugin and marketplace
+    arrays, while Codex returns separate `installed` and `marketplaces`
+    documents. The adapters expected a combined synthetic shape, so base
+    installation completed but assistant inspection stopped the first live
+    run before configuration. Validate only the planning fields from each
+    current native response, fail closed before crossing the next command
+    boundary, and treat only user-scoped Claude plugins as satisfying
+    user-scoped defaults.
+
+24. **Stage-zero help is unavailable on an unprepared laptop**
+
+    The Zsh argument gate rejects `--help`, and forwarding it through the
+    prepared Python runtime converts argparse's successful exit into
+    `invalid configuration`. Provide concise help before runtime preparation
+    and preserve argparse's successful read-only exit when invoked directly.
+
+25. **Cursor rewrites managed settings into its native byte format**
+
+    Cursor serializes `settings.json` with four-space indentation and no
+    trailing newline. A semantically identical two-space document therefore
+    drifted immediately after configuration. Render this one native document
+    in Cursor's byte format while preserving unrelated settings.
+
 ## Ponytail review
 
 The Ponytail pass was limited to over-engineering, not correctness. Its
@@ -318,6 +349,12 @@ standalone string literals remain.
     clean, expected-origin checkouts converge safely to those pins.
 14. Validated the public package, cask, Git, plugin, extension, and VSIX
     references against their live sources.
+15. Updated Claude and Codex inspection for their current native schemas,
+    including separate marketplace queries and Claude user-scope semantics.
+16. Made bootstrap help available before runtime preparation and preserved a
+    successful Python argparse help exit.
+17. Matched Cursor's native settings serialization and proved byte-stable
+    convergence while Cursor was running.
 
 ## Live-source validation boundary
 
@@ -331,7 +368,27 @@ standalone string literals remain.
   Marketplace. The two Cursor-specific identifiers were validated against the
   installed Cursor packages. The pinned JJ Graph VSIX matched both its declared
   byte size and SHA-256 digest.
-- The private Piste GitLab remote was not contacted because authentication is
-  deliberately outside this repository's portability boundary. The current
-  local cache confirms the declared `ami-qsp-tools` and `fieldkit` package
-  versions.
+- The private Piste GitLab remote is deliberately outside the repository's
+  portable authentication boundary. The current local cache confirms the
+  declared `ami-qsp-tools` and `fieldkit` package versions. A later local
+  marketplace refresh correctly failed closed when GitLab rejected the
+  machine's SSH key; no credential workaround was attempted.
+
+## Local application result
+
+- `./bootstrap all --profile work` installed the missing work-profile base:
+  AWS CLI 2.36.8, pre-commit 4.6.1, uv 0.11.32, Claude Code 2.1.212, Wave
+  0.14.5, and Meslo Nerd Font 3.4.0.
+- The six shell repositories converged to their reviewed commits. The two
+  missing Cursor extensions and six missing user-scoped Claude plugins were
+  installed.
+- Managed Claude, Codex, Cursor, Git, JJ, Zsh, Powerlevel10k, Wave, and shared
+  RTK resources were applied. Two private timestamped backup sets were retained
+  beneath `~/.local/state/ballen-config/backups`.
+- The empty stale `~/.cursor/worktrees/plato` directory was removed without
+  touching repository data.
+- A final work-profile doctor reported every managed resource and base
+  component ready. Only the designed manual integration findings remain.
+- The optional user-scoped `fieldkit@piste` install remains pending because
+  GitLab SSH authentication is unavailable on this machine. Existing
+  project-scoped cached state was left intact.
