@@ -512,6 +512,122 @@ def test_base_install_failure_prevents_native_inspection_and_configuration(
     assert events == []
 
 
+@pytest.mark.parametrize(
+    "candidate,dynamic",
+    [
+        (
+            InstallAction(component_id="agent.plugin", argv=("agent", "add")),
+            InstallAction(component_id="agent.plugin", argv=("agent", "other")),
+        ),
+        (
+            InstallAction(component_id="agent.plugin", argv=("agent", "add")),
+            InstallAction(
+                component_id="agent.plugin", argv=("agent", "add"), required=False
+            ),
+        ),
+        (
+            InstallAction(
+                component_id="agent.plugin",
+                kind="verified-download",
+                argv=("agent", "add", "{artifact}"),
+                url="https://example.test/one",
+                artifact_name="one.vsix",
+                size_bytes=1,
+                sha256="0" * 64,
+            ),
+            InstallAction(
+                component_id="agent.plugin",
+                kind="verified-download",
+                argv=("agent", "add", "{artifact}"),
+                url="https://example.test/two",
+                artifact_name="two.vsix",
+                size_bytes=2,
+                sha256="1" * 64,
+            ),
+        ),
+    ],
+)
+def test_dynamic_action_must_exactly_match_static_candidate(
+    candidate: InstallAction,
+    dynamic: InstallAction,
+    repo_root: Path,
+    fake_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Same-ID dynamic action drift is rejected before the action phase runs."""
+    install_calls: list[tuple[InstallAction, ...]] = []
+
+    def candidates(*_args: object) -> tuple[InstallAction, ...]:
+        """Return the reviewed static authorization action."""
+        return (candidate,)
+
+    def dynamic_actions(*_args: object) -> tuple[InstallAction, ...]:
+        """Return one post-base action that differs from the authorization."""
+        return (dynamic,)
+
+    def recorded_install(**kwargs: object) -> InstallStageReport:
+        """Record each install invocation without executing a command."""
+        install_calls.append(tuple(kwargs["actions"]))
+        return InstallStageReport(exit_code=0, outcomes=())
+
+    monkeypatch.setattr("ballen_config.cli.run_install", recorded_install)
+
+    result = run(
+        ("install",),
+        repo_root=repo_root,
+        home=fake_home,
+        runner=FakeRunner(),
+        downloader=FakeDownloader(),
+        confirm=lambda _prompt: True,
+        output=lambda _message: None,
+        timestamp=lambda: "fixed",
+        install_action_candidate_suppliers=(candidates,),
+        install_action_suppliers=(dynamic_actions,),
+    )
+
+    assert result == RunResult(
+        exit_code=2, report=StageReport(outcomes=("invalid configuration",))
+    )
+    assert install_calls == [()]
+
+
+@pytest.mark.parametrize("stage", ("plan", "configure", "doctor"))
+@pytest.mark.parametrize(
+    "candidate_suppliers,dynamic_suppliers",
+    [
+        ((), (lambda *_args: (),)),
+        ((lambda *_args: (),), ()),
+    ],
+)
+def test_unpaired_install_suppliers_fail_closed_for_every_stage(
+    stage: str,
+    candidate_suppliers: tuple[object, ...],
+    dynamic_suppliers: tuple[object, ...],
+    repo_root: Path,
+    fake_home: Path,
+) -> None:
+    """Candidate and dynamic supplier declarations always have equal arity."""
+    runner = FakeRunner()
+
+    result = run(
+        (stage,),
+        repo_root=repo_root,
+        home=fake_home,
+        runner=runner,
+        downloader=FakeDownloader(),
+        confirm=lambda _prompt: pytest.fail("invalid wiring must not confirm"),
+        output=lambda _message: None,
+        timestamp=lambda: "fixed",
+        install_action_candidate_suppliers=candidate_suppliers,  # type: ignore[arg-type]
+        install_action_suppliers=dynamic_suppliers,  # type: ignore[arg-type]
+    )
+
+    assert result == RunResult(
+        exit_code=2, report=StageReport(outcomes=("invalid configuration",))
+    )
+    assert runner.commands == []
+
+
 def test_prepare_returns_two_without_confirmation(
     repo_root: Path,
     fake_home: Path,

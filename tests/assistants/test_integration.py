@@ -20,7 +20,7 @@ from ballen_config.assistants import (
 )
 from ballen_config.assistants.claude import ClaudePluginInspectionError
 from ballen_config.cli import RunResult, main, run
-from ballen_config.install import InstallAction
+from ballen_config.install import InstallAction, InstallStageReport
 from ballen_config.manifests import ManifestRepository
 from ballen_config.models import Manager, ResolutionRequest
 from ballen_config.runtime import RuntimePaths
@@ -228,6 +228,48 @@ def test_doctor_normalizes_claude_native_inspection_failure(
     )
     assert unavailable.status.value == "unavailable"
     assert unavailable.message == "Claude native inspection unavailable"
+
+
+def test_aggregate_install_and_doctor_normalize_bundled_cursor_read_failure(
+    repo_root: Path,
+    temporary_home: Path,
+    fake_runner: StatefulAssistantFake,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cursor bundled metadata read failures remain generic at aggregate seams."""
+    setup = ManifestRepository.load(repo_root / "manifests").resolve(
+        ResolutionRequest(skips=("claude-code", "codex"))
+    )
+    paths = RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home)
+
+    def unreadable_bundles(_root: Path) -> frozenset[str]:
+        """Raise a native package-read error without exposing its path."""
+        raise OSError("private Cursor package path")
+
+    monkeypatch.setattr(
+        "ballen_config.assistants.cursor.read_bundled_extensions", unreadable_bundles
+    )
+    monkeypatch.setattr(
+        "ballen_config.cli.run_install",
+        lambda **_kwargs: InstallStageReport(exit_code=0, outcomes=()),
+    )
+
+    installed = run_with_assistants(
+        ("install", "--skip", "claude-code", "--skip", "codex"),
+        repo_root=repo_root,
+        home=temporary_home,
+        runner=fake_runner,
+    )
+    findings = doctor_checks(setup, paths, fake_runner)
+
+    assert installed == RunResult(
+        exit_code=1,
+        report=cli.StageReport(outcomes=("native assistant inspection failed",)),
+    )
+    unavailable = next(
+        finding for finding in findings if finding.id == "cursor.unavailable"
+    )
+    assert unavailable.message == "Cursor native inspection unavailable"
 
 
 def test_work_all_converges_native_resources_and_skips_codex(
@@ -544,7 +586,9 @@ def test_work_all_preserves_excluded_agent_state_bytes_and_tree_identity(
     )
 
 
+@pytest.mark.parametrize("stage", ("install", "all"))
 def test_core_install_id_collision_stops_before_mutation(
+    stage: str,
     repo_root: Path,
     temporary_home: Path,
     fake_runner: StatefulAssistantFake,
@@ -572,7 +616,7 @@ def test_core_install_id_collision_stops_before_mutation(
         )
 
     result = cli.run(
-        ("install", "--profile", "work"),
+        (stage, "--profile", "work"),
         repo_root=repo_root,
         home=temporary_home,
         runner=fake_runner,

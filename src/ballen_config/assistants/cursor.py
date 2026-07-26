@@ -207,7 +207,9 @@ def read_bundled_extensions(root: Path) -> frozenset[str]:
     """
     identifiers: set[str] = set()
     for manifest in sorted(root.glob("*/package.json")):
-        raw: object = json.loads(manifest.read_bytes())
+        raw = _decode_json(
+            manifest.read_bytes(), label="bundled Cursor extension manifest"
+        )
         if (
             not isinstance(raw, dict)
             or not isinstance(raw.get("publisher"), str)
@@ -351,7 +353,12 @@ def install_actions(
         for line in listed["stdout"].splitlines()
         if line.strip()
     )
-    bundled = read_bundled_extensions(bundled_root)
+    try:
+        bundled = read_bundled_extensions(bundled_root)
+    except (OSError, ValueError) as error:
+        raise CursorExtensionInspectionError(
+            "Cursor extension inspection failed"
+        ) from error
     enabled_agents = frozenset(
         identifier
         for identifier in ("cursor", "claude-code", "codex")

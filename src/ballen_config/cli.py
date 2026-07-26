@@ -242,6 +242,11 @@ def run(
     Returns:
         Normalized exit status and effects.
     """
+    if len(install_action_candidate_suppliers) != len(install_action_suppliers):
+        return RunResult(
+            exit_code=2,
+            report=StageReport(outcomes=("invalid configuration",)),
+        )
     try:
         options = parse_args(arguments)
         if options.stage == "prepare":
@@ -251,13 +256,6 @@ def run(
         resolved = repository.resolve(options.request)
         candidate_actions: tuple[InstallAction, ...] = ()
         if options.stage in {"plan", "install", "all"}:
-            if install_action_suppliers and (
-                len(install_action_suppliers) != len(install_action_candidate_suppliers)
-            ):
-                return RunResult(
-                    exit_code=2,
-                    report=StageReport(outcomes=("invalid configuration",)),
-                )
             candidate_actions = tuple(
                 action
                 for supplier in install_action_candidate_suppliers
@@ -359,12 +357,15 @@ def run(
                 report=StageReport(outcomes=("native assistant inspection failed",)),
             )
         component_ids = {component.id for component in resolved.components}
-        candidate_ids = {action.component_id for action in candidate_actions}
+        candidate_by_id = {action.component_id: action for action in candidate_actions}
         action_ids = [action.component_id for action in resolved_actions]
         if (
             len(action_ids) != len(set(action_ids))
             or component_ids.intersection(action_ids)
-            or not set(action_ids).issubset(candidate_ids)
+            or any(
+                candidate_by_id.get(action.component_id) != action
+                for action in resolved_actions
+            )
         ):
             return RunResult(
                 exit_code=2,

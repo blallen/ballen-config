@@ -11,6 +11,7 @@ import yaml
 
 from ballen_config import assistants as assistant_api
 from ballen_config.assistants.cursor import (
+    CursorExtensionInspectionError,
     ExtensionState,
     configuration,
     deep_merge,
@@ -482,6 +483,25 @@ def test_bundled_manifest_ids_are_normalized(tmp_path: Path) -> None:
     assert read_bundled_extensions(tmp_path / "extensions") == frozenset(
         {"ms-python.python"}
     )
+
+
+@pytest.mark.parametrize("manifest_bytes", (b"{", b'{"publisher": 1, "name": "x"}'))
+def test_install_normalizes_invalid_bundled_manifest_inspection(
+    manifest_bytes: bytes,
+    repo_root: Path,
+    temporary_home: Path,
+    fake_runner: StatefulAssistantFake,
+) -> None:
+    """Bundled package metadata failures do not escape the Cursor adapter."""
+    bundled_root = temporary_home / "Cursor/extensions"
+    manifest = bundled_root / "broken/package.json"
+    manifest.parent.mkdir(parents=True)
+    manifest.write_bytes(manifest_bytes)
+    setup = _resolved_setup("cursor")
+    paths = RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home)
+
+    with pytest.raises(CursorExtensionInspectionError):
+        install_actions(setup, paths, fake_runner, bundled_root=bundled_root)
 
 
 def test_obsolete_and_transitive_extensions_are_excluded(repo_root: Path) -> None:
