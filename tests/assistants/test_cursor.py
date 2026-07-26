@@ -476,11 +476,16 @@ def test_bundled_extension_satisfies_desired_feature(repo_root: Path) -> None:
     assert "ms-python.python" not in state.missing
 
 
-def test_bundled_manifest_ids_are_normalized(tmp_path: Path) -> None:
-    """Read lowercase publisher.name IDs from Cursor package manifests."""
+def test_bundled_manifest_ids_ignore_packages_without_extension_identity(
+    tmp_path: Path,
+) -> None:
+    """Read extension IDs without rejecting unrelated bundled packages."""
     manifest = tmp_path / "extensions/python/package.json"
     manifest.parent.mkdir(parents=True)
     manifest.write_text('{"publisher":"MS-Python","name":"Python"}')
+    theme = tmp_path / "extensions/theme-cursor/package.json"
+    theme.parent.mkdir(parents=True)
+    theme.write_text('{"name":"theme-cursor"}')
     assert read_bundled_extensions(tmp_path / "extensions") == frozenset(
         {"ms-python.python"}
     )

@@ -184,17 +184,19 @@ def read_bundled_extensions(root: Path) -> frozenset[str]:
         Lowercase bundled extension identifiers.
 
     Raises:
-        ValueError: If a package manifest lacks string publisher/name fields.
+        ValueError: If a manifest or declared extension identity is malformed.
     """
     identifiers: set[str] = set()
     for manifest in sorted(root.glob("*/package.json")):
         raw = _decode_json(
             manifest.read_bytes(), label="bundled Cursor extension manifest"
         )
-        if (
-            not isinstance(raw, dict)
-            or not isinstance(raw.get("publisher"), str)
-            or not isinstance(raw.get("name"), str)
+        if not isinstance(raw, dict):
+            raise ValueError("invalid bundled Cursor extension manifest")
+        if "publisher" not in raw:
+            continue
+        if not isinstance(raw.get("publisher"), str) or not isinstance(
+            raw.get("name"), str
         ):
             raise ValueError("invalid bundled Cursor extension manifest")
         package = cast(CursorExtensionPackage, raw)
