@@ -189,7 +189,7 @@ def test_renderer_replaces_an_exact_current_managed_hook(
     ]
 
 
-@pytest.mark.parametrize("current", [b"[1]", b"{"])
+@pytest.mark.parametrize("current", [b"[1]", b"{", b'{"effortLevel": NaN}'])
 def test_renderer_fails_closed_for_invalid_native_settings(
     repo_root: Path, temporary_home: Path, current: bytes
 ) -> None:
@@ -275,8 +275,9 @@ def test_skip_prevents_claude_inspection(
     [
         '{"plugins": [], "plugins": []}',
         '{"plugins": [{"id": "one", "id": "two"}], "marketplaces": []}',
+        '{"plugins": [], "marketplaces": [], "unrelated": Infinity}',
     ],
-    ids=["top-level", "nested"],
+    ids=["top-level", "nested", "non-finite"],
 )
 def test_native_plugin_inspection_rejects_duplicate_json_keys(
     fake_runner: StatefulAssistantFake,

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import shlex
 from pathlib import Path
-from typing import NotRequired, TypedDict, cast
+from typing import Never, NotRequired, TypedDict, cast
 
 import yaml
 from pydantic import BaseModel, ConfigDict, ValidationError
@@ -34,6 +34,10 @@ class ClaudeSettingsError(ValueError):
 
 class ClaudePluginInspectionError(RuntimeError):
     """A normalized failure to inspect native Claude plugin state."""
+
+
+class _ClaudeJsonError(ValueError):
+    """An ambiguous or non-standard JSON document at the native boundary."""
 
 
 class ClaudeStableSettings(BaseModel):
@@ -73,14 +77,47 @@ def _reject_duplicate_json_keys(pairs: list[tuple[str, object]]) -> JsonObject:
         The decoded unique-key object.
 
     Raises:
-        ClaudeSettingsError: If a JSON object contains a duplicate key.
+        _ClaudeJsonError: If a JSON object contains a duplicate key.
     """
     result: JsonObject = {}
     for key, value in pairs:
         if key in result:
-            raise ClaudeSettingsError("invalid Claude settings")
+            raise _ClaudeJsonError("invalid Claude JSON")
         result[key] = value
     return result
+
+
+def _reject_non_finite_json_constant(_constant: str) -> Never:
+    """Reject JSON constants that are not permitted by the JSON standard.
+
+    Args:
+        _constant: Native decoder token such as ``NaN`` or ``Infinity``.
+
+    Raises:
+        _ClaudeJsonError: Always, because non-finite constants are invalid.
+    """
+    raise _ClaudeJsonError("invalid Claude JSON")
+
+
+def _strict_json_loads(source: str | bytes) -> object:
+    """Decode JSON while rejecting duplicate keys and non-finite constants.
+
+    Args:
+        source: Native JSON text or bytes.
+
+    Returns:
+        Decoded JSON value.
+
+    Raises:
+        _ClaudeJsonError: If JSON uses duplicate keys or non-standard constants.
+        json.JSONDecodeError: If JSON syntax is invalid.
+        UnicodeDecodeError: If JSON bytes are not valid UTF-8.
+    """
+    return json.loads(
+        source,
+        object_pairs_hook=_reject_duplicate_json_keys,
+        parse_constant=_reject_non_finite_json_constant,
+    )
 
 
 def _json_object(source: bytes) -> JsonObject:
@@ -96,8 +133,8 @@ def _json_object(source: bytes) -> JsonObject:
         ClaudeSettingsError: If settings are invalid JSON or not an object.
     """
     try:
-        document = json.loads(source, object_pairs_hook=_reject_duplicate_json_keys)
-    except (json.JSONDecodeError, UnicodeDecodeError, ClaudeSettingsError) as error:
+        document = _strict_json_loads(source)
+    except (json.JSONDecodeError, UnicodeDecodeError, _ClaudeJsonError) as error:
         raise ClaudeSettingsError("invalid Claude settings") from error
     if not isinstance(document, dict):
         raise ClaudeSettingsError("invalid Claude settings")
@@ -356,12 +393,10 @@ def install_actions(
     if listed["returncode"] != 0:
         raise ClaudePluginInspectionError("Claude plugin inspection failed")
     try:
-        snapshot = _plugin_snapshot(
-            json.loads(listed["stdout"], object_pairs_hook=_reject_duplicate_json_keys)
-        )
+        snapshot = _plugin_snapshot(_strict_json_loads(listed["stdout"]))
     except (
         ClaudePluginInspectionError,
-        ClaudeSettingsError,
+        _ClaudeJsonError,
         json.JSONDecodeError,
         UnicodeDecodeError,
     ) as error:
