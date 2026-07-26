@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import stat
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
 import pytest
@@ -24,6 +24,7 @@ from ballen_config.configure import (
 )
 from ballen_config.models import ResolvedSetup
 from ballen_config.planning import PlanAction
+from ballen_config.runner import CommandResult
 from ballen_config.runtime import RuntimePaths
 from ballen_config.state import StateStore
 
@@ -349,6 +350,29 @@ def test_core_validators_redact_native_command_output(
     with pytest.raises(ValueError, match="source validation failed") as error:
         core_validators(FailedRunner())["zsh"](source)  # type: ignore[arg-type]
     assert "secret" not in str(error.value)
+
+
+def test_git_validator_uses_read_only_list_action(
+    config_paths: RuntimePaths,
+) -> None:
+    """Git syntax validation requests a real read-only configuration action."""
+    source = config_paths.repo_root / "source"
+    source.write_text("[user]\nname = Example\n")
+
+    class CapturingRunner:
+        """Capture the validator command without invoking Git."""
+
+        def __init__(self) -> None:
+            self.commands: list[tuple[str, ...]] = []
+
+        def run(self, command: Sequence[str]) -> CommandResult:
+            """Record one successful read-only command."""
+            self.commands.append(tuple(command))
+            return {"returncode": 0, "stdout": "", "stderr": ""}
+
+    runner = CapturingRunner()
+    core_validators(runner)["git-config"](source)
+    assert runner.commands == [("git", "config", "--file", str(source), "--list")]
 
 
 def test_skip_wave_removes_wave_spec(config_paths: RuntimePaths) -> None:

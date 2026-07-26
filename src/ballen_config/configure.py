@@ -170,9 +170,11 @@ def core_validators(runner: Runner | None = None) -> dict[str, SourceValidator]:
         except (OSError, tomlkit.exceptions.ParseError) as error:
             raise ValueError("source validation failed") from error
 
-    def command_validator(command: list[str]) -> SourceValidator:
+    def command_validator(
+        command: list[str], trailing: Sequence[str] = ()
+    ) -> SourceValidator:
         def validate(source: Path) -> None:
-            result = active_runner.run([*command, str(source)])
+            result = active_runner.run([*command, str(source), *trailing])
             if result["returncode"] != 0:
                 raise ValueError("source validation failed")
 
@@ -182,7 +184,7 @@ def core_validators(runner: Runner | None = None) -> dict[str, SourceValidator]:
         "json": json_validator,
         "toml": toml_validator,
         "zsh": command_validator(["zsh", "-n"]),
-        "git-config": command_validator(["git", "config", "--file"]),
+        "git-config": command_validator(["git", "config", "--file"], ["--list"]),
     }
 
 
