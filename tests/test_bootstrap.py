@@ -248,25 +248,11 @@ def assert_no_uv_dispatch(command_log: str) -> None:
     )
 
 
-def test_plan_on_unprepared_checkout_is_read_only(
-    repo_root: Path,
-    tmp_path: Path,
-) -> None:
-    root = copy_stage_zero(repo_root, tmp_path)
-    before = sorted(path.relative_to(root) for path in root.rglob("*"))
-
-    result = run_bootstrap(root, "plan", "--profile", "work")
-
-    after = sorted(path.relative_to(root) for path in root.rglob("*"))
-    assert result.returncode == 20
-    assert "run ./bootstrap prepare" in result.stderr
-    assert before == after
-
-
 def test_unknown_component_fails_before_preparation(
     repo_root: Path,
     tmp_path: Path,
 ) -> None:
+    """Validate component selection before probing or creating a runtime."""
     root = copy_stage_zero(repo_root, tmp_path)
 
     result = run_bootstrap(root, "install", "--include", "unknown")
@@ -281,6 +267,7 @@ def test_prepare_synchronizes_frozen_python_312_environment(
     tmp_path: Path,
     fake_stage_zero_tools: FakeStageZeroTools,
 ) -> None:
+    """Prepare installs the reviewed interpreter and records its lock state."""
     root = copy_stage_zero(repo_root, tmp_path)
 
     result = run_bootstrap(
@@ -309,6 +296,7 @@ def test_prepared_plan_preserves_original_arguments_without_sync(
     tmp_path: Path,
     fake_stage_zero_tools: FakeStageZeroTools,
 ) -> None:
+    """Dispatch a prepared read-only request without changing its arguments."""
     root = copy_stage_zero(repo_root, tmp_path)
     write_runtime(root)
 
@@ -333,13 +321,21 @@ def test_prepared_plan_preserves_original_arguments_without_sync(
     assert "uv sync " not in command_log
 
 
-@pytest.mark.parametrize("stage", ["plan", "doctor", "configure"])
+@pytest.mark.parametrize(
+    "stage",
+    [
+        pytest.param("plan", id="plan"),
+        pytest.param("doctor", id="doctor"),
+        pytest.param("configure", id="configure"),
+    ],
+)
 def test_prepared_read_only_stages_never_synchronize(
     repo_root: Path,
     tmp_path: Path,
     fake_stage_zero_tools: FakeStageZeroTools,
     stage: str,
 ) -> None:
+    """Prepared read-only stages dispatch without triggering environment sync."""
     root = copy_stage_zero(repo_root, tmp_path)
     write_runtime(root)
 
@@ -355,13 +351,21 @@ def test_prepared_read_only_stages_never_synchronize(
     assert not any(line.startswith("uv sync ") for line in command_log.splitlines())
 
 
-@pytest.mark.parametrize("stage", ["plan", "doctor", "configure"])
+@pytest.mark.parametrize(
+    "stage",
+    [
+        pytest.param("plan", id="plan"),
+        pytest.param("doctor", id="doctor"),
+        pytest.param("configure", id="configure"),
+    ],
+)
 def test_unprepared_read_only_stages_call_no_tools_and_write_nothing(
     repo_root: Path,
     tmp_path: Path,
     fake_stage_zero_tools: FakeStageZeroTools,
     stage: str,
 ) -> None:
+    """An unprepared read-only request leaves tools and checkout untouched."""
     root = copy_stage_zero(repo_root, tmp_path)
     before = snapshot_checkout(root)
 
@@ -382,6 +386,7 @@ def test_prepare_always_synchronizes_an_existing_valid_runtime(
     tmp_path: Path,
     fake_stage_zero_tools: FakeStageZeroTools,
 ) -> None:
+    """An explicit prepare refreshes even a runtime that is already valid."""
     root = copy_stage_zero(repo_root, tmp_path)
     write_runtime(root)
 
@@ -401,6 +406,7 @@ def test_declined_prepare_calls_no_tools_and_writes_nothing(
     tmp_path: Path,
     fake_stage_zero_tools: FakeStageZeroTools,
 ) -> None:
+    """Declining explicit preparation is a no-op for commands and checkout."""
     root = copy_stage_zero(repo_root, tmp_path)
     before = snapshot_checkout(root)
 
@@ -422,6 +428,7 @@ def test_declined_missing_runtime_all_calls_no_tools_and_writes_nothing(
     tmp_path: Path,
     fake_stage_zero_tools: FakeStageZeroTools,
 ) -> None:
+    """Declining implicit runtime preparation leaves the checkout unchanged."""
     root = copy_stage_zero(repo_root, tmp_path)
     before = snapshot_checkout(root)
 
@@ -441,11 +448,27 @@ def test_declined_missing_runtime_all_calls_no_tools_and_writes_nothing(
 @pytest.mark.parametrize(
     ("arguments", "message"),
     [
-        (("unknown",), "unknown stage: unknown"),
-        (("prepare", "--unknown"), "unknown option: --unknown"),
-        (("prepare", "--profile"), "missing value for --profile"),
-        (("prepare", "--profile", "unknown"), "unknown profile: unknown"),
-        (("install", "--skip", "unknown"), "unknown skip: unknown"),
+        pytest.param(("unknown",), "unknown stage: unknown", id="unknown-stage"),
+        pytest.param(
+            ("prepare", "--unknown"),
+            "unknown option: --unknown",
+            id="unknown-option",
+        ),
+        pytest.param(
+            ("prepare", "--profile"),
+            "missing value for --profile",
+            id="missing-profile-value",
+        ),
+        pytest.param(
+            ("prepare", "--profile", "unknown"),
+            "unknown profile: unknown",
+            id="unknown-profile",
+        ),
+        pytest.param(
+            ("install", "--skip", "unknown"),
+            "unknown skip: unknown",
+            id="unknown-skip",
+        ),
     ],
 )
 def test_argument_validation_precedes_tool_calls_and_writes(
@@ -455,6 +478,7 @@ def test_argument_validation_precedes_tool_calls_and_writes(
     arguments: tuple[str, ...],
     message: str,
 ) -> None:
+    """Reject malformed input before any prerequisite command or write."""
     root = copy_stage_zero(repo_root, tmp_path)
     before = snapshot_checkout(root)
 
@@ -476,6 +500,7 @@ def test_install_can_prepare_missing_runtime_after_confirmation(
     tmp_path: Path,
     fake_stage_zero_tools: FakeStageZeroTools,
 ) -> None:
+    """A confirmed install may prepare and then dispatch the original request."""
     root = copy_stage_zero(repo_root, tmp_path)
 
     result = run_bootstrap(
@@ -501,6 +526,7 @@ def test_only_single_letter_confirmation_is_accepted(
     tmp_path: Path,
     fake_stage_zero_tools: FakeStageZeroTools,
 ) -> None:
+    """Only the reviewed one-character confirmation opts into preparation."""
     root = copy_stage_zero(repo_root, tmp_path)
     before = snapshot_checkout(root)
 
@@ -521,6 +547,7 @@ def test_non_darwin_prepare_fails_without_other_prerequisite_calls(
     tmp_path: Path,
     fake_stage_zero_tools: FakeStageZeroTools,
 ) -> None:
+    """Platform rejection stops before any non-platform prerequisite check."""
     root = copy_stage_zero(repo_root, tmp_path)
     environment = {
         **fake_stage_zero_tools["environment"],
@@ -544,6 +571,7 @@ def test_missing_command_line_tools_start_install_and_require_rerun(
     tmp_path: Path,
     fake_stage_zero_tools: FakeStageZeroTools,
 ) -> None:
+    """Missing Command Line Tools request installation and a later rerun."""
     root = copy_stage_zero(repo_root, tmp_path)
     environment = {
         **fake_stage_zero_tools["environment"],
@@ -571,6 +599,7 @@ def test_stale_lock_fingerprint_refuses_plan_without_mutation(
     tmp_path: Path,
     fake_stage_zero_tools: FakeStageZeroTools,
 ) -> None:
+    """A runtime marker tied to an old lock cannot dispatch a plan."""
     root = copy_stage_zero(repo_root, tmp_path)
     write_runtime(root)
     lock_file = root / "uv.lock"
@@ -594,6 +623,7 @@ def test_missing_runtime_import_refuses_plan_without_mutation(
     tmp_path: Path,
     fake_stage_zero_tools: FakeStageZeroTools,
 ) -> None:
+    """A runtime without required imports cannot dispatch a plan."""
     root = copy_stage_zero(repo_root, tmp_path)
     write_runtime(root)
     environment = {
@@ -610,13 +640,21 @@ def test_missing_runtime_import_refuses_plan_without_mutation(
     assert snapshot_checkout(root) == before
 
 
-@pytest.mark.parametrize("arguments", [("install",), ("configure",), ()])
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        pytest.param(("install",), id="install"),
+        pytest.param(("configure",), id="configure"),
+        pytest.param((), id="default-all"),
+    ],
+)
 def test_prepared_non_darwin_mutating_stage_never_dispatches(
     repo_root: Path,
     tmp_path: Path,
     fake_stage_zero_tools: FakeStageZeroTools,
     arguments: tuple[str, ...],
 ) -> None:
+    """Mutating dispatch remains unavailable when the host is not macOS."""
     root = copy_stage_zero(repo_root, tmp_path)
     write_runtime(root)
     environment = {
@@ -640,6 +678,7 @@ def test_failed_frozen_sync_does_not_leave_runtime_marker(
     tmp_path: Path,
     fake_stage_zero_tools: FakeStageZeroTools,
 ) -> None:
+    """A failed frozen sync removes readiness evidence before returning."""
     root = copy_stage_zero(repo_root, tmp_path)
     write_runtime(root)
     environment = {

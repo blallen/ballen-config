@@ -47,6 +47,7 @@ def result(code: int = 0, stdout: str = "", stderr: str = "") -> CommandResult:
 
 
 def test_present_formula_is_a_no_op(tmp_path: Path) -> None:
+    """An installed formula is inspected without issuing an install command."""
     runner = FakeRunner([result(stdout="gh\n")])
     outcome = Installer(runner, tmp_path).install(
         Component(id="gh", manager=Manager.BREW_FORMULA, package="gh")
@@ -56,6 +57,7 @@ def test_present_formula_is_a_no_op(tmp_path: Path) -> None:
 
 
 def test_missing_formula_is_installed(tmp_path: Path) -> None:
+    """A missing formula produces the expected package-manager invocation."""
     runner = FakeRunner([result(1), result()])
     outcome = Installer(runner, tmp_path).install(
         Component(id="gh", manager=Manager.BREW_FORMULA, package="gh")
@@ -65,6 +67,7 @@ def test_missing_formula_is_installed(tmp_path: Path) -> None:
 
 
 def test_existing_application_bundle_satisfies_cask(tmp_path: Path) -> None:
+    """A declared application bundle avoids an unnecessary cask install."""
     runner = FakeRunner([])
     installer = Installer(
         runner,
@@ -82,6 +85,7 @@ def test_existing_application_bundle_satisfies_cask(tmp_path: Path) -> None:
 
 
 def test_vendor_mactex_satisfies_opt_in_cask(tmp_path: Path) -> None:
+    """A vendor-provided TeX installation satisfies the optional cask."""
     runner = FakeRunner(
         [result(stdout="org.tug.mactex.gui2025\norg.tug.texlive2025\n")]
     )
@@ -106,6 +110,7 @@ def test_vendor_mactex_satisfies_opt_in_cask(tmp_path: Path) -> None:
 
 
 def test_unmanaged_git_destination_is_preserved(tmp_path: Path) -> None:
+    """A pre-existing unowned checkout is never overwritten."""
     destination = tmp_path / ".oh-my-zsh"
     destination.mkdir()
     component = Component(
@@ -120,6 +125,7 @@ def test_unmanaged_git_destination_is_preserved(tmp_path: Path) -> None:
 
 
 def test_git_destination_rejects_symlinked_parent(tmp_path: Path) -> None:
+    """Git installation refuses a destination that escapes through a link."""
     outside = tmp_path / "outside"
     outside.mkdir()
     (tmp_path / ".oh-my-zsh").symlink_to(outside, target_is_directory=True)
@@ -135,6 +141,7 @@ def test_git_destination_rejects_symlinked_parent(tmp_path: Path) -> None:
 
 
 def test_optional_failure_is_reported_without_raising(tmp_path: Path) -> None:
+    """Optional package failures become reportable outcomes rather than errors."""
     runner = FakeRunner([result(1), result(1, stderr="native failure")])
     component = Component(
         id="signal",
@@ -169,6 +176,7 @@ def make_action(
 def test_verified_download_checks_size_hash_runs_and_cleans(
     fake_home: Path, tmp_path: Path
 ) -> None:
+    """Verified downloads validate payloads, invoke tools, and remove artifacts."""
     payload = b"extension bytes"
     runner = FakeRunner([result()])
     paths = RuntimePaths.from_roots(repo_root=tmp_path, home=fake_home)
@@ -185,13 +193,36 @@ def test_verified_download_checks_size_hash_runs_and_cleans(
     assert (paths.state_root / "tmp").is_dir()
 
 
-@pytest.mark.parametrize(("size_delta", "digest"), [(1, None), (0, "0" * 64)])
-def test_verified_download_rejects_unverified_payload_and_cleans(
+@pytest.mark.parametrize(
+    ("size_delta", "digest", "required", "expected_state"),
+    [
+        pytest.param(1, None, True, None, id="required-size-mismatch"),
+        pytest.param(0, "0" * 64, True, None, id="required-hash-mismatch"),
+        pytest.param(
+            1,
+            None,
+            False,
+            "optional-failure",
+            id="optional-size-mismatch",
+        ),
+        pytest.param(
+            0,
+            "0" * 64,
+            False,
+            "optional-failure",
+            id="optional-hash-mismatch",
+        ),
+    ],
+)
+def test_verified_download_normalizes_verification_failures(
     fake_home: Path,
     tmp_path: Path,
     size_delta: int,
     digest: str | None,
+    required: bool,
+    expected_state: str | None,
 ) -> None:
+    """Normalize verification failures while preserving temporary-root cleanup."""
     payload = b"extension bytes"
     runner = FakeRunner([])
     paths = RuntimePaths.from_roots(repo_root=tmp_path, home=fake_home)
@@ -201,40 +232,25 @@ def test_verified_download_rejects_unverified_payload_and_cleans(
         downloader=FakeDownloader({"https://example.test/tool.vsix": payload}),
         private_temp_root=paths.state_root / "tmp",
     )
-    with pytest.raises(InstallError, match="verification failed"):
-        installer.run_action(make_action(payload, size_delta=size_delta, digest=digest))
+    action = make_action(
+        payload,
+        required=required,
+        size_delta=size_delta,
+        digest=digest,
+    )
+    if required:
+        with pytest.raises(InstallError, match="verification failed"):
+            installer.run_action(action)
+    else:
+        assert installer.run_action(action).state == expected_state
     assert runner.commands == []
     assert (paths.state_root / "tmp").is_dir()
-
-
-@pytest.mark.parametrize(("size_delta", "digest"), [(1, None), (0, "0" * 64)])
-def test_optional_verified_download_failure_is_nonfatal(
-    fake_home: Path,
-    tmp_path: Path,
-    size_delta: int,
-    digest: str | None,
-) -> None:
-    payload = b"extension bytes"
-    runner = FakeRunner([])
-    paths = RuntimePaths.from_roots(repo_root=tmp_path, home=fake_home)
-    installer = Installer(
-        runner,
-        fake_home,
-        downloader=FakeDownloader({"https://example.test/tool.vsix": payload}),
-        private_temp_root=paths.state_root / "tmp",
-    )
-    assert (
-        installer.run_action(
-            make_action(payload, required=False, size_delta=size_delta, digest=digest)
-        ).state
-        == "optional-failure"
-    )
-    assert runner.commands == []
 
 
 def test_verified_download_preserves_reusable_temp_parent(
     fake_home: Path, tmp_path: Path
 ) -> None:
+    """Preserve unrelated private temporary-root content across a download."""
     payload = b"extension bytes"
     paths = RuntimePaths.from_roots(repo_root=tmp_path, home=fake_home)
     temp_root = paths.state_root / "tmp"
@@ -259,6 +275,7 @@ def test_verified_download_preserves_reusable_temp_parent(
 def test_verified_download_actions_use_distinct_workspaces(
     fake_home: Path, tmp_path: Path
 ) -> None:
+    """Use and clean an isolated workspace for each verified download."""
     payload = b"extension bytes"
     paths = RuntimePaths.from_roots(repo_root=tmp_path, home=fake_home)
     downloader = FakeDownloader({"https://example.test/tool.vsix": payload})
@@ -281,6 +298,7 @@ def test_verified_download_actions_use_distinct_workspaces(
 def test_optional_verified_download_setup_failure_is_normalized(
     fake_home: Path, tmp_path: Path
 ) -> None:
+    """Optional downloads normalize private-workspace setup failures."""
     payload = b"extension bytes"
     paths = RuntimePaths.from_roots(repo_root=tmp_path, home=fake_home)
     blocked_temp_root = paths.state_root / "tmp"
@@ -302,6 +320,7 @@ def test_optional_verified_download_setup_failure_is_normalized(
 
 
 def test_https_redirect_handler_rejects_http_hop_without_url_leakage() -> None:
+    """An insecure redirect fails without revealing its sensitive URL."""
     handler = HttpsRedirectHandler()
     request = Request("https://downloads.example.test/tool")
 
@@ -321,6 +340,7 @@ def test_https_redirect_handler_rejects_http_hop_without_url_leakage() -> None:
 
 
 def test_https_redirect_handler_delegates_https_hop() -> None:
+    """An HTTPS redirect remains available to the standard redirect flow."""
     handler = HttpsRedirectHandler()
     request = Request("https://downloads.example.test/tool")
 
@@ -340,6 +360,7 @@ def test_https_redirect_handler_delegates_https_hop() -> None:
 def test_run_install_records_normalized_outcomes(
     fake_home: Path, tmp_path: Path
 ) -> None:
+    """Install reports and persisted state use the same normalized outcome."""
     paths = RuntimePaths.from_roots(repo_root=tmp_path, home=fake_home)
     store = StateStore(paths)
     report = run_install(
@@ -385,5 +406,6 @@ def test_run_install_records_normalized_outcomes(
     ],
 )
 def test_install_action_rejects_invalid_variants(kwargs: dict[str, object]) -> None:
+    """Unsupported action-field combinations fail during action construction."""
     with pytest.raises(ValueError):
         InstallAction(component_id="test", **{"argv": ("tool",), **kwargs})

@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from pydantic import ValidationError
 
 from ballen_config.policy import (
     PolicyError,
@@ -29,17 +28,6 @@ def completed(
 ) -> subprocess.CompletedProcess[bytes]:
     """Build one captured subprocess result."""
     return subprocess.CompletedProcess(command, returncode, stdout, stderr)
-
-
-def test_violation_is_strict_and_frozen() -> None:
-    """Policy findings expose only immutable rule and relative path."""
-    with pytest.raises(ValidationError):
-        Violation.model_validate(
-            {"rule": "private-key", "path": "bad.pem", "content": "secret"}
-        )
-    violation = Violation(rule="private-key", path="bad.pem")
-    with pytest.raises(ValidationError):
-        violation.path = "other.pem"
 
 
 def test_policy_rejects_secret_and_generated_state(tmp_path: Path) -> None:

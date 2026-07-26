@@ -3,6 +3,8 @@ from pathlib import Path
 
 import pytest
 
+from ballen_config.manifests import ManifestRepository
+
 
 @pytest.fixture
 def fake_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
@@ -17,3 +19,9 @@ def fake_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]
 def repo_root() -> Path:
     """Return the repository root."""
     return Path(__file__).resolve().parents[1]
+
+
+@pytest.fixture
+def manifest_repository(repo_root: Path) -> ManifestRepository:
+    """Load manifests from the checked-out repository."""
+    return ManifestRepository.load(repo_root / "manifests")

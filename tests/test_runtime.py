@@ -7,6 +7,7 @@ def test_runtime_paths_derive_private_state_roots(
     repo_root: Path,
     fake_home: Path,
 ) -> None:
+    """Keep all generated state beneath the selected private home."""
     paths = RuntimePaths.from_roots(repo_root=repo_root, home=fake_home)
     assert paths.repo_root == repo_root.resolve()
     assert paths.home == fake_home.resolve()

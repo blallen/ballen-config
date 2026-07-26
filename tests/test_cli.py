@@ -42,6 +42,7 @@ def repeated_selection_arguments() -> list[str]:
 def test_cli_accepts_stage_profile_and_repeated_selections(
     repeated_selection_arguments: list[str],
 ) -> None:
+    """Repeated selection flags retain caller order in the parsed request."""
     options = parse_args(repeated_selection_arguments)
 
     assert options.stage == "plan"
@@ -51,6 +52,7 @@ def test_cli_accepts_stage_profile_and_repeated_selections(
 
 
 def test_cli_defaults_to_all_and_default_profile() -> None:
+    """An empty invocation selects the complete default bootstrap flow."""
     options = parse_args([])
 
     assert STAGES == (
@@ -515,17 +517,19 @@ def test_base_install_failure_prevents_native_inspection_and_configuration(
 @pytest.mark.parametrize(
     "candidate,dynamic",
     [
-        (
+        pytest.param(
             InstallAction(component_id="agent.plugin", argv=("agent", "add")),
             InstallAction(component_id="agent.plugin", argv=("agent", "other")),
+            id="argv-drift",
         ),
-        (
+        pytest.param(
             InstallAction(component_id="agent.plugin", argv=("agent", "add")),
             InstallAction(
                 component_id="agent.plugin", argv=("agent", "add"), required=False
             ),
+            id="required-flag-drift",
         ),
-        (
+        pytest.param(
             InstallAction(
                 component_id="agent.plugin",
                 kind="verified-download",
@@ -544,6 +548,7 @@ def test_base_install_failure_prevents_native_inspection_and_configuration(
                 size_bytes=2,
                 sha256="1" * 64,
             ),
+            id="verified-download-metadata-drift",
         ),
     ],
 )
