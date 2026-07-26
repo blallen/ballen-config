@@ -83,7 +83,7 @@ _REPOSITORY_IMPORT_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _LOCAL_MARKETPLACE_PATTERN = re.compile(
-    rb"(?:trust_level\s*=\s*['\"]trusted['\"]|(?:local_marketplace|marketplace|source)\s*[:=]\s*['\"]?/)",
+    rb"(?:trust_level\s*=\s*['\"]trusted['\"]|local_marketplace\s*[:=]|source\s*[:=]\s*['\"]?(?:file://|/|~/|\./|\.\./))",
     re.IGNORECASE,
 )
 

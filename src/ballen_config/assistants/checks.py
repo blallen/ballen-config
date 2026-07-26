@@ -28,6 +28,7 @@ _AGENT_ROOTS: dict[str, tuple[Path, ...]] = {
 _MAX_SKILL_ROOT_ENTRIES = 512
 _MAX_SKILL_TREE_ENTRIES = 2048
 _MAX_SKILL_TREE_BYTES = 32 * 1024 * 1024
+_MAX_CURSOR_WORKTREES = 512
 
 
 def _enabled(enabled: Collection[object], name: str) -> bool:
@@ -61,6 +62,22 @@ def _finding(
 def _skill_roots(paths: RuntimePaths, agent: str) -> tuple[Path, ...]:
     """Return only enabled agent-native skill roots under the approved home."""
     return tuple(paths.home / relative for relative in _AGENT_ROOTS[agent])
+
+
+def _safe_home_path(home: Path, relative: Path) -> Path | None:
+    """Return a contained path only when every existing component is ordinary."""
+    current = home
+    for part in relative.parts:
+        current /= part
+        try:
+            metadata = os.lstat(current)
+        except FileNotFoundError:
+            return current
+        except OSError:
+            return None
+        if stat.S_ISLNK(metadata.st_mode):
+            return None
+    return current
 
 
 def _safe_skill_tree(root: Path) -> bool:
@@ -103,7 +120,11 @@ def _skill_entries(paths: RuntimePaths, agent: str) -> tuple[dict[str, set[str]]
     """
     entries: dict[str, set[str]] = {}
     unsafe = False
-    for root in _skill_roots(paths, agent):
+    for relative_root in _AGENT_ROOTS[agent]:
+        root = _safe_home_path(paths.home, relative_root)
+        if root is None:
+            unsafe = True
+            continue
         try:
             root_metadata = os.lstat(root)
         except FileNotFoundError:
@@ -219,10 +240,19 @@ def _skill_findings(
         except ValueError:
             findings.append(drift_finding)
             continue
-        if destination != paths.home / _AGENT_ROOTS[state_agent][0] / name:
+        expected = _AGENT_ROOTS[state_agent][0] / name
+        if destination != paths.home / expected:
             findings.append(drift_finding)
             continue
-        if not destination.is_dir() or not (destination / "SKILL.md").is_file():
+        safe_destination = _safe_home_path(paths.home, expected)
+        if (
+            safe_destination is None
+            or not destination.is_dir()
+            or not (destination / "SKILL.md").is_file()
+        ):
+            findings.append(drift_finding)
+            continue
+        if not _safe_skill_tree(destination):
             findings.append(drift_finding)
             continue
         try:
@@ -309,8 +339,19 @@ def assistant_checks(
                 "Cursor sign-in requires manual login",
             )
         )
-        cursor_root = paths.home / ".cursor"
-        if (cursor_root / "mcp.json").exists():
+        cursor_root = _safe_home_path(paths.home, Path(".cursor"))
+        if cursor_root is None:
+            add(
+                _finding(
+                    "cursor.state",
+                    FindingStatus.MANUAL,
+                    CheckSeverity.WARNING,
+                    "Cursor state requires manual review",
+                )
+            )
+        elif (
+            mcp := _safe_home_path(paths.home, Path(".cursor/mcp.json"))
+        ) is not None and mcp.is_file():
             add(
                 _finding(
                     "cursor.mcp",
@@ -319,10 +360,33 @@ def assistant_checks(
                     "Cursor MCP configuration requires manual review",
                 )
             )
-        worktrees = cursor_root / "worktrees"
-        if worktrees.is_dir():
+        worktrees = _safe_home_path(paths.home, Path(".cursor/worktrees"))
+        if worktrees is None:
+            add(
+                _finding(
+                    "cursor.worktrees",
+                    FindingStatus.MANUAL,
+                    CheckSeverity.WARNING,
+                    "Cursor worktree state requires manual review",
+                )
+            )
+        elif worktrees.is_dir():
             try:
-                count = sum(child.is_dir() for child in worktrees.iterdir())
+                count = 0
+                with os.scandir(worktrees) as scan:
+                    for child in scan:
+                        if count >= _MAX_CURSOR_WORKTREES:
+                            add(
+                                _finding(
+                                    "cursor.worktrees",
+                                    FindingStatus.MANUAL,
+                                    CheckSeverity.WARNING,
+                                    "Cursor worktree state requires manual review",
+                                )
+                            )
+                            break
+                        if child.is_dir(follow_symlinks=False):
+                            count += 1
             except OSError:
                 count = 0
             if count:
