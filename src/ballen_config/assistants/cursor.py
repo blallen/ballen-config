@@ -456,9 +456,9 @@ def cursor_keybindings_renderer() -> Renderer:
         )
 
         def identity(item: object) -> tuple[object, object] | None:
-            if not isinstance(item, dict) or not isinstance(item.get("command"), str):
+            if not isinstance(item, dict) or not isinstance(item.get("key"), str):
                 return None
-            return (item["command"], item.get("when"))
+            return (item["key"], item.get("when"))
 
         managed = {identity(item) for item in reviewed}
         merged = [item for item in existing if identity(item) not in managed]

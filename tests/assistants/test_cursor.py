@@ -283,6 +283,29 @@ def test_renderers_preserve_unrelated_cursor_native_state(
     }
 
 
+def test_keybindings_renderer_preserves_same_command_on_other_shortcut(
+    repo_root: Path, temporary_home: Path
+) -> None:
+    """Replace reviewed bindings only when their shortcut and context match."""
+    paths = RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home)
+    contribution = configuration(_resolved_setup("cursor"), paths)
+    source = {spec.id: spec for spec in contribution.specs}["cursor-keybindings"].source
+    renderer = contribution.renderers["cursor-keybindings"]
+    native = b"""[
+      {"key": "cmd+k", "command": "composerMode.agent"},
+      {"key": "cmd+i", "command": "native.replaced"}
+    ]"""
+
+    rendered = json.loads(renderer(source.read_bytes(), native))
+
+    assert [item for item in rendered if item["key"] == "cmd+k"] == [
+        {"key": "cmd+k", "command": "composerMode.agent"}
+    ]
+    assert [item for item in rendered if item["key"] == "cmd+i"] == [
+        {"key": "cmd+i", "command": "composerMode.agent"}
+    ]
+
+
 def test_configuration_uses_relative_private_core_safe_specs(
     repo_root: Path,
     temporary_home: Path,

@@ -370,7 +370,7 @@ def assistant_checks(
         ) is not None and mcp.is_file():
             add(
                 _finding(
-                    "cursor.mcp",
+                    "cursor.legacy-mcp",
                     FindingStatus.MANUAL,
                     CheckSeverity.WARNING,
                     "Cursor MCP configuration requires manual review",

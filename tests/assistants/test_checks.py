@@ -118,7 +118,7 @@ def test_cursor_inspection_is_existence_only_and_counts_immediate_worktrees(
         unmanaged_extension_count=2,
     )
     report = run_doctor(findings)
-    assert report.finding("cursor.mcp").status is FindingStatus.MANUAL
+    assert report.finding("cursor.legacy-mcp").status is FindingStatus.MANUAL
     assert (
         report.finding("cursor.worktrees").message
         == "2 stale Cursor worktree root(s) require review"
