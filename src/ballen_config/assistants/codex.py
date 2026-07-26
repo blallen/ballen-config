@@ -5,14 +5,16 @@ from __future__ import annotations
 import json
 import tomllib
 from pathlib import Path
-from typing import Never, TypedDict, cast
+from typing import TypedDict, cast
 
 import tomlkit
 import yaml
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from ballen_config.assistants.instructions import render_native_instructions
+from ballen_config.assistants.json import StrictJsonError, strict_json_loads
 from ballen_config.assistants.models import PluginCatalog
+from ballen_config.assistants.sources import reviewed_regular_file as _reviewed_source
 from ballen_config.configure import (
     ApplyMethod,
     ConfigurationContribution,
@@ -21,11 +23,8 @@ from ballen_config.configure import (
 )
 from ballen_config.install import InstallAction
 from ballen_config.models import ResolvedSetup
-from ballen_config.paths import assert_contained, assert_no_symlink_components
 from ballen_config.runner import Runner
 from ballen_config.runtime import RuntimePaths
-
-type JsonObject = dict[str, object]
 
 
 class CodexSettingsError(ValueError):
@@ -34,10 +33,6 @@ class CodexSettingsError(ValueError):
 
 class CodexPluginInspectionError(RuntimeError):
     """A normalized failure to inspect native Codex plugin state."""
-
-
-class _CodexJsonError(ValueError):
-    """An ambiguous or non-standard JSON document at the native boundary."""
 
 
 class CodexStableSettings(BaseModel):
@@ -67,57 +62,6 @@ class CodexPluginSnapshot(TypedDict):
 
     plugins: list[CodexPluginEntry]
     marketplaces: list[CodexMarketplaceEntry]
-
-
-def _reject_duplicate_json_keys(pairs: list[tuple[str, object]]) -> JsonObject:
-    """Decode a JSON object only when its keys are unambiguous.
-
-    Args:
-        pairs: Ordered decoded key-value pairs.
-
-    Returns:
-        The decoded unique-key object.
-
-    Raises:
-        _CodexJsonError: If a JSON object contains a duplicate key.
-    """
-    result: JsonObject = {}
-    for key, value in pairs:
-        if key in result:
-            raise _CodexJsonError("invalid Codex JSON")
-        result[key] = value
-    return result
-
-
-def _reject_non_finite_json_constant(_constant: str) -> Never:
-    """Reject JSON constants that are not permitted by the JSON standard.
-
-    Args:
-        _constant: Native decoder token such as ``NaN`` or ``Infinity``.
-
-    Raises:
-        _CodexJsonError: Always, because non-finite constants are invalid.
-    """
-    raise _CodexJsonError("invalid Codex JSON")
-
-
-def _strict_json_loads(source: str | bytes) -> object:
-    """Decode JSON while rejecting duplicate keys and non-finite constants."""
-    return json.loads(
-        source,
-        object_pairs_hook=_reject_duplicate_json_keys,
-        parse_constant=_reject_non_finite_json_constant,
-    )
-
-
-def _reviewed_source(paths: RuntimePaths, relative: Path) -> Path:
-    """Return a resolved, regular, symlink-free reviewed source."""
-    source = assert_contained(paths.repo_root / relative, paths.repo_root)
-    assert_no_symlink_components(source, stop=paths.repo_root)
-    if source.is_symlink() or not source.is_file():
-        raise ValueError("Codex source must be a regular file")
-    assert_contained(source.resolve(strict=True), paths.repo_root)
-    return source
 
 
 def load_stable_settings(path: Path) -> CodexStableSettings:
@@ -261,10 +205,10 @@ def install_actions(
     if listed["returncode"] != 0:
         raise CodexPluginInspectionError("Codex plugin inspection failed")
     try:
-        snapshot = _plugin_snapshot(_strict_json_loads(listed["stdout"]))
+        snapshot = _plugin_snapshot(strict_json_loads(listed["stdout"]))
     except (
         CodexPluginInspectionError,
-        _CodexJsonError,
+        StrictJsonError,
         json.JSONDecodeError,
         UnicodeDecodeError,
     ) as error:

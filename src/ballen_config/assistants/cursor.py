@@ -10,7 +10,9 @@ import yaml
 from pydantic import BaseModel, ConfigDict
 
 from ballen_config.assistants.instructions import render_native_instructions
+from ballen_config.assistants.json import StrictJsonError, strict_json_loads
 from ballen_config.assistants.models import ExtensionCatalog, ExtensionSpec
+from ballen_config.assistants.sources import reviewed_regular_file as _reviewed_source
 from ballen_config.configure import (
     ApplyMethod,
     ConfigurationContribution,
@@ -19,7 +21,6 @@ from ballen_config.configure import (
 )
 from ballen_config.install import InstallAction
 from ballen_config.models import ResolvedSetup
-from ballen_config.paths import assert_contained, assert_no_symlink_components
 from ballen_config.runner import Runner
 from ballen_config.runtime import RuntimePaths
 
@@ -73,28 +74,9 @@ def _decode_json(source: bytes, *, label: str) -> object:
         ValueError: If the source is invalid JSON.
     """
     try:
-        return json.loads(
-            source,
-            object_pairs_hook=_reject_duplicate_keys,
-            parse_constant=_reject_non_finite,
-        )
-    except (json.JSONDecodeError, UnicodeDecodeError) as error:
+        return strict_json_loads(source)
+    except (json.JSONDecodeError, UnicodeDecodeError, StrictJsonError) as error:
         raise ValueError(f"invalid {label} JSON") from error
-
-
-def _reject_duplicate_keys(pairs: list[tuple[str, object]]) -> JsonObject:
-    """Decode JSON objects only when each key appears once."""
-    result: JsonObject = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError("duplicate JSON key")
-        result[key] = value
-    return result
-
-
-def _reject_non_finite(_value: str) -> object:
-    """Reject non-standard JSON numeric constants."""
-    raise ValueError("non-finite JSON value")
 
 
 def _load_json_object(path: Path, *, label: str) -> JsonObject:
@@ -133,16 +115,6 @@ def _load_json_array(path: Path, *, label: str) -> list[object]:
     if not isinstance(document, list):
         raise ValueError(f"{label} must be a JSON array")
     return cast(list[object], document)
-
-
-def _reviewed_source(paths: RuntimePaths, relative: Path) -> Path:
-    """Return one absolute, symlink-free source contained by the checkout."""
-    source = assert_contained(paths.repo_root / relative, paths.repo_root)
-    assert_no_symlink_components(source, stop=paths.repo_root)
-    if source.is_symlink():
-        raise ValueError("Cursor source must not be a symlink")
-    assert_contained(source.resolve(strict=True), paths.repo_root)
-    return source
 
 
 def deep_merge(base: object, overlay: object) -> object:

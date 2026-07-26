@@ -63,6 +63,22 @@ def test_stable_settings_omit_local_state(repo_root: Path) -> None:
     assert all(term not in serialized.casefold() for term in forbidden)
 
 
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param(b'{"model":"first","model":"second"}', id="duplicate-key"),
+        pytest.param(b'{"model":NaN}', id="non-finite"),
+    ],
+)
+def test_stable_settings_reject_ambiguous_json(tmp_path: Path, source: bytes) -> None:
+    """Reject reviewed settings whose JSON has ambiguous value semantics."""
+    path = tmp_path / "settings.json"
+    path.write_bytes(source)
+
+    with pytest.raises(ClaudeSettingsError, match="invalid Claude settings"):
+        load_stable_settings(path)
+
+
 def test_plugin_actions_are_scoped_ordered_and_profile_independent(
     repo_root: Path,
 ) -> None:
