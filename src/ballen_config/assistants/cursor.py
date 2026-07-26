@@ -398,12 +398,9 @@ def cursor_settings_renderer(
         )
         if not isinstance(existing, dict):
             raise ValueError("Cursor settings must be a JSON object")
-        return (
-            json.dumps(
-                deep_merge(existing, document), indent=2, sort_keys=True
-            ).encode()
-            + b"\n"
-        )
+        return json.dumps(
+            deep_merge(existing, document), indent=4, sort_keys=True
+        ).encode()
 
     return render
 

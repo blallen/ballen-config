@@ -285,6 +285,29 @@ def test_renderers_preserve_unrelated_cursor_native_state(
     }
 
 
+def test_settings_renderer_converges_on_cursor_native_indentation(
+    repo_root: Path, temporary_home: Path
+) -> None:
+    """Keep a converged four-space native settings document byte-stable."""
+    paths = RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home)
+    contribution = configuration(
+        _resolved_setup("cursor", profiles=("default", "work")),
+        paths,
+    )
+    spec = next(spec for spec in contribution.specs if spec.id == "cursor-settings")
+    document = json.loads(spec.source.read_bytes())
+    document.update(
+        json.loads((repo_root / "assistants/cursor/settings.work.json").read_bytes())
+    )
+    document["native.keep"] = True
+    current = json.dumps(document, indent=4, sort_keys=True).encode()
+
+    assert (
+        contribution.renderers["cursor-settings"](spec.source.read_bytes(), current)
+        == current
+    )
+
+
 def test_keybindings_renderer_preserves_same_command_on_other_shortcut(
     repo_root: Path, temporary_home: Path
 ) -> None:
