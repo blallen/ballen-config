@@ -79,6 +79,28 @@ _ALLOWED_HOOK_AGENTS: frozenset[str] = frozenset({"cursor", "claude"})
 _FORBIDDEN_SOURCE_PARTS = frozenset({"cache", "generated", "machine", "plugins"})
 
 
+def _reject_duplicate_json_keys(
+    pairs: list[tuple[str, object]],
+) -> dict[str, object]:
+    """Build a JSON object only when every key is unique.
+
+    Args:
+        pairs: Ordered key-value pairs decoded for one JSON object.
+
+    Returns:
+        The decoded object.
+
+    Raises:
+        ValueError: If a key occurs more than once in the object.
+    """
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate JSON object key")
+        result[key] = value
+    return result
+
+
 def validate_hook_source(source: Path) -> None:
     """Accept only relative, reviewed hook sources in the canonical tree.
 
@@ -175,8 +197,11 @@ def cursor_hook_renderer(home: Path) -> Renderer:
         if source.count(_REVIEWED_HOOK_PATH_BYTES) != 1:
             raise ValueError("invalid Cursor hook source")
         try:
-            payload = json.loads(source)
-        except json.JSONDecodeError as error:
+            payload: object = json.loads(
+                source,
+                object_pairs_hook=_reject_duplicate_json_keys,
+            )
+        except ValueError as error:
             raise ValueError("invalid Cursor hook source") from error
         if payload != _STATIC_CURSOR_REGISTRATION:
             raise ValueError("invalid Cursor hook source")

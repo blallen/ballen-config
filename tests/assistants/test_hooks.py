@@ -166,6 +166,35 @@ def test_cursor_renderer_rejects_unreviewed_structure(
 
 
 @pytest.mark.parametrize(
+    ("key_line", "duplicate_lines"),
+    [
+        (
+            b'  "version": 1,',
+            b'  "version": 1,\n  "version": 1,',
+        ),
+        (
+            b'        "matcher": "Shell"',
+            b'        "matcher": "Shell",\n        "matcher": "Shell"',
+        ),
+    ],
+    ids=["top-level", "nested"],
+)
+def test_cursor_renderer_rejects_duplicate_json_object_keys(
+    repo_root: Path,
+    temporary_home: Path,
+    key_line: bytes,
+    duplicate_lines: bytes,
+) -> None:
+    """Reject ambiguous JSON even when the default decoder collapses it."""
+    source = (repo_root / "assistants/cursor/hooks.json").read_bytes()
+    ambiguous_source = source.replace(key_line, duplicate_lines, 1)
+
+    assert json.loads(ambiguous_source) == json.loads(source)
+    with pytest.raises(ValueError, match="invalid Cursor hook source"):
+        cursor_hook_renderer(temporary_home)(ambiguous_source, None)
+
+
+@pytest.mark.parametrize(
     "source",
     [
         Path("../assistants/shared/hooks/escape"),
