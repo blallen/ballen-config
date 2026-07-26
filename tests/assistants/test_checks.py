@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -300,6 +301,71 @@ def test_diagnostic_scans_cap_every_entry(
             run_doctor(findings).finding("cursor.worktrees").message
             == "Cursor worktree state requires manual review"
         )
+
+
+@pytest.mark.parametrize("kind", ["root", "tree", "worktrees"])
+def test_scan_caps_do_not_request_a_fourth_entry(
+    paths: RuntimePaths, monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    """Consume cap plus one entries, but never request an unbounded fourth."""
+    import ballen_config.assistants.checks as checks
+
+    original_scandir = checks.os.scandir  # type: ignore[attr-defined]
+    monkeypatch.setattr(checks, "_MAX_SKILL_ROOT_ENTRIES", 2)
+    monkeypatch.setattr(checks, "_MAX_SKILL_TREE_ENTRIES", 2)
+    monkeypatch.setattr(checks, "_MAX_CURSOR_WORKTREES", 2)
+    if kind == "root":
+        target = paths.home / ".agents/skills"
+        target.mkdir(parents=True)
+        enabled = frozenset({"codex"})
+        finding_id = "skill-scan.codex"
+    elif kind == "tree":
+        target = paths.home / ".agents/skills/capped"
+        target.mkdir(parents=True)
+        (target / "SKILL.md").write_text("---\nname: capped\n---\nx\n")
+        enabled = frozenset({"codex"})
+        finding_id = "skill-scan.codex"
+    else:
+        target = paths.home / ".cursor/worktrees"
+        target.mkdir(parents=True)
+        enabled = frozenset({"cursor"})
+        finding_id = "cursor.worktrees"
+    for index in range(4):
+        (target / f"entry-{index}").write_text("x")
+
+    class SentinelScan:
+        """Delegate context manager that rejects a fourth iterator request."""
+
+        def __init__(self, entries: Iterator[object]) -> None:
+            self.entries = entries
+            self.requests = 0
+
+        def __enter__(self) -> SentinelScan:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def __iter__(self) -> SentinelScan:
+            return self
+
+        def __next__(self) -> object:
+            self.requests += 1
+            if self.requests == 4:
+                raise AssertionError("scanner requested fourth entry")
+            return next(self.entries)
+
+    def guarded_scandir(path: Path) -> object:
+        scan = original_scandir(path)
+        if Path(path) == target:
+            return SentinelScan(iter(scan))
+        return scan
+
+    monkeypatch.setattr(checks.os, "scandir", guarded_scandir)  # type: ignore[attr-defined]
+    findings = assistant_checks(
+        enabled=enabled, paths=paths, runner=StatefulAssistantFake(paths.home)
+    )
+    assert run_doctor(findings).finding(finding_id).severity is CheckSeverity.WARNING
 
 
 def test_inventory_manual_resources_are_exact_and_unique(repo_root: Path) -> None:
