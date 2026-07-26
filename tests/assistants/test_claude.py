@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from ballen_config.assistants.claude import (
+    ClaudePluginInspectionError,
     ClaudeSettingsError,
     claude_configuration,
     claude_instruction_renderer,
@@ -18,7 +19,7 @@ from ballen_config.assistants.claude import (
 )
 from ballen_config.assistants.hooks import hook_contribution
 from ballen_config.assistants.inventory import load_inventory
-from ballen_config.assistants.models import FileResource
+from ballen_config.assistants.models import FileResource, PluginCatalog
 from ballen_config.configure import ApplyMethod
 from ballen_config.install import Installer
 from ballen_config.models import Component, Manager, ResolvedSetup
@@ -113,7 +114,7 @@ def test_registered_native_entries_are_noops(repo_root: Path) -> None:
     assert "claude.plugin.frontend-design@claude-plugins-official" not in ids
 
 
-def test_renderer_preserves_native_state_and_replaces_only_managed_hook(
+def test_renderer_replaces_only_the_exact_owned_managed_hook(
     repo_root: Path, temporary_home: Path
 ) -> None:
     """Preserve unrelated settings and hooks while replacing the RTK entry."""
@@ -126,7 +127,9 @@ def test_renderer_preserves_native_state_and_replaces_only_managed_hook(
         "SessionStart": [{"hooks": [{"type": "command", "command": "native"}]}],
         "PreToolUse": [
           {"matcher": "Edit", "hooks": [{"type": "command", "command": "native-pre"}]},
-          {"matcher": "Bash", "hooks": [{"type": "command", "command": "/old/rtk-hook claude"}]}
+          {"matcher": "Bash", "hooks": [{"type": "command", "command": "/old/rtk-hook claude"}]},
+          {"matcher": "Bash", "hooks": [{"type": "command", "command": "/old/rtk-hook claude"}, {"type": "command", "command": "compound"}]},
+          {"matcher": "Bash", "hooks": [{"type": "command", "command": "/old/rtk-hook claude; suffix"}]}
         ]
       }
     }"""
@@ -142,13 +145,48 @@ def test_renderer_preserves_native_state_and_replaces_only_managed_hook(
     assert "SessionStart" in document["hooks"]
     pre_tool_use = document["hooks"]["PreToolUse"]
     assert any(item["matcher"] == "Edit" for item in pre_tool_use)
+    assert any(
+        item["hooks"][0]["command"] == "/old/rtk-hook claude" for item in pre_tool_use
+    )
+    assert any(len(item["hooks"]) == 2 for item in pre_tool_use)
+    assert any(
+        item["hooks"][0]["command"].endswith("; suffix") for item in pre_tool_use
+    )
     managed = [
         item
         for item in pre_tool_use
-        if any(hook["command"].endswith("rtk-hook claude") for hook in item["hooks"])
+        if item["hooks"][0]["command"]
+        == f"{temporary_home}/.local/share/ballen-config/hooks/rtk-hook claude"
     ]
     assert len(managed) == 1
     assert managed[0]["hooks"][0]["command"].startswith(str(temporary_home))
+
+
+def test_renderer_replaces_an_exact_current_managed_hook(
+    repo_root: Path, temporary_home: Path
+) -> None:
+    """Converge an exact adapter-managed entry to precisely one registration."""
+    command = f"{temporary_home}/.local/share/ballen-config/hooks/rtk-hook claude"
+    current = json.dumps(
+        {
+            "hooks": {
+                "PreToolUse": [
+                    {
+                        "matcher": "Bash",
+                        "hooks": [{"type": "command", "command": command}],
+                    }
+                ]
+            }
+        }
+    ).encode()
+    document = json.loads(
+        claude_settings_renderer(temporary_home)(
+            (repo_root / "assistants/claude/settings.json").read_bytes(), current
+        )
+    )
+    assert document["hooks"]["PreToolUse"] == [
+        {"matcher": "Bash", "hooks": [{"type": "command", "command": command}]}
+    ]
 
 
 @pytest.mark.parametrize("current", [b"[1]", b"{"])
@@ -230,6 +268,71 @@ def test_skip_prevents_claude_inspection(
     paths = RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home)
     assert install_actions(setup, paths, fake_runner) == ()
     assert fake_runner.commands == []
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        '{"plugins": [], "plugins": []}',
+        '{"plugins": [{"id": "one", "id": "two"}], "marketplaces": []}',
+    ],
+    ids=["top-level", "nested"],
+)
+def test_native_plugin_inspection_rejects_duplicate_json_keys(
+    fake_runner: StatefulAssistantFake,
+    repo_root: Path,
+    temporary_home: Path,
+    payload: str,
+) -> None:
+    """Fail closed instead of collapsing ambiguous native JSON objects."""
+    fake_runner.add(
+        ("claude", "plugin", "list", "--json"), returncode=0, stdout=payload
+    )
+    paths = RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home)
+    with pytest.raises(
+        ClaudePluginInspectionError, match="Claude plugin inspection failed"
+    ):
+        install_actions(_setup(), paths, fake_runner)
+    assert fake_runner.commands == [("claude", "plugin", "list", "--json")]
+
+
+def test_plugin_catalog_rejects_plugin_profile_outside_marketplace_profile() -> None:
+    """Reject catalog entries that could register private sources by default."""
+    with pytest.raises(ValueError, match="plugin profiles must be a subset"):
+        PluginCatalog.model_validate(
+            {
+                "marketplaces": [
+                    {
+                        "name": "private",
+                        "source": "git@example:private",
+                        "profiles": ["work"],
+                    }
+                ],
+                "plugins": [
+                    {
+                        "id": "plugin@private",
+                        "marketplace": "private",
+                        "profiles": ["default"],
+                    }
+                ],
+            }
+        )
+
+
+def test_plan_selects_only_active_marketplaces(tmp_path: Path) -> None:
+    """Omit inactive marketplace sources even when no plugin is selected."""
+    catalog_path = tmp_path / "plugins.yaml"
+    catalog_path.write_text(
+        "marketplaces:\n"
+        "  - name: private\n"
+        "    source: git@example:private\n"
+        "    profiles: [work]\n"
+        "plugins: []\n"
+    )
+    assert (
+        plan_claude_plugins(catalog_path, profiles=("default",), installed=frozenset())
+        == ()
+    )
 
 
 def test_inventory_has_one_claude_owner_per_native_resource(repo_root: Path) -> None:

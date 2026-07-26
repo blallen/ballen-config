@@ -281,7 +281,10 @@ class PluginCatalog(BaseModel):
         if len(plugin_ids) != len(set(plugin_ids)):
             raise ValueError("duplicate plugin id")
 
-        names = set(marketplace_names)
+        marketplace_by_name = {
+            marketplace.name: marketplace for marketplace in self.marketplaces
+        }
+        names = set(marketplace_by_name)
         unknown = {
             plugin.marketplace
             for plugin in self.plugins
@@ -289,6 +292,19 @@ class PluginCatalog(BaseModel):
         }
         if unknown:
             raise ValueError(f"unknown marketplaces: {sorted(unknown)}")
+
+        profile_mismatches = [
+            plugin.id
+            for plugin in self.plugins
+            if not set(plugin.profiles).issubset(
+                marketplace_by_name[plugin.marketplace].profiles
+            )
+        ]
+        if profile_mismatches:
+            raise ValueError(
+                "plugin profiles must be a subset of marketplace profiles: "
+                f"{sorted(profile_mismatches)}"
+            )
 
         mismatched = [
             plugin.id

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 from pathlib import Path
 from typing import NotRequired, TypedDict, cast
 
@@ -139,24 +140,34 @@ def load_stable_settings(path: Path) -> ClaudeStableSettings:
         raise ClaudeSettingsError("invalid Claude settings") from error
 
 
-def _is_managed_rtk_hook(value: object) -> bool:
+def _is_managed_rtk_hook(value: object, *, home: Path) -> bool:
     """Return whether an entry contains this adapter's managed RTK hook.
 
     Args:
         value: Candidate Claude PreToolUse entry.
+        home: Approved user home used to identify the canonical command.
 
     Returns:
-        True only for an entry whose command invokes ``rtk-hook claude``.
+        True only for the exact adapter-owned ``rtk-hook claude`` entry.
     """
-    if not isinstance(value, dict):
+    if not isinstance(value, dict) or set(value) != {"matcher", "hooks"}:
+        return False
+    if value.get("matcher") != "Bash":
         return False
     hooks = value.get("hooks")
-    return isinstance(hooks, list) and any(
-        isinstance(hook, dict)
-        and isinstance(hook.get("command"), str)
-        and hook["command"].endswith("rtk-hook claude")
-        for hook in hooks
-    )
+    if not isinstance(hooks, list) or len(hooks) != 1:
+        return False
+    hook = hooks[0]
+    if not isinstance(hook, dict) or set(hook) != {"type", "command"}:
+        return False
+    if hook.get("type") != "command" or not isinstance(hook.get("command"), str):
+        return False
+    try:
+        arguments = shlex.split(hook["command"])
+    except ValueError:
+        return False
+    expected = home / ".local/share/ballen-config/hooks/rtk-hook"
+    return arguments == [expected.as_posix(), "claude"]
 
 
 def claude_settings_renderer(home: Path) -> Renderer:
@@ -181,7 +192,7 @@ def claude_settings_renderer(home: Path) -> Renderer:
         if not isinstance(pre_tool_use, list):
             raise ClaudeSettingsError("invalid Claude settings")
         hooks["PreToolUse"] = [
-            item for item in pre_tool_use if not _is_managed_rtk_hook(item)
+            item for item in pre_tool_use if not _is_managed_rtk_hook(item, home=home)
         ] + [managed_hook]
         result = dict(existing)
         result["model"] = stable.model
@@ -254,6 +265,7 @@ def plan_claude_plugins(
         if (
             marketplace.name not in selected_marketplaces
             or marketplace.name in known_marketplaces
+            or not active_profiles.intersection(marketplace.profiles)
         ):
             continue
         required = any(
@@ -344,8 +356,15 @@ def install_actions(
     if listed["returncode"] != 0:
         raise ClaudePluginInspectionError("Claude plugin inspection failed")
     try:
-        snapshot = _plugin_snapshot(json.loads(listed["stdout"]))
-    except (json.JSONDecodeError, ClaudePluginInspectionError) as error:
+        snapshot = _plugin_snapshot(
+            json.loads(listed["stdout"], object_pairs_hook=_reject_duplicate_json_keys)
+        )
+    except (
+        ClaudePluginInspectionError,
+        ClaudeSettingsError,
+        json.JSONDecodeError,
+        UnicodeDecodeError,
+    ) as error:
         raise ClaudePluginInspectionError("Claude plugin inspection failed") from error
     catalog_path = _reviewed_source(paths, Path("assistants/claude/plugins.yaml"))
     return plan_claude_plugins(
