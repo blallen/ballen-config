@@ -55,6 +55,16 @@ resources:
     source: assistants/cursor/user-rules.md
     summary: Copy the rendered cursor-user-rules.md from the bootstrap state directory into Cursor Customize > Rules.
 
+  - id: cursor.browser
+    kind: manual
+    owner: cursor
+    summary: Enable Cursor's first-party browser capability if it is not already enabled.
+
+  - id: cursor.notion
+    kind: manual
+    owner: cursor
+    summary: Connect the official Notion integration from Cursor's integration UI when needed.
+
   - id: cursor.extensions.catalog
     kind: catalog
     owner: cursor
@@ -102,6 +112,16 @@ resources:
     destination: .claude/CLAUDE.md
     role: suffix
 
+  - id: claude.browser
+    kind: manual
+    owner: claude-code
+    summary: Use Claude Code's first-party browser tooling; do not add a global Playwright MCP server.
+
+  - id: claude.notion
+    kind: manual
+    owner: claude-code
+    summary: Connect the official Notion integration from Claude's integration UI when needed.
+
   - id: claude.plugins.catalog
     kind: catalog
     owner: claude-code
@@ -139,6 +159,16 @@ resources:
     owner: codex
     source: assistants/shared/instructions/rtk.md
     destination: .codex/RTK.md
+
+  - id: codex.browser
+    kind: manual
+    owner: codex
+    summary: Enable Codex's first-party browser plugin if it is not already available.
+
+  - id: codex.notion
+    kind: manual
+    owner: codex
+    summary: Connect the official Notion integration from Codex's integration UI when needed.
 
   - id: codex.plugins.catalog
     kind: catalog

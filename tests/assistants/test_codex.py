@@ -214,6 +214,8 @@ def test_inventory_is_synchronized_and_excludes_local_state(repo_root: Path) -> 
         "codex.config",
         "codex.instructions",
         "codex.rtk",
+        "codex.browser",
+        "codex.notion",
         "codex.plugins.catalog",
     ]
     assert all("hook" not in resource.id for resource in codex)
