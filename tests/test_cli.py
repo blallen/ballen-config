@@ -17,7 +17,7 @@ from ballen_config.cli import (
 )
 from ballen_config.configure import ConfigAction, ConfigureStageReport
 from ballen_config.doctor import CheckSeverity, DoctorFinding, FindingStatus
-from ballen_config.install import InstallStageReport
+from ballen_config.install import InstallAction, InstallStageReport
 from ballen_config.runner import CommandResult
 
 
@@ -375,6 +375,141 @@ def test_plan_is_read_only_and_never_confirms(
     assert result == RunResult(exit_code=0, report=StageReport())
     assert output and output[0].startswith("profile: default")
     assert tuple(fake_home.rglob("*")) == before
+
+
+def test_plan_uses_static_candidates_without_dynamic_native_inspection(
+    repo_root: Path,
+    fake_home: Path,
+) -> None:
+    """Plan renders static candidate IDs without invoking dynamic suppliers."""
+    output: list[str] = []
+
+    def candidates(*_args: object) -> tuple[InstallAction, ...]:
+        """Return one redacted install candidate."""
+        return (InstallAction(component_id="agent.plugin", argv=("agent", "add")),)
+
+    def dynamic(*_args: object) -> tuple[InstallAction, ...]:
+        """Fail if plan reaches the native inspection boundary."""
+        pytest.fail("plan must not inspect native agent state")
+
+    result = run(
+        ("plan",),
+        repo_root=repo_root,
+        home=fake_home,
+        runner=FakeRunner(),
+        downloader=FakeDownloader(),
+        confirm=lambda _prompt: pytest.fail("plan must not confirm"),
+        output=output.append,
+        timestamp=lambda: "fixed",
+        install_action_candidate_suppliers=(candidates,),
+        install_action_suppliers=(dynamic,),
+    )
+
+    assert result.exit_code == 0
+    assert "install agent.plugin (owner=bootstrap): install" in output[0]
+
+
+def test_all_orders_static_base_native_actions_and_configuration(
+    repo_root: Path,
+    fake_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """All resolves native actions only after its base component phase succeeds."""
+    events: list[str] = []
+
+    def candidates(*_args: object) -> tuple[InstallAction, ...]:
+        """Record static preflight candidate resolution."""
+        events.append("candidate")
+        return (InstallAction(component_id="agent.plugin", argv=("agent", "add")),)
+
+    def dynamic(*_args: object) -> tuple[InstallAction, ...]:
+        """Record post-base native inspection and resolve one missing action."""
+        events.append("native-inspection")
+        return (InstallAction(component_id="agent.plugin", argv=("agent", "add")),)
+
+    def recorded_install(**kwargs: object) -> InstallStageReport:
+        """Record the base and action install phases independently."""
+        events.append("base" if kwargs["components"] else "assistant-actions")
+        return InstallStageReport(exit_code=0, outcomes=())
+
+    monkeypatch.setattr("ballen_config.cli.run_install", recorded_install)
+    monkeypatch.setattr(
+        "ballen_config.cli.run_configure",
+        lambda *_args, **_kwargs: (
+            events.append("configure")
+            or ConfigureStageReport(actions=(), changed_count=0)
+        ),
+    )
+    monkeypatch.setattr(
+        "ballen_config.cli.core_doctor_checks", lambda *_args, **_kwargs: ()
+    )
+
+    result = run(
+        ("all",),
+        repo_root=repo_root,
+        home=fake_home,
+        runner=FakeRunner(),
+        downloader=FakeDownloader(),
+        confirm=lambda _prompt: True,
+        output=lambda _message: None,
+        timestamp=lambda: "fixed",
+        install_action_candidate_suppliers=(candidates,),
+        install_action_suppliers=(dynamic,),
+    )
+
+    assert result.exit_code == 0
+    assert tuple(events) == (
+        "candidate",
+        "base",
+        "native-inspection",
+        "assistant-actions",
+        "configure",
+    )
+
+
+def test_base_install_failure_prevents_native_inspection_and_configuration(
+    repo_root: Path,
+    fake_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed base phase stops before native resolution and configure."""
+    events: list[str] = []
+
+    def candidates(*_args: object) -> tuple[InstallAction, ...]:
+        """Return one static action candidate."""
+        return (InstallAction(component_id="agent.plugin", argv=("agent", "add")),)
+
+    def dynamic(*_args: object) -> tuple[InstallAction, ...]:
+        """Record an invalid post-failure native inspection."""
+        events.append("native-inspection")
+        return ()
+
+    monkeypatch.setattr(
+        "ballen_config.cli.run_install",
+        lambda **_kwargs: InstallStageReport(
+            exit_code=1, outcomes=("core: required-failure",)
+        ),
+    )
+    monkeypatch.setattr(
+        "ballen_config.cli.run_configure",
+        lambda *_args, **_kwargs: events.append("configure"),
+    )
+
+    result = run(
+        ("all",),
+        repo_root=repo_root,
+        home=fake_home,
+        runner=FakeRunner(),
+        downloader=FakeDownloader(),
+        confirm=lambda _prompt: True,
+        output=lambda _message: None,
+        timestamp=lambda: "fixed",
+        install_action_candidate_suppliers=(candidates,),
+        install_action_suppliers=(dynamic,),
+    )
+
+    assert result.exit_code == 1
+    assert events == []
 
 
 def test_prepare_returns_two_without_confirmation(

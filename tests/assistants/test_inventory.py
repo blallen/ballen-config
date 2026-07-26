@@ -276,6 +276,15 @@ def test_core_invokes_each_supplier_once_with_resolved_skip(
         assert runner is fake_runner
         return ()
 
+    def candidates(
+        setup: ResolvedSetup,
+        paths: RuntimePaths,
+    ) -> tuple[InstallAction, ...]:
+        """Declare no possible native actions for the recording supplier."""
+        assert_setup(setup)
+        assert paths.home == home
+        return ()
+
     def configuration(
         setup: ResolvedSetup,
         paths: RuntimePaths,
@@ -322,6 +331,7 @@ def test_core_invokes_each_supplier_once_with_resolved_skip(
         confirm=lambda _prompt: True,
         output=lambda _message: None,
         timestamp=lambda: "20260725T120000Z",
+        install_action_candidate_suppliers=(candidates,),
         install_action_suppliers=(install_supplier,),
     )
     configure_result = run(

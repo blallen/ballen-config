@@ -16,12 +16,18 @@ from yaml import YAMLError
 
 from ballen_config.assistants import (
     AssistantPlanContributor,
+    ClaudePluginInspectionError,
+    CodexPluginInspectionError,
+    CursorExtensionInspectionError,
 )
 from ballen_config.assistants import (
     configuration as assistant_configuration,
 )
 from ballen_config.assistants import (
     doctor_checks as assistant_doctor_checks,
+)
+from ballen_config.assistants import (
+    install_action_candidates as assistant_install_action_candidates,
 )
 from ballen_config.assistants import (
     install_actions as assistant_install_actions,
@@ -45,6 +51,7 @@ from ballen_config.install import (
     Downloader,
     HttpsDownloader,
     InstallAction,
+    InstallActionCandidateSupplier,
     InstallActionSupplier,
     run_install,
 )
@@ -59,6 +66,7 @@ from ballen_config.planning import (
     ComponentState,
     CoreManualContributor,
     Inspector,
+    PlanAction,
     PlanContributor,
     build_resolved_plan,
     format_plan,
@@ -94,6 +102,31 @@ class RunResult(BaseModel):
 
     exit_code: int
     report: StageReport
+
+
+class InstallActionCandidatePlanContributor:
+    """Expose preflight install actions as redacted plan rows."""
+
+    def __init__(self, actions: Sequence[InstallAction]) -> None:
+        """Initialize with static action declarations.
+
+        Args:
+            actions: Candidate actions validated before plan rendering.
+        """
+        self.actions_to_render = tuple(actions)
+
+    def actions(self, _resolved: ResolvedSetup) -> tuple[PlanAction, ...]:
+        """Return install plan rows without command or state details."""
+        return tuple(
+            PlanAction(
+                component_id=action.component_id,
+                category="install",
+                action="install",
+                owner="bootstrap",
+                required=action.required,
+            )
+            for action in self.actions_to_render
+        )
 
 
 class ResolvedInspector:
@@ -183,6 +216,7 @@ def run(
     confirm: Callable[[str], bool],
     output: Callable[[str], None],
     timestamp: Callable[[], str],
+    install_action_candidate_suppliers: Sequence[InstallActionCandidateSupplier] = (),
     install_action_suppliers: Sequence[InstallActionSupplier] = (),
     configuration_suppliers: Sequence[ConfigurationSupplier] = (),
     doctor_check_suppliers: Sequence[DoctorCheckSupplier] = (),
@@ -199,7 +233,8 @@ def run(
         confirm: Interactive mutation confirmation boundary.
         output: Normalized output sink.
         timestamp: Private backup timestamp supplier.
-        install_action_suppliers: Extension installation declarations.
+        install_action_candidate_suppliers: Static extension installation declarations.
+        install_action_suppliers: Post-base native-state installation resolvers.
         configuration_suppliers: Extension configuration declarations.
         doctor_check_suppliers: Extension diagnostic checks.
         plan_contributors: Additional structural plan contributors.
@@ -214,15 +249,22 @@ def run(
         paths = RuntimePaths.from_roots(repo_root=repo_root, home=home)
         repository = ManifestRepository.load(repo_root / "manifests")
         resolved = repository.resolve(options.request)
-        actions: tuple[InstallAction, ...] = ()
-        if options.stage in {"install", "all"}:
-            actions = tuple(
+        candidate_actions: tuple[InstallAction, ...] = ()
+        if options.stage in {"plan", "install", "all"}:
+            if install_action_suppliers and (
+                len(install_action_suppliers) != len(install_action_candidate_suppliers)
+            ):
+                return RunResult(
+                    exit_code=2,
+                    report=StageReport(outcomes=("invalid configuration",)),
+                )
+            candidate_actions = tuple(
                 action
-                for supplier in install_action_suppliers
-                for action in supplier(resolved, paths, runner)
+                for supplier in install_action_candidate_suppliers
+                for action in supplier(resolved, paths)
             )
             identifiers = [component.id for component in resolved.components] + [
-                action.component_id for action in actions
+                action.component_id for action in candidate_actions
             ]
             if len(identifiers) != len(set(identifiers)):
                 return RunResult(
@@ -265,7 +307,11 @@ def run(
             resolved,
             profile=options.request.profile,
             inspector=inspector,
-            contributors=(configuration_contributor, *plan_contributors),
+            contributors=(
+                InstallActionCandidatePlanContributor(candidate_actions),
+                configuration_contributor,
+                *plan_contributors,
+            ),
         )
     except (
         SystemExit,
@@ -284,17 +330,64 @@ def run(
         return RunResult(exit_code=0, report=StageReport())
 
     def install_stage() -> RunResult:
-        report = run_install(
+        base_report = run_install(
             components=resolved.components,
-            actions=actions,
+            actions=(),
+            runner=runner,
+            paths=paths,
+            state_store=StateStore(paths),
+            downloader=downloader,
+        )
+        if base_report.exit_code != 0:
+            return RunResult(
+                exit_code=base_report.exit_code,
+                report=StageReport(outcomes=base_report.outcomes),
+            )
+        try:
+            resolved_actions = tuple(
+                action
+                for supplier in install_action_suppliers
+                for action in supplier(resolved, paths, runner)
+            )
+        except (
+            CursorExtensionInspectionError,
+            ClaudePluginInspectionError,
+            CodexPluginInspectionError,
+        ):
+            return RunResult(
+                exit_code=1,
+                report=StageReport(outcomes=("native assistant inspection failed",)),
+            )
+        component_ids = {component.id for component in resolved.components}
+        candidate_ids = {action.component_id for action in candidate_actions}
+        action_ids = [action.component_id for action in resolved_actions]
+        if (
+            len(action_ids) != len(set(action_ids))
+            or component_ids.intersection(action_ids)
+            or not set(action_ids).issubset(candidate_ids)
+        ):
+            return RunResult(
+                exit_code=2,
+                report=StageReport(outcomes=("invalid configuration",)),
+            )
+        if not resolved_actions:
+            return RunResult(
+                exit_code=base_report.exit_code,
+                report=StageReport(outcomes=base_report.outcomes),
+            )
+        action_report = run_install(
+            components=(),
+            actions=resolved_actions,
             runner=runner,
             paths=paths,
             state_store=StateStore(paths),
             downloader=downloader,
         )
         return RunResult(
-            exit_code=report.exit_code,
-            report=StageReport(outcomes=report.outcomes),
+            exit_code=action_report.exit_code,
+            report=StageReport(
+                outcomes=(*base_report.outcomes, *action_report.outcomes)
+            ),
         )
 
     def configure_stage() -> RunResult:
@@ -389,6 +482,7 @@ def main(arguments: Sequence[str] | None = None) -> int:
             confirm=lambda prompt: input(f"{prompt} [y/N] ").lower() == "y",
             output=print,
             timestamp=lambda: datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"),
+            install_action_candidate_suppliers=(assistant_install_action_candidates,),
             install_action_suppliers=(assistant_install_actions,),
             configuration_suppliers=(
                 cast(ConfigurationSupplier, assistant_configuration),

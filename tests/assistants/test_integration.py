@@ -15,6 +15,7 @@ from ballen_config.assistants import (
     AssistantPlanContributor,
     configuration,
     doctor_checks,
+    install_action_candidates,
     install_actions,
 )
 from ballen_config.assistants.claude import ClaudePluginInspectionError
@@ -129,6 +130,7 @@ def run_with_assistants(
         confirm=lambda _prompt: True,
         output=messages.append,
         timestamp=lambda: "20260726T120000Z",
+        install_action_candidate_suppliers=(install_action_candidates,),
         install_action_suppliers=(install_actions,),
         configuration_suppliers=(configuration,),
         doctor_check_suppliers=(doctor_checks,),
@@ -171,6 +173,9 @@ def test_main_registers_exported_callbacks_and_runs_real_aggregate_plan(
 
     def wrapped(arguments: Sequence[str], **kwargs: object) -> RunResult:
         assert kwargs["install_action_suppliers"] == (install_actions,)
+        assert kwargs["install_action_candidate_suppliers"] == (
+            install_action_candidates,
+        )
         assert kwargs["configuration_suppliers"] == (configuration,)
         assert kwargs["doctor_check_suppliers"] == (doctor_checks,)
         contributors = kwargs["plan_contributors"]
@@ -186,6 +191,9 @@ def test_main_registers_exported_callbacks_and_runs_real_aggregate_plan(
             confirm=lambda _prompt: True,
             output=print,
             timestamp=lambda: "20260726T120000Z",
+            install_action_candidate_suppliers=kwargs[
+                "install_action_candidate_suppliers"
+            ],
             install_action_suppliers=kwargs["install_action_suppliers"],
             configuration_suppliers=kwargs["configuration_suppliers"],
             doctor_check_suppliers=kwargs["doctor_check_suppliers"],
@@ -572,6 +580,7 @@ def test_core_install_id_collision_stops_before_mutation(
         confirm=lambda _prompt: True,
         output=lambda _line: None,
         timestamp=lambda: "20260726T120000Z",
+        install_action_candidate_suppliers=(duplicate_core_action,),
         install_action_suppliers=(duplicate_core_action,),
     )
 
@@ -579,3 +588,29 @@ def test_core_install_id_collision_stops_before_mutation(
     assert result.report.outcomes == ("duplicate install action IDs",)
     assert tuple(fake_runner.commands) == commands_before
     assert (state_path.read_bytes() if state_path.exists() else None) == state_before
+
+
+@pytest.mark.parametrize("profile", ("default", "work"))
+def test_candidate_actions_cover_every_possible_native_action(
+    profile: str,
+    repo_root: Path,
+    temporary_home: Path,
+    fake_runner: StatefulAssistantFake,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Static candidates cover all dynamically missing agent-native actions."""
+    monkeypatch.setattr(
+        "ballen_config.assistants.cursor.read_bundled_extensions",
+        lambda _root: frozenset(),
+    )
+    setup = ManifestRepository.load(repo_root / "manifests").resolve(
+        ResolutionRequest(profile=profile)
+    )
+    paths = RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home)
+
+    candidates = install_action_candidates(setup, paths)
+    dynamic = install_actions(setup, paths, fake_runner)
+
+    assert {action.component_id for action in dynamic} <= {
+        action.component_id for action in candidates
+    }

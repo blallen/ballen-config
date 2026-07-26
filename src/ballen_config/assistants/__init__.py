@@ -135,6 +135,56 @@ def install_actions(
     return tuple(sorted(actions, key=lambda action: action.component_id))
 
 
+def install_action_candidates(
+    setup: ResolvedSetup, paths: RuntimePaths
+) -> tuple[InstallAction, ...]:
+    """Return every selected native action without inspecting live agent state.
+
+    Args:
+        setup: Fully resolved component and profile selection.
+        paths: Approved checkout and runtime roots.
+
+    Returns:
+        Deterministically ordered possible Cursor, Claude, and Codex actions.
+
+    Raises:
+        ValueError: If reviewed catalogs produce duplicate action identifiers.
+    """
+    enabled = _enabled_agents(setup)
+    actions: list[InstallAction] = []
+    if "cursor" in enabled:
+        actions.extend(
+            plan_cursor_extension_actions(
+                paths.repo_root / "assistants/cursor/extensions.yaml",
+                enabled_agents=enabled,
+                installed=frozenset(),
+                bundled=frozenset(),
+            )
+        )
+    if "claude-code" in enabled:
+        actions.extend(
+            plan_claude_plugins(
+                paths.repo_root / "assistants/claude/plugins.yaml",
+                profiles=setup.profiles,
+                installed=frozenset(),
+                known_marketplaces=frozenset(),
+            )
+        )
+    if "codex" in enabled:
+        actions.extend(
+            plan_codex_plugins(
+                paths.repo_root / "assistants/codex/plugins.yaml",
+                profiles=setup.profiles,
+                installed=frozenset(),
+                known_marketplaces=frozenset(),
+            )
+        )
+    identifiers = [action.component_id for action in actions]
+    if len(identifiers) != len(set(identifiers)):
+        raise ValueError("duplicate assistant install action ID")
+    return tuple(sorted(actions, key=lambda action: action.component_id))
+
+
 def configuration(
     setup: ResolvedSetup, paths: RuntimePaths
 ) -> ConfigurationContribution:
@@ -277,6 +327,7 @@ __all__ = [
     "CodexPluginInspectionError",
     "CodexSettingsError",
     "CodexStableSettings",
+    "CursorExtensionInspectionError",
     "CursorExtensionPackage",
     "CursorRegistration",
     "ExtensionCatalog",
@@ -314,6 +365,7 @@ __all__ = [
     "doctor_checks",
     "hash_skill_tree",
     "hook_contribution",
+    "install_action_candidates",
     "install_actions",
     "jj_graph_action",
     "load_codex_stable_settings",
