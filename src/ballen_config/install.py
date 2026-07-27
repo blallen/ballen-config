@@ -88,6 +88,26 @@ class InstallError(RuntimeError):
     """A generic normalized installation failure."""
 
 
+def _same_git_origin(expected: str, actual: str) -> bool:
+    """Return whether two origins match, ignoring HTTPS-only trailing .git.
+
+    Args:
+        expected: Manifest-declared repository URL.
+        actual: Repository origin reported by Git.
+
+    Returns:
+        Whether the normalized URLs identify the same origin.
+    """
+    expected_url = urlsplit(expected.strip())
+    actual_url = urlsplit(actual.strip())
+    if expected_url.scheme == actual_url.scheme == "https":
+        return (
+            expected_url._replace(path=expected_url.path.removesuffix(".git")).geturl()
+            == actual_url._replace(path=actual_url.path.removesuffix(".git")).geturl()
+        )
+    return expected.strip() == actual.strip()
+
+
 class HttpsRedirectHandler(urllib.request.HTTPRedirectHandler):
     """Reject every redirect hop whose target is not HTTPS."""
 
@@ -252,10 +272,13 @@ class Installer:
 
     def _run_verified_download(self, action: InstallAction) -> CommandResult:
         """Download, verify, invoke, and remove a private artifact."""
-        assert action.url is not None
-        assert action.artifact_name is not None
-        assert action.size_bytes is not None
-        assert action.sha256 is not None
+        if (
+            action.url is None
+            or action.artifact_name is None
+            or action.size_bytes is None
+            or action.sha256 is None
+        ):
+            raise InstallError("verified-download action metadata is incomplete")
         workspace: Path | None = None
         try:
             try:
@@ -334,31 +357,115 @@ class Installer:
         return InstallOutcome(component_id=component.id, state="optional-failure")
 
     def _git(self, component: Component) -> InstallOutcome:
-        """Clone a git component into a safe sibling stage directory."""
-        assert component.destination is not None
+        """Install and verify a pinned Git revision in a sibling stage directory."""
+        if component.destination is None or component.revision is None:
+            raise InstallError(f"git component metadata is incomplete: {component.id}")
         destination = assert_contained(self.home / component.destination, self.home)
         assert_no_symlink_components(destination, stop=self.home)
         if destination.is_symlink():
             raise InstallError(f"git destination is a symlink: {component.id}")
         if (destination / ".git").is_dir():
-            return InstallOutcome(component_id=component.id, state="present")
+            try:
+                origin = self.runner.run(
+                    ("git", "-C", str(destination), "remote", "get-url", "origin")
+                )
+                if origin["returncode"] != 0 or not _same_git_origin(
+                    component.package, origin["stdout"]
+                ):
+                    raise InstallError("git origin verification failed")
+                status = self.runner.run(
+                    ("git", "-C", str(destination), "status", "--porcelain")
+                )
+                if status["returncode"] != 0 or status["stdout"]:
+                    raise InstallError("git worktree is not clean")
+                current = self.runner.run(
+                    ("git", "-C", str(destination), "rev-parse", "HEAD")
+                )
+                if current["returncode"] != 0:
+                    raise InstallError("git revision inspection failed")
+                if current["stdout"].strip() == component.revision:
+                    return InstallOutcome(component_id=component.id, state="present")
+                update_commands = (
+                    (
+                        "git",
+                        "-C",
+                        str(destination),
+                        "fetch",
+                        "--depth=1",
+                        "--no-tags",
+                        "origin",
+                        component.revision,
+                    ),
+                    (
+                        "git",
+                        "-C",
+                        str(destination),
+                        "checkout",
+                        "--detach",
+                        "FETCH_HEAD",
+                    ),
+                )
+                for command in update_commands:
+                    if self.runner.run(command)["returncode"] != 0:
+                        raise InstallError("git pin update failed")
+                verified = self.runner.run(
+                    ("git", "-C", str(destination), "rev-parse", "HEAD")
+                )
+                if (
+                    verified["returncode"] != 0
+                    or verified["stdout"].strip() != component.revision
+                ):
+                    raise InstallError("git revision verification failed")
+            except InstallError as error:
+                if component.required:
+                    raise InstallError(
+                        f"git checkout verification failed: {component.id}"
+                    ) from error
+                return InstallOutcome(
+                    component_id=component.id, state="optional-failure"
+                )
+            return InstallOutcome(component_id=component.id, state="installed")
         if destination.exists():
             raise InstallError(f"unmanaged git destination exists: {component.id}")
         destination.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
         stage = destination.with_name(f".{destination.name}.bootstrap-stage")
         if stage.exists() or stage.is_symlink():
             raise InstallError(f"stale git stage exists: {component.id}")
-        completed = self.runner.run(
-            ("git", "clone", "--depth=1", component.package, str(stage))
+        stage_commands = (
+            ("git", "init", str(stage)),
+            ("git", "-C", str(stage), "remote", "add", "origin", component.package),
+            (
+                "git",
+                "-C",
+                str(stage),
+                "fetch",
+                "--depth=1",
+                "--no-tags",
+                "origin",
+                component.revision,
+            ),
+            ("git", "-C", str(stage), "checkout", "--detach", "FETCH_HEAD"),
         )
-        if completed["returncode"] == 0:
+        try:
+            for stage_command in stage_commands:
+                if self.runner.run(stage_command)["returncode"] != 0:
+                    raise InstallError(f"git install failed: {component.id}")
+            verified = self.runner.run(("git", "-C", str(stage), "rev-parse", "HEAD"))
+            if (
+                verified["returncode"] != 0
+                or verified["stdout"].strip() != component.revision
+            ):
+                raise InstallError(f"git revision verification failed: {component.id}")
             os.replace(stage, destination)
             return InstallOutcome(component_id=component.id, state="installed")
-        if stage.is_dir() and not stage.is_symlink():
-            shutil.rmtree(stage)
-        if component.required:
-            raise InstallError(f"required install failed: {component.id}")
-        return InstallOutcome(component_id=component.id, state="optional-failure")
+        except (InstallError, OSError) as error:
+            if stage.is_dir() and not stage.is_symlink():
+                shutil.rmtree(stage)
+            if component.required:
+                raise InstallError(
+                    f"required install failed: {component.id}"
+                ) from error
+            return InstallOutcome(component_id=component.id, state="optional-failure")
 
 
 class InstallStageReport(BaseModel):

@@ -48,11 +48,6 @@ class StateStore:
     """Atomically persist private bootstrap state."""
 
     def __init__(self, paths: RuntimePaths) -> None:
-        """Initialize a store at the approved state root.
-
-        Args:
-            paths: Approved runtime filesystem roots.
-        """
         self.paths = paths
         self.path = paths.state_root / "state.json"
 

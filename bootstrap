@@ -7,6 +7,9 @@ readonly IDS_FILE="$ROOT_DIR/manifests/component-ids.txt"
 readonly LOCK_FILE="$ROOT_DIR/uv.lock"
 readonly RUNTIME_MARKER="$ROOT_DIR/.venv/.ballen-config-lock.sha256"
 readonly PREPARE_REQUIRED=20
+readonly HOMEBREW_INSTALL_REVISION="ca0130bd52235f2fcb2bf23cfdda004bc5d250c1" # pragma: allowlist secret
+readonly HOMEBREW_INSTALL_SHA256="8ff338091a5e10bb5fc040b38316648110f42feff057ecf9feaab51fd0a13ef9" # pragma: allowlist secret
+readonly HOMEBREW_INSTALL_URL="https://raw.githubusercontent.com/Homebrew/install/$HOMEBREW_INSTALL_REVISION/install.sh"
 readonly TEST_TOOL_ROOT="${BALLEN_BOOTSTRAP_TOOL_ROOT:-}"
 typeset UNAME_BIN="${TEST_TOOL_ROOT:+$TEST_TOOL_ROOT/}uname"
 typeset XCODE_SELECT_BIN="${TEST_TOOL_ROOT:+$TEST_TOOL_ROOT/}xcode-select"
@@ -30,6 +33,24 @@ fail() {
   exit "${2:-2}"
 }
 
+usage() {
+  print -- "usage: ./bootstrap [all|prepare|plan|install|configure|doctor] [options]"
+  print -- ""
+  print -- "options:"
+  print -- "  --profile ID   select one reviewed profile"
+  print -- "  --include ID   include an optional component; repeatable"
+  print -- "  --skip ID      skip a component globally; repeatable"
+  print -- "  --help         show this help and exit"
+}
+
+help_requested() {
+  local argument
+  for argument in "$@"; do
+    [[ "$argument" == --help ]] && return 0
+  done
+  return 1
+}
+
 has_id() {
   local kind="$1"
   local value="$2"
@@ -50,6 +71,9 @@ validate_arguments() {
   while (( index <= $# )); do
     local option="${@[index]}"
     case "$option" in
+      --help)
+        (( index += 1 ))
+        ;;
       --profile|--include|--skip)
         (( index + 1 <= $# )) || fail "missing value for $option"
         local value="${@[index + 1]}"
@@ -64,6 +88,11 @@ validate_arguments() {
 }
 
 brew_path() {
+  if [[ -n "$TEST_TOOL_ROOT" ]]; then
+    [[ -x "$TEST_TOOL_ROOT/brew" ]] || return 1
+    print -- "$TEST_TOOL_ROOT/brew"
+    return
+  fi
   if command -v brew >/dev/null 2>&1; then
     command -v brew
   elif [[ -x /opt/homebrew/bin/brew ]]; then
@@ -96,13 +125,42 @@ find_uv() {
   print -- "$candidate"
 }
 
-current_lock_hash() {
+sha256_file() {
+  local path="$1"
   local output
-  output="$("$SHASUM_BIN" -a 256 "$LOCK_FILE")" || return 1
+  output="$("$SHASUM_BIN" -a 256 "$path")" || return 1
   local digest="${output%%[[:space:]]*}"
   (( ${#digest} == 64 )) || return 1
   [[ "$digest" != *[^0-9a-f]* ]] || return 1
   print -r -- "$digest"
+}
+
+current_lock_hash() {
+  sha256_file "$LOCK_FILE"
+}
+
+install_homebrew() {
+  local installer
+  installer="$(/usr/bin/mktemp -t ballen-config-homebrew)" \
+    || fail "unable to create a private Homebrew installer file"
+  if ! "$CURL_BIN" -fsSL "$HOMEBREW_INSTALL_URL" -o "$installer"; then
+    /bin/rm -f -- "$installer"
+    fail "unable to download the pinned Homebrew installer"
+  fi
+  local digest
+  if ! digest="$(sha256_file "$installer")"; then
+    /bin/rm -f -- "$installer"
+    fail "unable to verify the Homebrew installer"
+  fi
+  if [[ "$digest" != "$HOMEBREW_INSTALL_SHA256" ]]; then
+    /bin/rm -f -- "$installer"
+    fail "Homebrew installer checksum mismatch"
+  fi
+  if ! "$BASH_BIN" "$installer"; then
+    /bin/rm -f -- "$installer"
+    fail "Homebrew installer failed"
+  fi
+  /bin/rm -f -- "$installer"
 }
 
 runtime_ready() {
@@ -132,7 +190,7 @@ prepare_runtime() {
   fi
   local brew
   if ! brew="$(brew_path)"; then
-    "$BASH_BIN" -c "$("$CURL_BIN" -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    install_homebrew
     brew="$(brew_path)" || fail "Homebrew installation did not produce brew"
   fi
   if ! UV_BIN="$(find_uv)"; then
@@ -149,6 +207,10 @@ prepare_runtime() {
 
 STAGE="$(validate_arguments "$@")"
 readonly STAGE
+if help_requested "$@"; then
+  usage
+  exit 0
+fi
 if [[ "$STAGE" == prepare ]]; then
   confirm "Prepare Command Line Tools, Homebrew, uv, Python 3.12, and the frozen environment?" \
     || exit 0

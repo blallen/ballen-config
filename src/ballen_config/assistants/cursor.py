@@ -10,7 +10,9 @@ import yaml
 from pydantic import BaseModel, ConfigDict
 
 from ballen_config.assistants.instructions import render_native_instructions
+from ballen_config.assistants.json import StrictJsonError, strict_json_loads
 from ballen_config.assistants.models import ExtensionCatalog, ExtensionSpec
+from ballen_config.assistants.sources import reviewed_regular_file as _reviewed_source
 from ballen_config.configure import (
     ApplyMethod,
     ConfigurationContribution,
@@ -19,7 +21,6 @@ from ballen_config.configure import (
 )
 from ballen_config.install import InstallAction
 from ballen_config.models import ResolvedSetup
-from ballen_config.paths import assert_contained, assert_no_symlink_components
 from ballen_config.runner import Runner
 from ballen_config.runtime import RuntimePaths
 
@@ -73,28 +74,18 @@ def _decode_json(source: bytes, *, label: str) -> object:
         ValueError: If the source is invalid JSON.
     """
     try:
-        return json.loads(
-            source,
-            object_pairs_hook=_reject_duplicate_keys,
-            parse_constant=_reject_non_finite,
-        )
-    except (json.JSONDecodeError, UnicodeDecodeError) as error:
+        return strict_json_loads(source)
+    except (json.JSONDecodeError, UnicodeDecodeError, StrictJsonError) as error:
         raise ValueError(f"invalid {label} JSON") from error
 
 
-def _reject_duplicate_keys(pairs: list[tuple[str, object]]) -> JsonObject:
-    """Decode JSON objects only when each key appears once."""
-    result: JsonObject = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError("duplicate JSON key")
-        result[key] = value
-    return result
-
-
-def _reject_non_finite(_value: str) -> object:
-    """Reject non-standard JSON numeric constants."""
-    raise ValueError("non-finite JSON value")
+def _decode_cursor_native_json(source: bytes, *, label: str) -> object:
+    """Decode native Cursor JSON after its generated comment preamble."""
+    lines = source.splitlines(keepends=True)
+    for index, line in enumerate(lines):
+        if line.strip() and not line.lstrip().startswith(b"//"):
+            return _decode_json(b"".join(lines[index:]), label=label)
+    return _decode_json(b"", label=label)
 
 
 def _load_json_object(path: Path, *, label: str) -> JsonObject:
@@ -133,16 +124,6 @@ def _load_json_array(path: Path, *, label: str) -> list[object]:
     if not isinstance(document, list):
         raise ValueError(f"{label} must be a JSON array")
     return cast(list[object], document)
-
-
-def _reviewed_source(paths: RuntimePaths, relative: Path) -> Path:
-    """Return one absolute, symlink-free source contained by the checkout."""
-    source = assert_contained(paths.repo_root / relative, paths.repo_root)
-    assert_no_symlink_components(source, stop=paths.repo_root)
-    if source.is_symlink():
-        raise ValueError("Cursor source must not be a symlink")
-    assert_contained(source.resolve(strict=True), paths.repo_root)
-    return source
 
 
 def deep_merge(base: object, overlay: object) -> object:
@@ -203,17 +184,19 @@ def read_bundled_extensions(root: Path) -> frozenset[str]:
         Lowercase bundled extension identifiers.
 
     Raises:
-        ValueError: If a package manifest lacks string publisher/name fields.
+        ValueError: If a manifest or declared extension identity is malformed.
     """
     identifiers: set[str] = set()
     for manifest in sorted(root.glob("*/package.json")):
         raw = _decode_json(
             manifest.read_bytes(), label="bundled Cursor extension manifest"
         )
-        if (
-            not isinstance(raw, dict)
-            or not isinstance(raw.get("publisher"), str)
-            or not isinstance(raw.get("name"), str)
+        if not isinstance(raw, dict):
+            raise ValueError("invalid bundled Cursor extension manifest")
+        if "publisher" not in raw:
+            continue
+        if not isinstance(raw.get("publisher"), str) or not isinstance(
+            raw.get("name"), str
         ):
             raise ValueError("invalid bundled Cursor extension manifest")
         package = cast(CursorExtensionPackage, raw)
@@ -409,16 +392,15 @@ def cursor_settings_renderer(
         if overlay is not None:
             document = deep_merge(document, overlay)
         existing = (
-            {} if current is None else _decode_json(current, label="Cursor settings")
+            {}
+            if current is None
+            else _decode_cursor_native_json(current, label="Cursor settings")
         )
         if not isinstance(existing, dict):
             raise ValueError("Cursor settings must be a JSON object")
-        return (
-            json.dumps(
-                deep_merge(existing, document), indent=2, sort_keys=True
-            ).encode()
-            + b"\n"
-        )
+        return json.dumps(
+            deep_merge(existing, document), indent=4, sort_keys=True
+        ).encode()
 
     return render
 
@@ -459,8 +441,10 @@ def cursor_keybindings_renderer() -> Renderer:
         existing = (
             []
             if current is None
-            else _load_json_array_bytes(current, label="Cursor keybindings")
+            else _decode_cursor_native_json(current, label="Cursor keybindings")
         )
+        if not isinstance(existing, list):
+            raise ValueError("Cursor keybindings must be a JSON array")
 
         def identity(item: object) -> tuple[object, object] | None:
             if not isinstance(item, dict) or not isinstance(item.get("key"), str):

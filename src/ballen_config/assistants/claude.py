@@ -5,14 +5,16 @@ from __future__ import annotations
 import json
 import shlex
 from pathlib import Path
-from typing import Never, NotRequired, TypedDict, cast
+from typing import NotRequired, TypedDict, cast
 
 import yaml
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from ballen_config.assistants.hooks import claude_hook_fragment
 from ballen_config.assistants.instructions import render_native_instructions
+from ballen_config.assistants.json import StrictJsonError, strict_json_loads
 from ballen_config.assistants.models import PluginCatalog
+from ballen_config.assistants.sources import reviewed_regular_file as _reviewed_source
 from ballen_config.configure import (
     ApplyMethod,
     ConfigurationContribution,
@@ -21,7 +23,6 @@ from ballen_config.configure import (
 )
 from ballen_config.install import InstallAction
 from ballen_config.models import ResolvedSetup
-from ballen_config.paths import assert_contained, assert_no_symlink_components
 from ballen_config.runner import Runner
 from ballen_config.runtime import RuntimePaths
 
@@ -36,10 +37,6 @@ class ClaudePluginInspectionError(RuntimeError):
     """A normalized failure to inspect native Claude plugin state."""
 
 
-class _ClaudeJsonError(ValueError):
-    """An ambiguous or non-standard JSON document at the native boundary."""
-
-
 class ClaudeStableSettings(BaseModel):
     """Repository-owned allowlisted Claude settings."""
 
@@ -52,6 +49,7 @@ class ClaudePluginEntry(TypedDict):
     """One plugin entry returned by Claude's native CLI."""
 
     id: str
+    scope: str
 
 
 class ClaudeMarketplaceEntry(TypedDict):
@@ -67,59 +65,6 @@ class ClaudePluginSnapshot(TypedDict):
     marketplaces: NotRequired[list[ClaudeMarketplaceEntry]]
 
 
-def _reject_duplicate_json_keys(pairs: list[tuple[str, object]]) -> JsonObject:
-    """Decode a JSON object only when its keys are unambiguous.
-
-    Args:
-        pairs: Ordered decoded key-value pairs.
-
-    Returns:
-        The decoded unique-key object.
-
-    Raises:
-        _ClaudeJsonError: If a JSON object contains a duplicate key.
-    """
-    result: JsonObject = {}
-    for key, value in pairs:
-        if key in result:
-            raise _ClaudeJsonError("invalid Claude JSON")
-        result[key] = value
-    return result
-
-
-def _reject_non_finite_json_constant(_constant: str) -> Never:
-    """Reject JSON constants that are not permitted by the JSON standard.
-
-    Args:
-        _constant: Native decoder token such as ``NaN`` or ``Infinity``.
-
-    Raises:
-        _ClaudeJsonError: Always, because non-finite constants are invalid.
-    """
-    raise _ClaudeJsonError("invalid Claude JSON")
-
-
-def _strict_json_loads(source: str | bytes) -> object:
-    """Decode JSON while rejecting duplicate keys and non-finite constants.
-
-    Args:
-        source: Native JSON text or bytes.
-
-    Returns:
-        Decoded JSON value.
-
-    Raises:
-        _ClaudeJsonError: If JSON uses duplicate keys or non-standard constants.
-        json.JSONDecodeError: If JSON syntax is invalid.
-        UnicodeDecodeError: If JSON bytes are not valid UTF-8.
-    """
-    return json.loads(
-        source,
-        object_pairs_hook=_reject_duplicate_json_keys,
-        parse_constant=_reject_non_finite_json_constant,
-    )
-
-
 def _json_object(source: bytes) -> JsonObject:
     """Decode one local Claude settings object without lossy coercion.
 
@@ -133,30 +78,12 @@ def _json_object(source: bytes) -> JsonObject:
         ClaudeSettingsError: If settings are invalid JSON or not an object.
     """
     try:
-        document = _strict_json_loads(source)
-    except (json.JSONDecodeError, UnicodeDecodeError, _ClaudeJsonError) as error:
+        document = strict_json_loads(source)
+    except (json.JSONDecodeError, UnicodeDecodeError, StrictJsonError) as error:
         raise ClaudeSettingsError("invalid Claude settings") from error
     if not isinstance(document, dict):
         raise ClaudeSettingsError("invalid Claude settings")
     return cast(JsonObject, document)
-
-
-def _reviewed_source(paths: RuntimePaths, relative: Path) -> Path:
-    """Return a resolved, regular, symlink-free reviewed source.
-
-    Args:
-        paths: Approved runtime roots.
-        relative: Repository-relative reviewed source.
-
-    Returns:
-        Absolute source path contained by the checkout.
-    """
-    source = assert_contained(paths.repo_root / relative, paths.repo_root)
-    assert_no_symlink_components(source, stop=paths.repo_root)
-    if source.is_symlink() or not source.is_file():
-        raise ValueError("Claude source must be a regular file")
-    assert_contained(source.resolve(strict=True), paths.repo_root)
-    return source
 
 
 def load_stable_settings(path: Path) -> ClaudeStableSettings:
@@ -172,9 +99,10 @@ def load_stable_settings(path: Path) -> ClaudeStableSettings:
         ClaudeSettingsError: If the reviewed settings are invalid.
     """
     try:
-        return ClaudeStableSettings.model_validate_json(path.read_bytes())
-    except (OSError, ValidationError) as error:
+        source = path.read_bytes()
+    except OSError as error:
         raise ClaudeSettingsError("invalid Claude settings") from error
+    return load_stable_settings_bytes(source)
 
 
 def _is_managed_rtk_hook(value: object, *, home: Path) -> bool:
@@ -252,7 +180,7 @@ def load_stable_settings_bytes(source: bytes) -> ClaudeStableSettings:
         ClaudeSettingsError: If the reviewed settings are invalid.
     """
     try:
-        return ClaudeStableSettings.model_validate_json(source)
+        return ClaudeStableSettings.model_validate(_json_object(source))
     except ValidationError as error:
         raise ClaudeSettingsError("invalid Claude settings") from error
 
@@ -337,11 +265,14 @@ def plan_claude_plugins(
     return tuple(actions)
 
 
-def _plugin_snapshot(result: object) -> ClaudePluginSnapshot:
-    """Validate the minimal native plugin-list payload used for planning.
+def _plugin_snapshot(
+    plugins_result: object, marketplaces_result: object
+) -> ClaudePluginSnapshot:
+    """Validate the minimal native inspection payloads used for planning.
 
     Args:
-        result: JSON-decoded native command output.
+        plugins_result: JSON-decoded native plugin-list output.
+        marketplaces_result: JSON-decoded native marketplace-list output.
 
     Returns:
         Validated plugin snapshot.
@@ -349,23 +280,25 @@ def _plugin_snapshot(result: object) -> ClaudePluginSnapshot:
     Raises:
         ClaudePluginInspectionError: If native output is malformed.
     """
-    if not isinstance(result, dict):
-        raise ClaudePluginInspectionError("Claude plugin inspection failed")
-    plugins = result.get("plugins")
-    marketplaces = result.get("marketplaces", [])
-    if not isinstance(plugins, list) or not isinstance(marketplaces, list):
+    if not isinstance(plugins_result, list) or not isinstance(
+        marketplaces_result, list
+    ):
         raise ClaudePluginInspectionError("Claude plugin inspection failed")
     if not all(
-        isinstance(item, dict) and isinstance(item.get("id"), str) for item in plugins
+        isinstance(item, dict)
+        and isinstance(item.get("id"), str)
+        and isinstance(item.get("scope"), str)
+        for item in plugins_result
     ):
         raise ClaudePluginInspectionError("Claude plugin inspection failed")
     if not all(
         isinstance(item, dict) and isinstance(item.get("name"), str)
-        for item in marketplaces
+        for item in marketplaces_result
     ):
         raise ClaudePluginInspectionError("Claude plugin inspection failed")
     return cast(
-        ClaudePluginSnapshot, {"plugins": plugins, "marketplaces": marketplaces}
+        ClaudePluginSnapshot,
+        {"plugins": plugins_result, "marketplaces": marketplaces_result},
     )
 
 
@@ -389,14 +322,26 @@ def install_actions(
     """
     if "claude-code" in setup.skipped or not setup.is_enabled("claude-code"):
         return ()
-    listed = runner.run(("claude", "plugin", "list", "--json"))
-    if listed["returncode"] != 0:
+    plugins_listed = runner.run(("claude", "plugin", "list", "--json"))
+    if plugins_listed["returncode"] != 0:
         raise ClaudePluginInspectionError("Claude plugin inspection failed")
     try:
-        snapshot = _plugin_snapshot(_strict_json_loads(listed["stdout"]))
+        plugins_result = strict_json_loads(plugins_listed["stdout"])
+    except (StrictJsonError, json.JSONDecodeError, UnicodeDecodeError) as error:
+        raise ClaudePluginInspectionError("Claude plugin inspection failed") from error
+    marketplaces_listed = runner.run(
+        ("claude", "plugin", "marketplace", "list", "--json")
+    )
+    if marketplaces_listed["returncode"] != 0:
+        raise ClaudePluginInspectionError("Claude plugin inspection failed")
+    try:
+        snapshot = _plugin_snapshot(
+            plugins_result,
+            strict_json_loads(marketplaces_listed["stdout"]),
+        )
     except (
         ClaudePluginInspectionError,
-        _ClaudeJsonError,
+        StrictJsonError,
         json.JSONDecodeError,
         UnicodeDecodeError,
     ) as error:
@@ -405,7 +350,9 @@ def install_actions(
     return plan_claude_plugins(
         catalog_path,
         profiles=setup.profiles,
-        installed=frozenset(plugin["id"] for plugin in snapshot["plugins"]),
+        installed=frozenset(
+            plugin["id"] for plugin in snapshot["plugins"] if plugin["scope"] == "user"
+        ),
         known_marketplaces=frozenset(
             marketplace["name"] for marketplace in snapshot["marketplaces"]
         ),

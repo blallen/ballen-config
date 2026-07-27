@@ -88,6 +88,22 @@ class StatefulAssistantFake:
         """Let already-tested core commands succeed without running them."""
         self.allow_unmodeled_core_commands = True
 
+    def add_git_checkout(self, path: Path, *, origin: str, revision: str) -> None:
+        """Model one clean checkout already converged to its reviewed revision."""
+        (path / ".git").mkdir(parents=True, exist_ok=True)
+        prefix = ("git", "-C", str(path))
+        self.add(
+            (*prefix, "remote", "get-url", "origin"),
+            returncode=0,
+            stdout=f"{origin}\n",
+        )
+        self.add((*prefix, "status", "--porcelain"), returncode=0)
+        self.add(
+            (*prefix, "rev-parse", "HEAD"),
+            returncode=0,
+            stdout=f"{revision}\n",
+        )
+
     def download(
         self,
         *,
@@ -167,13 +183,20 @@ class StatefulAssistantFake:
             self.cursor_extensions.add(extension_id)
             return {"returncode": 0, "stdout": "", "stderr": ""}
         if normalized == ("claude", "plugin", "list", "--json"):
-            payload = {
-                "plugins": [{"id": plugin} for plugin in sorted(self.claude_plugins)],
-                "marketplaces": [
-                    {"name": marketplace}
-                    for marketplace in sorted(self.claude_marketplaces)
-                ],
+            payload = [
+                {"id": plugin, "scope": "user"}
+                for plugin in sorted(self.claude_plugins)
+            ]
+            return {
+                "returncode": 0,
+                "stdout": json.dumps(payload),
+                "stderr": "",
             }
+        if normalized == ("claude", "plugin", "marketplace", "list", "--json"):
+            payload = [
+                {"name": marketplace}
+                for marketplace in sorted(self.claude_marketplaces)
+            ]
             return {
                 "returncode": 0,
                 "stdout": json.dumps(payload),
@@ -195,11 +218,22 @@ class StatefulAssistantFake:
             return {"returncode": 0, "stdout": "", "stderr": ""}
         if normalized == ("codex", "plugin", "list", "--json"):
             payload = {
-                "plugins": [{"id": plugin} for plugin in sorted(self.codex_plugins)],
+                "installed": [
+                    {"pluginId": plugin} for plugin in sorted(self.codex_plugins)
+                ],
+                "available": [],
+            }
+            return {
+                "returncode": 0,
+                "stdout": json.dumps(payload),
+                "stderr": "",
+            }
+        if normalized == ("codex", "plugin", "marketplace", "list", "--json"):
+            payload = {
                 "marketplaces": [
                     {"name": marketplace}
                     for marketplace in sorted(self.codex_marketplaces)
-                ],
+                ]
             }
             return {
                 "returncode": 0,

@@ -557,10 +557,12 @@ def test_directory_frontmatter_and_catalog_names_must_agree(
 @pytest.mark.parametrize(
     ("targets", "message"),
     [
-        ((AgentName.CURSOR, AgentName.CURSOR), "duplicate"),
-        ((AgentName.SHARED,), "unsupported"),
-        ((), "must not be empty"),
-        (cast(tuple[AgentName, ...], ("other",)), "unsupported"),
+        pytest.param((AgentName.CURSOR, AgentName.CURSOR), "duplicate", id="duplicate"),
+        pytest.param((AgentName.SHARED,), "unsupported", id="shared"),
+        pytest.param((), "must not be empty", id="empty"),
+        pytest.param(
+            cast(tuple[AgentName, ...], ("other",)), "unsupported", id="unknown"
+        ),
     ],
 )
 def test_targets_must_be_unique_supported_concrete_agents(

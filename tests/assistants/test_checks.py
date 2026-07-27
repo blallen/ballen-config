@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+import os
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -13,6 +16,30 @@ from ballen_config.install import InstallAction
 from ballen_config.runtime import RuntimePaths
 from ballen_config.state import BootstrapState, ManagedRecord, StateStore
 from tests.assistants.fakes import StatefulAssistantFake
+
+
+def _guard_scandir(
+    original_scandir: Callable[[Path], Any],
+    target: Path,
+    maximum_requests: int,
+) -> Callable[[Path], Any]:
+    """Return a scandir replacement that raises after a bounded target scan."""
+
+    @contextmanager
+    def guarded(path: Path) -> Iterator[Any]:
+        with original_scandir(path) as scan:
+            if Path(path) != target:
+                yield scan
+                return
+
+            def entries() -> Iterator[object]:
+                for _ in range(maximum_requests):
+                    yield next(scan)
+                raise AssertionError("scanner requested an unbounded entry")
+
+            yield entries()
+
+    return guarded
 
 
 @pytest.fixture
@@ -310,7 +337,7 @@ def test_scan_caps_do_not_request_a_fourth_entry(
     """Consume cap plus one entries, but never request an unbounded fourth."""
     import ballen_config.assistants.checks as checks
 
-    original_scandir = checks.os.scandir  # type: ignore[attr-defined]
+    original_scandir = os.scandir
     monkeypatch.setattr(checks, "_MAX_SKILL_ROOT_ENTRIES", 2)
     monkeypatch.setattr(checks, "_MAX_SKILL_TREE_ENTRIES", 2)
     monkeypatch.setattr(checks, "_MAX_CURSOR_WORKTREES", 2)
@@ -333,35 +360,11 @@ def test_scan_caps_do_not_request_a_fourth_entry(
     for index in range(4):
         (target / f"entry-{index}").write_text("x")
 
-    class SentinelScan:
-        """Delegate context manager that rejects a fourth iterator request."""
-
-        def __init__(self, entries: Iterator[object]) -> None:
-            self.entries = entries
-            self.requests = 0
-
-        def __enter__(self) -> SentinelScan:
-            return self
-
-        def __exit__(self, *_args: object) -> None:
-            return None
-
-        def __iter__(self) -> SentinelScan:
-            return self
-
-        def __next__(self) -> object:
-            self.requests += 1
-            if self.requests == 4:
-                raise AssertionError("scanner requested fourth entry")
-            return next(self.entries)
-
-    def guarded_scandir(path: Path) -> object:
-        scan = original_scandir(path)
-        if Path(path) == target:
-            return SentinelScan(iter(scan))
-        return scan
-
-    monkeypatch.setattr(checks.os, "scandir", guarded_scandir)  # type: ignore[attr-defined]
+    monkeypatch.setattr(
+        os,
+        "scandir",
+        _guard_scandir(original_scandir, target, maximum_requests=3),
+    )
     findings = assistant_checks(
         enabled=enabled, paths=paths, runner=StatefulAssistantFake(paths.home)
     )

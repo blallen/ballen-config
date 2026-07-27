@@ -5,9 +5,11 @@ from __future__ import annotations
 import os
 import re
 import stat
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from types import MappingProxyType
+from typing import Final, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -51,14 +53,18 @@ class _SkillFrontmatter(BaseModel):
     name: str = Field(pattern=r"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$")
 
 
-_SKILL_NAME_PATTERN = re.compile(r"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$")
-_MAX_FRONTMATTER_BYTES = 64 * 1024
-_SKILL_ROOTS = {
-    AgentName.CURSOR: Path(".cursor/skills"),
-    AgentName.CLAUDE: Path(".claude/skills"),
-    AgentName.CODEX: Path(".agents/skills"),
-}
-_CURSOR_SCANNED_ROOTS = (
+_SKILL_NAME_PATTERN: Final[re.Pattern[str]] = re.compile(
+    r"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$"
+)
+_MAX_FRONTMATTER_BYTES: Final[int] = 64 * 1024
+_SKILL_ROOTS: Final[Mapping[AgentName, Path]] = MappingProxyType(
+    {
+        AgentName.CURSOR: Path(".cursor/skills"),
+        AgentName.CLAUDE: Path(".claude/skills"),
+        AgentName.CODEX: Path(".agents/skills"),
+    }
+)
+_CURSOR_SCANNED_ROOTS: Final[tuple[Path, ...]] = (
     Path(".cursor/skills"),
     Path(".claude/skills"),
     Path(".agents/skills"),
@@ -279,14 +285,7 @@ def plan_skill_copies(
 
 
 def managed_tree_spec(action: SkillCopyAction) -> ManagedTreeSpec:
-    """Convert one skill action into the core atomic tree primitive.
-
-    Args:
-        action: Validated skill convergence action.
-
-    Returns:
-        Home-relative managed-tree specification.
-    """
+    """Convert a skill action into the core atomic tree primitive."""
     return ManagedTreeSpec(
         id=action.resource_id,
         source=action.source,

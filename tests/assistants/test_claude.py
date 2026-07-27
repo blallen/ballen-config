@@ -63,6 +63,22 @@ def test_stable_settings_omit_local_state(repo_root: Path) -> None:
     assert all(term not in serialized.casefold() for term in forbidden)
 
 
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param(b'{"model":"first","model":"second"}', id="duplicate-key"),
+        pytest.param(b'{"model":NaN}', id="non-finite"),
+    ],
+)
+def test_stable_settings_reject_ambiguous_json(tmp_path: Path, source: bytes) -> None:
+    """Reject reviewed settings whose JSON has ambiguous value semantics."""
+    path = tmp_path / "settings.json"
+    path.write_bytes(source)
+
+    with pytest.raises(ClaudeSettingsError, match="invalid Claude settings"):
+        load_stable_settings(path)
+
+
 def test_plugin_actions_are_scoped_ordered_and_profile_independent(
     repo_root: Path,
 ) -> None:
@@ -148,6 +164,129 @@ def test_registered_native_entries_are_noops(repo_root: Path) -> None:
     ids = {action.component_id for action in actions}
     assert "claude.marketplace.claude-plugins-official" not in ids
     assert "claude.plugin.frontend-design@claude-plugins-official" not in ids
+
+
+def test_native_array_inspection_uses_user_scoped_plugins_and_marketplaces(
+    fake_runner: StatefulAssistantFake,
+    repo_root: Path,
+    temporary_home: Path,
+) -> None:
+    """Read Claude's separate native plugin and marketplace array responses."""
+    fake_runner.add(
+        ("claude", "plugin", "list", "--json"),
+        returncode=0,
+        stdout=json.dumps(
+            [
+                {
+                    "id": "frontend-design@claude-plugins-official",
+                    "version": "1.0.0",
+                    "scope": "user",
+                    "enabled": True,
+                    "installPath": "/Users/test/.claude/plugins/frontend-design",
+                }
+            ]
+        ),
+    )
+    fake_runner.add(
+        ("claude", "plugin", "marketplace", "list", "--json"),
+        returncode=0,
+        stdout=json.dumps(
+            [
+                {
+                    "name": "claude-plugins-official",
+                    "source": "anthropics/claude-plugins-official",
+                }
+            ]
+        ),
+    )
+
+    actions = install_actions(
+        _setup(),
+        RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home),
+        fake_runner,
+    )
+
+    ids = {action.component_id for action in actions}
+    assert "claude.marketplace.claude-plugins-official" not in ids
+    assert "claude.plugin.frontend-design@claude-plugins-official" not in ids
+    assert fake_runner.commands == [
+        ("claude", "plugin", "list", "--json"),
+        ("claude", "plugin", "marketplace", "list", "--json"),
+    ]
+
+
+def test_project_scoped_native_plugin_does_not_satisfy_user_install(
+    fake_runner: StatefulAssistantFake,
+    repo_root: Path,
+    temporary_home: Path,
+) -> None:
+    """Plan a user install when the native plugin only has project scope."""
+    fake_runner.add(
+        ("claude", "plugin", "list", "--json"),
+        returncode=0,
+        stdout=json.dumps(
+            [
+                {
+                    "id": "frontend-design@claude-plugins-official",
+                    "version": "1.0.0",
+                    "scope": "project",
+                    "enabled": True,
+                    "installPath": "/repo/.claude/plugins/frontend-design",
+                }
+            ]
+        ),
+    )
+    fake_runner.add(
+        ("claude", "plugin", "marketplace", "list", "--json"),
+        returncode=0,
+        stdout='[{"name": "claude-plugins-official"}]',
+    )
+
+    actions = install_actions(
+        _setup(),
+        RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home),
+        fake_runner,
+    )
+
+    assert "claude.plugin.frontend-design@claude-plugins-official" in {
+        action.component_id for action in actions
+    }
+
+
+@pytest.mark.parametrize(
+    ("returncode", "stdout"),
+    [
+        pytest.param(1, "", id="command-failure"),
+        pytest.param(0, '[{"source": "missing-name"}]', id="malformed-payload"),
+    ],
+)
+def test_native_marketplace_inspection_fails_closed(
+    fake_runner: StatefulAssistantFake,
+    repo_root: Path,
+    temporary_home: Path,
+    returncode: int,
+    stdout: str,
+) -> None:
+    """Normalize unavailable or malformed marketplace responses."""
+    fake_runner.add(
+        ("claude", "plugin", "list", "--json"),
+        returncode=0,
+        stdout='[{"id": "frontend-design@claude-plugins-official", "scope": "user"}]',
+    )
+    fake_runner.add(
+        ("claude", "plugin", "marketplace", "list", "--json"),
+        returncode=returncode,
+        stdout=stdout,
+    )
+
+    with pytest.raises(
+        ClaudePluginInspectionError, match="Claude plugin inspection failed"
+    ):
+        install_actions(
+            _setup(),
+            RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home),
+            fake_runner,
+        )
 
 
 def test_renderer_replaces_only_the_exact_owned_managed_hook(

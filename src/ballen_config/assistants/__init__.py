@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Literal
 
 from ballen_config.assistants.checks import assistant_checks
@@ -211,8 +212,9 @@ def configuration(
             skills_configuration(setup, paths),
         )
     )
-    return contribution.model_copy(
-        update={"specs": tuple(sorted(contribution.specs, key=lambda spec: spec.id))}
+    return replace(
+        contribution,
+        specs=tuple(sorted(contribution.specs, key=lambda spec: spec.id)),
     )
 
 

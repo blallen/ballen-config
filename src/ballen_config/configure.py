@@ -9,8 +9,10 @@ import shutil
 import stat
 import tempfile
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Literal, Protocol
 
 import tomlkit
@@ -82,19 +84,29 @@ type Renderer = Callable[[bytes, bytes | None], bytes]
 type SourceValidator = Callable[[Path], None]
 
 
-class ConfigurationContribution(BaseModel):
+@dataclass(frozen=True)
+class ConfigurationContribution:
     """Configuration supplied by one independently testable contributor."""
 
-    model_config = ConfigDict(extra="forbid", frozen=True, arbitrary_types_allowed=True)
-
     specs: tuple[ManagedFileSpec | ManagedTreeSpec, ...] = ()
-    renderers: Mapping[str, Callable[[bytes, bytes | None], bytes]] = Field(
-        default_factory=dict
+    renderers: Mapping[str, Renderer] = field(
+        default_factory=lambda: MappingProxyType({})
     )
-    validators: Mapping[str, Callable[[Path], None]] = Field(default_factory=dict)
-    plan_action_overrides: Mapping[str, Literal["update", "repair"]] = Field(
-        default_factory=dict
+    validators: Mapping[str, SourceValidator] = field(
+        default_factory=lambda: MappingProxyType({})
     )
+    plan_action_overrides: Mapping[str, Literal["update", "repair"]] = field(
+        default_factory=lambda: MappingProxyType({})
+    )
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "renderers", MappingProxyType(dict(self.renderers)))
+        object.__setattr__(self, "validators", MappingProxyType(dict(self.validators)))
+        object.__setattr__(
+            self,
+            "plan_action_overrides",
+            MappingProxyType(dict(self.plan_action_overrides)),
+        )
 
 
 class ConfigurationSupplier(Protocol):

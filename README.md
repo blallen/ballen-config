@@ -98,6 +98,13 @@ Local ownership checksums and timestamped backups live mode-private beneath
 to the user's home directory, and source or destination symlink escapes are
 rejected before mutation.
 
+Executable bootstrap inputs are immutable at the repository boundary. The
+stage-zero Homebrew installer is pinned to a reviewed revision and verified by
+SHA-256 before Bash runs it. Git-managed shell components likewise declare an
+exact commit. Existing checkouts are reused or advanced only when they have the
+expected HTTPS origin and a clean worktree; a dirty checkout or unexpected
+origin is left untouched for manual review.
+
 ## Manual steps
 
 Use [manual steps](docs/manual-steps.md) for GitHub, GitLab, work AWS, SSH, and

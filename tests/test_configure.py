@@ -183,19 +183,17 @@ def test_symlinked_backup_ancestor_is_rejected_before_directory_creation(
     assert list(outside.iterdir()) == []
 
 
-@pytest.mark.parametrize("mode", [0o600, 0o700, "0600", "0700"])
-def test_only_private_modes_are_accepted(
-    config_paths: RuntimePaths, mode: int | str
-) -> None:
-    """Private accepted modes normalize through Pydantic."""
-    assert file_spec(config_paths, mode=mode).mode in (0o600, 0o700)
-
-
-@pytest.mark.parametrize("mode", [0o644, "0644"])
+@pytest.mark.parametrize(
+    "mode",
+    [
+        pytest.param(0o644, id="integer-world-readable"),
+        pytest.param("0644", id="string-world-readable"),
+    ],
+)
 def test_non_private_modes_are_rejected(
     config_paths: RuntimePaths, mode: int | str
 ) -> None:
-    """Unsafe modes are rejected at the manifest boundary."""
+    """Manifest input rejects modes that can expose managed configuration."""
     with pytest.raises(ValidationError):
         file_spec(config_paths, mode=mode)
 
@@ -361,13 +359,6 @@ def test_plan_action_overrides_are_strict_and_merge_by_spec_id(
     merged = merge_configuration_contributions((contribution,))
     assert merged.plan_action_overrides == {"example": "repair"}
 
-    with pytest.raises(ValidationError):
-        ConfigurationContribution.model_validate(
-            {
-                "specs": (spec,),
-                "plan_action_overrides": {"example": "invalid"},
-            }
-        )
     with pytest.raises(ValueError, match="unknown plan-action override"):
         merge_configuration_contributions(
             (

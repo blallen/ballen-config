@@ -18,21 +18,11 @@ class Runner(Protocol):
         """Run a command without displaying captured output."""
 
 
-type CommandRunner = Runner
-
-
 class SubprocessRunner:
     """Production subprocess runner."""
 
     def run(self, command: Sequence[str]) -> CommandResult:
-        """Run a command and capture its result.
-
-        Args:
-            command: Command and arguments to run.
-
-        Returns:
-            The captured return code, standard output, and standard error.
-        """
+        """Run a command and capture its result."""
         try:
             completed = subprocess.run(
                 list(command),

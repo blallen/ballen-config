@@ -8,6 +8,7 @@ from ballen_config.state import BootstrapState, InstallRecord, ManagedRecord, St
 
 
 def test_state_store_is_atomic_and_private(repo_root: Path, fake_home: Path) -> None:
+    """Persist state with private directory and file permissions."""
     paths = RuntimePaths.from_roots(repo_root=repo_root, home=fake_home)
     state = BootstrapState(
         installs={
@@ -32,6 +33,7 @@ def test_state_store_is_atomic_and_private(repo_root: Path, fake_home: Path) -> 
 def test_state_never_persists_native_command_output(
     repo_root: Path, fake_home: Path
 ) -> None:
+    """Installation records retain outcomes without native command output."""
     store = StateStore(RuntimePaths.from_roots(repo_root=repo_root, home=fake_home))
     store.record_install(InstallRecord(resource_id="signal", state="optional-failure"))
     assert "download failed with token" not in store.path.read_text()
@@ -40,6 +42,7 @@ def test_state_never_persists_native_command_output(
 def test_state_store_rejects_symlinked_state_root(
     repo_root: Path, fake_home: Path, tmp_path: Path
 ) -> None:
+    """Reject a state-root link before reading or writing its target."""
     outside = tmp_path / "outside"
     outside.mkdir()
     state_parent = fake_home / ".local"
@@ -56,6 +59,7 @@ def test_state_store_rejects_symlinked_state_root(
 def test_state_store_rejects_terminal_state_symlink(
     repo_root: Path, fake_home: Path, tmp_path: Path
 ) -> None:
+    """Refuse a linked state file instead of following it outside state."""
     paths = RuntimePaths.from_roots(repo_root=repo_root, home=fake_home)
     paths.state_root.mkdir(parents=True)
     outside = tmp_path / "outside.json"
@@ -72,6 +76,7 @@ def test_state_store_rejects_terminal_state_symlink(
 def test_state_store_rejects_state_path_outside_home(
     repo_root: Path, fake_home: Path, tmp_path: Path
 ) -> None:
+    """Reject state locations that fall outside the caller's home."""
     outside = tmp_path / "outside"
     paths = RuntimePaths(
         repo_root=repo_root,

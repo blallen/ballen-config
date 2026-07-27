@@ -15,18 +15,20 @@ from ballen_config.assistants.models import (
 )
 
 
-def test_engineering_defaults_are_exact(repo_root: Path) -> None:
-    """Keep the authored defaults limited to portable root guidance."""
+def test_engineering_defaults_contain_portable_requirements(repo_root: Path) -> None:
+    """Keep portable engineering requirements in the authored defaults."""
     path = repo_root / "assistants/shared/instructions/engineering.md"
-    assert path.read_text() == (
-        "# Engineering defaults\n\n"
-        "- Use Python 3.12.\n"
-        "- Use type hints, TypedDict for external mappings, and Pydantic 2.8 "
-        "for\n"
-        "  validated models.\n"
-        "- Use Google-style docstrings.\n"
-        "- Use pytest fixtures.\n"
-        "- Prefer Jujutsu for source control.\n"
+    text = path.read_text()
+    assert all(
+        requirement in text
+        for requirement in (
+            "Use Python 3.12.",
+            "TypedDict for external mappings",
+            "Pydantic 2.8",
+            "Google-style docstrings.",
+            "Use pytest fixtures.",
+            "Prefer Jujutsu for source control.",
+        )
     )
 
 

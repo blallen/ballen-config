@@ -62,16 +62,11 @@ class DuplicateContributor:
         )
 
 
-@pytest.fixture
-def repository(repo_root: Path) -> ManifestRepository:
-    """Load the repository manifests."""
-    return ManifestRepository.load(repo_root / "manifests")
-
-
 def test_plan_preserves_install_order_and_redacts_native_values(
     repo_root: Path,
-    repository: ManifestRepository,
+    manifest_repository: ManifestRepository,
 ) -> None:
+    """Plan preserves install order while withholding native credentials."""
     request = ResolutionRequest(profile="default")
 
     plan = build_plan(
@@ -81,7 +76,9 @@ def test_plan_preserves_install_order_and_redacts_native_values(
         contributors=(FakeContributor(),),
     )
 
-    expected = [component.id for component in repository.resolve(request).components]
+    expected = [
+        component.id for component in manifest_repository.resolve(request).components
+    ]
     assert [action.component_id for action in plan.actions[: len(expected)]] == expected
     output = format_plan(plan)
     assert "install gh (owner=bootstrap): present" in output
@@ -93,11 +90,11 @@ def test_plan_preserves_install_order_and_redacts_native_values(
 
 def test_build_plan_delegates_to_resolved_plan(
     repo_root: Path,
-    repository: ManifestRepository,
+    manifest_repository: ManifestRepository,
 ) -> None:
     """Manifest and resolved entry points produce the same stable plan."""
     request = ResolutionRequest(profile="default")
-    resolved = repository.resolve(request)
+    resolved = manifest_repository.resolve(request)
     expected = build_resolved_plan(
         resolved,
         profile=request.profile,
@@ -116,11 +113,12 @@ def test_build_plan_delegates_to_resolved_plan(
 
 
 def test_core_manual_actions_are_stable_and_work_aware(
-    repository: ManifestRepository,
+    manifest_repository: ManifestRepository,
 ) -> None:
+    """Manual actions remain ordered and gain AWS only for work."""
     contributor = CoreManualContributor()
-    default = repository.resolve(ResolutionRequest(profile="default"))
-    work = repository.resolve(ResolutionRequest(profile="work"))
+    default = manifest_repository.resolve(ResolutionRequest(profile="default"))
+    work = manifest_repository.resolve(ResolutionRequest(profile="work"))
 
     assert [
         (action.component_id, action.action) for action in contributor.actions(default)
@@ -142,6 +140,7 @@ def test_core_manual_actions_are_stable_and_work_aware(
 def test_duplicate_plan_action_component_id_fails_closed(
     repo_root: Path,
 ) -> None:
+    """Plan contributors cannot create ambiguous component action identities."""
     with pytest.raises(ValueError, match=r"duplicate PlanAction\.component_id"):
         build_plan(
             repo_root / "manifests",

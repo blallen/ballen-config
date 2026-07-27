@@ -267,12 +267,13 @@ def test_renderers_preserve_unrelated_cursor_native_state(
     settings = json.loads(
         contribution.renderers["cursor-settings"](
             specs["cursor-settings"].source.read_bytes(),
-            b'{"native":{"keep":true}}',
+            b'// Cursor user settings\n{"native":{"keep":true}}',
         )
     )
     bindings = json.loads(
         contribution.renderers["cursor-keybindings"](
             specs["cursor-keybindings"].source.read_bytes(),
+            b"// Place your key bindings in this file to override the defaults\n"
             b'[{"key":"cmd+x","command":"native.keep"}]',
         )
     )
@@ -282,6 +283,29 @@ def test_renderers_preserve_unrelated_cursor_native_state(
         "native.keep",
         "composerMode.agent",
     }
+
+
+def test_settings_renderer_converges_on_cursor_native_indentation(
+    repo_root: Path, temporary_home: Path
+) -> None:
+    """Keep a converged four-space native settings document byte-stable."""
+    paths = RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home)
+    contribution = configuration(
+        _resolved_setup("cursor", profiles=("default", "work")),
+        paths,
+    )
+    spec = next(spec for spec in contribution.specs if spec.id == "cursor-settings")
+    document = json.loads(spec.source.read_bytes())
+    document.update(
+        json.loads((repo_root / "assistants/cursor/settings.work.json").read_bytes())
+    )
+    document["native.keep"] = True
+    current = json.dumps(document, indent=4, sort_keys=True).encode()
+
+    assert (
+        contribution.renderers["cursor-settings"](spec.source.read_bytes(), current)
+        == current
+    )
 
 
 def test_keybindings_renderer_preserves_same_command_on_other_shortcut(
@@ -475,11 +499,16 @@ def test_bundled_extension_satisfies_desired_feature(repo_root: Path) -> None:
     assert "ms-python.python" not in state.missing
 
 
-def test_bundled_manifest_ids_are_normalized(tmp_path: Path) -> None:
-    """Read lowercase publisher.name IDs from Cursor package manifests."""
+def test_bundled_manifest_ids_ignore_packages_without_extension_identity(
+    tmp_path: Path,
+) -> None:
+    """Read extension IDs without rejecting unrelated bundled packages."""
     manifest = tmp_path / "extensions/python/package.json"
     manifest.parent.mkdir(parents=True)
     manifest.write_text('{"publisher":"MS-Python","name":"Python"}')
+    theme = tmp_path / "extensions/theme-cursor/package.json"
+    theme.parent.mkdir(parents=True)
+    theme.write_text('{"name":"theme-cursor"}')
     assert read_bundled_extensions(tmp_path / "extensions") == frozenset(
         {"ms-python.python"}
     )

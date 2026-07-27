@@ -8,12 +8,6 @@ from ballen_config.models import Component, Profile, ResolutionRequest
 
 
 @pytest.fixture
-def repository(repo_root: Path) -> ManifestRepository:
-    """Load the repository manifests."""
-    return ManifestRepository.load(repo_root / "manifests")
-
-
-@pytest.fixture
 def minimal_manifest_root(tmp_path: Path) -> Path:
     """Create a complete minimal manifest directory."""
     root = tmp_path / "manifests"
@@ -36,19 +30,29 @@ def ids(repository: ManifestRepository, request: ResolutionRequest) -> set[str]:
     return {component.id for component in repository.resolve(request).components}
 
 
-def test_work_profile_extends_default(repository: ManifestRepository) -> None:
-    resolved = ids(repository, ResolutionRequest(profile="work"))
-    assert {"uv", "gh", "glab", "jj", "wave", "libmagic", "awscli"} <= resolved
+def test_work_profile_extends_default(manifest_repository: ManifestRepository) -> None:
+    """Work includes its inherited tools without optional personal apps."""
+    resolved = ids(manifest_repository, ResolutionRequest(profile="work"))
+    assert {
+        "uv",
+        "gh",
+        "glab",
+        "jj",
+        "pre-commit",
+        "wave",
+        "libmagic",
+        "awscli",
+    } <= resolved
     assert {"obsidian", "signal", "mactex"}.isdisjoint(resolved)
 
 
 def test_shell_parent_precedes_nested_git_components(
-    repository: ManifestRepository,
+    manifest_repository: ManifestRepository,
 ) -> None:
     """Install Oh My Zsh before repositories nested beneath it."""
     ordered = [
         component.id
-        for component in repository.resolve(
+        for component in manifest_repository.resolve(
             ResolutionRequest(profile="default")
         ).components
     ]
@@ -77,31 +81,51 @@ def test_profile_cycle_is_rejected(tmp_path: Path) -> None:
         repository.resolve(ResolutionRequest(profile="a"))
 
 
-@pytest.mark.parametrize("include", ["obsidian", "signal", "mactex"])
+@pytest.mark.parametrize(
+    "include",
+    [
+        pytest.param("obsidian", id="obsidian"),
+        pytest.param("signal", id="signal"),
+        pytest.param("mactex", id="mactex"),
+    ],
+)
 def test_personal_applications_are_opt_in(
-    repository: ManifestRepository,
+    manifest_repository: ManifestRepository,
     include: str,
 ) -> None:
+    """Optional personal applications appear only after explicit selection."""
     resolved = ids(
-        repository,
+        manifest_repository,
         ResolutionRequest(profile="default", includes=(include,)),
     )
     assert include in resolved
 
 
-@pytest.mark.parametrize("skip", ["cursor", "claude-code", "codex", "wave"])
+@pytest.mark.parametrize(
+    "skip",
+    [
+        pytest.param("cursor", id="cursor"),
+        pytest.param("claude-code", id="claude-code"),
+        pytest.param("codex", id="codex"),
+        pytest.param("wave", id="wave"),
+    ],
+)
 def test_skip_removes_complete_component(
-    repository: ManifestRepository,
+    manifest_repository: ManifestRepository,
     skip: str,
 ) -> None:
-    result = repository.resolve(
+    """Skipping a component removes it from resolution and records the choice."""
+    result = manifest_repository.resolve(
         ResolutionRequest(profile="work", skips=(skip,)),
     )
     assert skip not in {component.id for component in result.components}
     assert skip in result.skipped
 
 
-def test_interface_ids_match_manifests(repository: ManifestRepository) -> None:
+def test_interface_ids_match_manifests(
+    manifest_repository: ManifestRepository,
+) -> None:
+    """Published selection IDs remain synchronized with resolved manifests."""
     expected = (
         "profile default",
         "profile work",
@@ -113,12 +137,13 @@ def test_interface_ids_match_manifests(repository: ManifestRepository) -> None:
         "skip cursor",
         "skip wave",
     )
-    assert repository.interface_lines() == expected
-    interface_path = repository.root / "component-ids.txt"
+    assert manifest_repository.interface_lines() == expected
+    interface_path = manifest_repository.root / "component-ids.txt"
     assert tuple(interface_path.read_text().splitlines()) == expected
 
 
 def test_component_rejects_unknown_safety_field() -> None:
+    """Manifest component validation rejects misspelled safety settings."""
     with pytest.raises(ValidationError, match="enabled_by_defualt"):
         Component.model_validate(
             {
@@ -133,6 +158,7 @@ def test_component_rejects_unknown_safety_field() -> None:
 def test_profile_filename_must_match_declared_name(
     minimal_manifest_root: Path,
 ) -> None:
+    """Profile files cannot silently declare a different identity."""
     profile_path = minimal_manifest_root / "profiles/default.yaml"
     profile_path.write_text("name: work\nextends: []\n", encoding="utf-8")
 
@@ -143,6 +169,7 @@ def test_profile_filename_must_match_declared_name(
 def test_component_profiles_must_exist(
     minimal_manifest_root: Path,
 ) -> None:
+    """Components may only target profiles defined by the manifest set."""
     packages_path = minimal_manifest_root / "packages.yaml"
     packages_path.write_text(
         """

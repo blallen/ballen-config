@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import os
 import subprocess
+import tomllib
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
 import pytest
-from pydantic import ValidationError
 
 from ballen_config.policy import (
     PolicyError,
@@ -29,17 +29,6 @@ def completed(
 ) -> subprocess.CompletedProcess[bytes]:
     """Build one captured subprocess result."""
     return subprocess.CompletedProcess(command, returncode, stdout, stderr)
-
-
-def test_violation_is_strict_and_frozen() -> None:
-    """Policy findings expose only immutable rule and relative path."""
-    with pytest.raises(ValidationError):
-        Violation.model_validate(
-            {"rule": "private-key", "path": "bad.pem", "content": "secret"}
-        )
-    violation = Violation(rule="private-key", path="bad.pem")
-    with pytest.raises(ValidationError):
-        violation.path = "other.pem"
 
 
 def test_policy_rejects_secret_and_generated_state(tmp_path: Path) -> None:
@@ -322,8 +311,15 @@ def test_repository_passes_policy(repo_root: Path) -> None:
     assert scan_tree(repo_root) == ()
 
 
-def test_ci_runs_secret_hooks_across_all_files(repo_root: Path) -> None:
-    """CI independently enforces both non-mutating credential hooks."""
+def test_ci_runs_complete_pre_commit_contract(repo_root: Path) -> None:
+    """CI executes every repository hook instead of a hand-maintained subset."""
     workflow = (repo_root / ".github/workflows/ci.yml").read_text()
-    for hook in ("detect-secrets", "detect-private-key"):
-        assert f"run: uv run --frozen pre-commit run {hook} --all-files" in workflow
+    assert "run: uv run --frozen pre-commit run --all-files" in workflow
+
+
+def test_jj_config_defines_no_unsafe_global_content_transformers(
+    repo_root: Path,
+) -> None:
+    """Portable JJ defaults never treat command diagnostics as file content."""
+    config = tomllib.loads((repo_root / "dotfiles/vcs/jj-config.toml").read_text())
+    assert "fix" not in config
