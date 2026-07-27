@@ -24,6 +24,7 @@ from ballen_config.install import InstallAction, InstallStageReport
 from ballen_config.manifests import ManifestRepository
 from ballen_config.models import Manager, ResolutionRequest
 from ballen_config.runtime import RuntimePaths
+from ballen_config.state import StateStore
 from tests.assistants.fakes import StatefulAssistantFake
 
 
@@ -416,6 +417,68 @@ def test_work_all_is_idempotent_for_agent_managed_state(
         for command in fake_runner.commands[command_count:]
         if len(command) >= 3
     )
+
+
+def test_aggregate_configure_copies_and_tracks_shared_jujutsu_workflow_skill(
+    repo_root: Path,
+    temporary_home: Path,
+    fake_runner: StatefulAssistantFake,
+) -> None:
+    """Copy the reviewed skill to native roots and converge it idempotently."""
+    first = run_with_assistants(
+        ("configure",),
+        repo_root=repo_root,
+        home=temporary_home,
+        runner=fake_runner,
+    )
+    source = repo_root / "assistants/shared/skills/jujutsu-workflow"
+    destinations = {
+        "cursor": temporary_home / ".cursor/skills/jujutsu-workflow",
+        "claude-code": temporary_home / ".claude/skills/jujutsu-workflow",
+        "codex": temporary_home / ".agents/skills/jujutsu-workflow",
+    }
+
+    assert first.exit_code == 0
+    for destination in destinations.values():
+        assert (destination / "SKILL.md").read_bytes() == (
+            source / "SKILL.md"
+        ).read_bytes()
+        assert (destination / "reference.md").read_bytes() == (
+            source / "reference.md"
+        ).read_bytes()
+    records = (
+        StateStore(RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home))
+        .load()
+        .managed
+    )
+    assert set(records) >= {
+        "shared-skill-jujutsu-workflow-cursor",
+        "shared-skill-jujutsu-workflow-claude-code",
+        "shared-skill-jujutsu-workflow-codex",
+    }
+    for target, destination in destinations.items():
+        resource_id = f"shared-skill-jujutsu-workflow-{target}"
+        receipt = records[resource_id]
+        assert receipt.resource_id == resource_id
+        assert receipt.destination == str(destination.relative_to(temporary_home))
+        assert receipt.source_digest == receipt.destination_digest
+
+    second = run_with_assistants(
+        ("configure",),
+        repo_root=repo_root,
+        home=temporary_home,
+        runner=fake_runner,
+    )
+
+    assert second.exit_code == 0
+    assert second.report.changed_count == 0
+    for destination in destinations.values():
+        assert (destination / "SKILL.md").read_bytes() == (
+            source / "SKILL.md"
+        ).read_bytes()
+        assert (destination / "reference.md").read_bytes() == (
+            source / "reference.md"
+        ).read_bytes()
 
 
 def test_all_agent_skips_leave_no_assistant_plan_or_native_commands(

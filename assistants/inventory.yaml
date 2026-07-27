@@ -26,7 +26,7 @@ resources:
     source: assistants/shared/skills/catalog.yaml
     catalog_kind: skill
     targets: [cursor, claude-code, codex]
-    item_ids: []
+    item_ids: [jujutsu-workflow]
 
   - id: cursor.settings
     kind: file

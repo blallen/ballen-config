@@ -197,10 +197,10 @@ resources:
         load_inventory(inventory_path, repo_root)
 
 
-def test_initial_inventory_keeps_empty_shared_skill_catalog(
+def test_inventory_declares_first_reviewed_shared_skill_catalog(
     repo_root: Path,
 ) -> None:
-    """Keep the shared-skill catalog empty as reviewed resources are added."""
+    """Expose the first reviewed shared skill to every supported agent."""
     inventory = load_inventory(repo_root / "assistants/inventory.yaml", repo_root)
     resource = next(
         item for item in inventory.resources if item.id == "shared.skills.catalog"
@@ -208,13 +208,18 @@ def test_initial_inventory_keeps_empty_shared_skill_catalog(
     assert isinstance(resource, CatalogResource)
     assert resource.id == "shared.skills.catalog"
     assert resource.owner is AgentName.SHARED
-    assert resource.item_ids == ()
+    assert resource.targets == (
+        AgentName.CURSOR,
+        AgentName.CLAUDE,
+        AgentName.CODEX,
+    )
+    assert resource.item_ids == ("jujutsu-workflow",)
 
 
 def test_initial_shared_catalog_disappears_when_all_agents_are_skipped(
     repo_root: Path,
 ) -> None:
-    """Remove the initial shared catalog when every concrete target is skipped."""
+    """Remove the reviewed shared catalog when every concrete target is skipped."""
     inventory = load_inventory(repo_root / "assistants/inventory.yaml", repo_root)
     resolved = resolve_inventory(
         inventory,

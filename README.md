@@ -78,10 +78,13 @@ state. Use each agent's first-party browser capability rather than a global
 Playwright MCP, GitLab through `glab`, and official Notion integrations. Cursor
 User Rules and some first-party capabilities are deliberate manual steps.
 
-Only generic skills are promoted into the shared catalog; repository-specific
-skills remain in add-ons. Sessions, history, memories, auth, trust,
-worktrees, caches, indexes, and generated plugin state are excluded. Memory
-migration is not an MVP capability.
+`jujutsu-workflow` is the first reviewed shared skill. It is stored once in
+this desired-state repository and independently copied into each selected
+agent's native skill root; this does not depend on Cursor third-party
+auto-import. Only generic skills are promoted into the shared catalog;
+repository-specific skills remain in add-ons. Sessions, history, memories,
+auth, trust, worktrees, caches, indexes, and generated plugin state are
+excluded. Memory migration is not an MVP capability.
 
 ## Security and state boundary
 

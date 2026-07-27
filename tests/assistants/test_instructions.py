@@ -146,7 +146,7 @@ def test_rendered_instructions_reject_generated_state(
 def test_inventory_loads_reviewed_shared_instruction_and_hook_resources(
     repo_root: Path,
 ) -> None:
-    """Keep Task 3 sources reviewed and the empty skill catalog synchronized."""
+    """Keep reviewed shared resources and the seeded skill catalog synchronized."""
     inventory = load_inventory(repo_root / "assistants/inventory.yaml", repo_root)
     by_id = {resource.id: resource for resource in inventory.resources}
     assert {identifier for identifier in by_id if identifier.startswith("shared.")} == {
@@ -166,4 +166,4 @@ def test_inventory_loads_reviewed_shared_instruction_and_hook_resources(
     assert set(hook.targets) == {"cursor", "claude-code"}
     catalog = by_id["shared.skills.catalog"]
     assert isinstance(catalog, CatalogResource)
-    assert catalog.item_ids == ()
+    assert catalog.item_ids == ("jujutsu-workflow",)

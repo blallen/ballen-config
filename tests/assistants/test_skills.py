@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import shutil
+from hashlib import sha256
 from pathlib import Path
 from typing import cast
 
@@ -802,11 +803,11 @@ def test_configuration_selects_all_eligible_skills_deterministically(
     assert not (skill_paths.home / ".cursor").exists()
 
 
-def test_initial_catalog_and_inventory_remain_empty_and_synchronized(
+def test_jujutsu_workflow_catalog_inventory_and_configuration_are_synchronized(
     repo_root: Path,
     temporary_home: Path,
 ) -> None:
-    """Ship infrastructure without claiming a first promoted shared skill."""
+    """Declare and plan the first reviewed shared skill without mutation."""
     inventory = load_inventory(repo_root / "assistants/inventory.yaml", repo_root)
     catalog = yaml.safe_load(
         (repo_root / "assistants/shared/skills/catalog.yaml").read_text()
@@ -814,18 +815,66 @@ def test_initial_catalog_and_inventory_remain_empty_and_synchronized(
     resource = next(
         item for item in inventory.resources if item.id == "shared.skills.catalog"
     )
-    assert catalog == {"skills": []}
+    expected_skill = {
+        "name": "jujutsu-workflow",
+        "source": "assistants/shared/skills/jujutsu-workflow",
+        "targets": ["cursor", "claude-code", "codex"],
+        "profiles": ["default"],
+        "dependencies": [],
+        "provenance": (
+            "Byte-for-byte promotion from the reviewed "
+            "plato/skills/jujutsu-workflow source; commit history records the origin."
+        ),
+        "portability_status": "reviewed-generic",
+    }
+    assert catalog == {"skills": [expected_skill]}
     assert isinstance(resource, CatalogResource)
-    assert resource.item_ids == ()
-    paths = RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home)
-    assert (
-        configuration(
-            _resolved_setup("cursor", "claude-code", "codex"),
-            paths,
-        )
-        == ConfigurationContribution()
+    assert resource.owner is AgentName.SHARED
+    assert resource.targets == (
+        AgentName.CURSOR,
+        AgentName.CLAUDE,
+        AgentName.CODEX,
     )
+    assert resource.item_ids == ("jujutsu-workflow",)
+    source = repo_root / "assistants/shared/skills/jujutsu-workflow"
+    expected_jujutsu_workflow_tree_digest = "e7ca3f2e0a0f3f79dff90cc8fd718d74fecf18234d9b57dfeb0245480af1a8ec"  # pragma: allowlist secret
+    assert hash_skill_tree(source) == expected_jujutsu_workflow_tree_digest
+    assert (
+        sha256((source / "SKILL.md").read_bytes()).hexdigest()
+        == (
+            "fb76302a9d6d8e7555052d62099cf0086e5d64363966fca345298359b36491e3"  # pragma: allowlist secret
+        )
+    )
+    assert (
+        sha256((source / "reference.md").read_bytes()).hexdigest()
+        == (
+            "5bf5d9320b46672700b4d0d2f063ba90ce7d8fd67ec83f096971f522576b2a93"  # pragma: allowlist secret
+        )
+    )
+    paths = RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home)
+    contribution = configuration(
+        _resolved_setup("cursor", "claude-code", "codex"),
+        paths,
+    )
+    assert all(isinstance(spec, ManagedTreeSpec) for spec in contribution.specs)
+    assert [(spec.id, spec.destination) for spec in contribution.specs] == [
+        (
+            "shared-skill-jujutsu-workflow-codex",
+            Path(".agents/skills/jujutsu-workflow"),
+        ),
+        (
+            "shared-skill-jujutsu-workflow-claude-code",
+            Path(".claude/skills/jujutsu-workflow"),
+        ),
+        (
+            "shared-skill-jujutsu-workflow-cursor",
+            Path(".cursor/skills/jujutsu-workflow"),
+        ),
+    ]
     assert not paths.state_root.exists()
+    assert not (temporary_home / ".cursor/skills/jujutsu-workflow").exists()
+    assert not (temporary_home / ".claude/skills/jujutsu-workflow").exists()
+    assert not (temporary_home / ".agents/skills/jujutsu-workflow").exists()
 
 
 @pytest.mark.parametrize(

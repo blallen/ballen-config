@@ -4,6 +4,11 @@ A shared skill is portable configuration, not a copy of local agent state.
 Promotion requires an individually reviewed source whose name and behavior are
 safe for every declared target.
 
+`jujutsu-workflow` is the first reviewed shared skill. `ballen-config` stores
+its desired bytes once, then independently copies them to each selected
+agent's native skill root. This is desired-state configuration, not a Cursor
+third-party auto-import workflow.
+
 ## Catalog entry
 
 ```yaml
