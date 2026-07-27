@@ -11,6 +11,10 @@ from pathlib import Path, PurePath
 
 from pydantic import BaseModel, ConfigDict
 
+from ballen_config.assistants.cursor_mcp import (
+    is_approved_atlassian_mcp_source,
+)
+
 _GENERATED_PARTS = frozenset(
     {
         "__pycache__",
@@ -279,7 +283,8 @@ def _content_rules(path: Path, content: bytes) -> set[str]:
         rules.add("credential-placeholder")
     if _MACHINE_PATH_PATTERN.search(content):
         rules.add("machine-path")
-    if _FORBIDDEN_MCP_PATTERN.search(content):
+    approved_atlassian_mcp = is_approved_atlassian_mcp_source(path, content)
+    if _FORBIDDEN_MCP_PATTERN.search(content) and not approved_atlassian_mcp:
         rules.add("forbidden-mcp")
     if path.name == "mcp.json":
         rules.add("forbidden-mcp")

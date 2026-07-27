@@ -12,6 +12,7 @@ from ballen_config.assistants.models import (
     CursorMarketplacePlugin,
     ExtensionCatalog,
     ExtensionSpec,
+    FileResource,
     NativeMarketplacePlugin,
     PluginCatalog,
     SkillCatalog,
@@ -641,6 +642,66 @@ def test_file_resources_reject_managed_local_state_paths(
         "destination": ".cursor/settings.json",
         field: path,
     }
+    with pytest.raises(ValidationError, match="managed local state"):
+        AssistantInventory.model_validate({"resources": [resource]})
+
+
+def test_file_resource_allows_exact_work_cursor_atlassian_mcp_destination() -> None:
+    """Permit only the reviewed work-profile Cursor MCP destination."""
+    inventory = AssistantInventory.model_validate(
+        {
+            "resources": [
+                {
+                    "id": "cursor.atlassian-mcp",
+                    "kind": "file",
+                    "owner": "cursor",
+                    "source": "assistants/cursor/atlassian-workaround.json",
+                    "destination": ".cursor/mcp.json",
+                    "profiles": ["work"],
+                }
+            ]
+        }
+    )
+
+    resource = inventory.resources[0]
+    assert isinstance(resource, FileResource)
+    assert resource.destination.as_posix() == ".cursor/mcp.json"
+    assert resource.profiles == ("work",)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        pytest.param("id", "cursor.other", id="wrong-id"),
+        pytest.param("owner", "shared", id="wrong-owner"),
+        pytest.param(
+            "source",
+            "assistants/cursor/settings.base.json",
+            id="wrong-source",
+        ),
+        pytest.param("profiles", ["default"], id="default-profile"),
+        pytest.param("profiles", ["default", "work"], id="extra-profile"),
+        pytest.param("mode", 0o700, id="wrong-mode"),
+        pytest.param("role", "overlay", id="wrong-role"),
+        pytest.param("required", False, id="optional"),
+        pytest.param("targets", ["cursor"], id="unexpected-target"),
+    ],
+)
+def test_cursor_atlassian_mcp_path_rejects_every_other_resource_shape(
+    field: str,
+    value: object,
+) -> None:
+    """Keep the local-state exception bound to one complete declaration."""
+    resource: dict[str, object] = {
+        "id": "cursor.atlassian-mcp",
+        "kind": "file",
+        "owner": "cursor",
+        "source": "assistants/cursor/atlassian-workaround.json",
+        "destination": ".cursor/mcp.json",
+        "profiles": ["work"],
+    }
+    resource[field] = value
+
     with pytest.raises(ValidationError, match="managed local state"):
         AssistantInventory.model_validate({"resources": [resource]})
 

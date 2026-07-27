@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -122,10 +123,10 @@ def test_pending_actions_distinguish_required_from_optional(
     assert report.exit_code == 1
 
 
-def test_cursor_inspection_is_existence_only_and_counts_immediate_worktrees(
-    paths: RuntimePaths, monkeypatch: pytest.MonkeyPatch
+def test_cursor_inspection_redacts_invalid_mcp_and_counts_immediate_worktrees(
+    paths: RuntimePaths,
 ) -> None:
-    """Avoid MCP parsing and recursively inspecting Cursor worktree roots."""
+    """Report invalid MCP state without exposing it or scanning nested roots."""
     cursor = paths.home / ".cursor"
     cursor.mkdir()
     (cursor / "mcp.json").write_text("not json")
@@ -134,14 +135,11 @@ def test_cursor_inspection_is_existence_only_and_counts_immediate_worktrees(
     (worktrees / "two").mkdir()
     (worktrees / "file").write_text("ignored")
 
-    def forbidden_read(_path: Path, *args: object, **kwargs: object) -> str:
-        raise AssertionError("Cursor MCP content was read")
-
-    monkeypatch.setattr(Path, "read_text", forbidden_read)
     findings = assistant_checks(
         enabled=frozenset({"cursor"}),
         paths=paths,
         runner=StatefulAssistantFake(paths.home),
+        profiles=("default", "work"),
         unmanaged_extension_count=2,
     )
     report = run_doctor(findings)
@@ -154,6 +152,91 @@ def test_cursor_inspection_is_existence_only_and_counts_immediate_worktrees(
         report.finding("cursor.extensions").message
         == "2 unmanaged Cursor extension(s) require review"
     )
+
+
+@pytest.mark.parametrize(
+    ("profiles", "warns"),
+    [
+        pytest.param(("default",), True, id="default-profile"),
+        pytest.param(("default", "work"), False, id="work-profile"),
+    ],
+)
+def test_approved_cursor_atlassian_mcp_is_work_profile_only(
+    paths: RuntimePaths,
+    profiles: tuple[str, ...],
+    warns: bool,
+) -> None:
+    """Accept the exact secret-free Atlassian endpoint only for work."""
+    cursor = paths.home / ".cursor"
+    cursor.mkdir()
+    (cursor / "mcp.json").write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "atlassian": {
+                        "type": "http",
+                        "url": "https://mcp.atlassian.com/v1/mcp/authv2",
+                    }
+                }
+            }
+        )
+    )
+
+    findings = assistant_checks(
+        enabled=frozenset({"cursor"}),
+        paths=paths,
+        runner=StatefulAssistantFake(paths.home),
+        profiles=profiles,
+    )
+
+    assert ("cursor.legacy-mcp" in {finding.id for finding in findings}) is warns
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        pytest.param(b"not json", id="invalid-json"),
+        pytest.param(
+            b'{"mcpServers":{"atlassian":{"type":"http",'
+            b'"url":"https://mcp.atlassian.com/v1/mcp/authv2",'
+            b'"url":"https://example.com"}}}',
+            id="duplicate-key",
+        ),
+        pytest.param(
+            b'{"mcpServers":{"atlassian":{"type":"http","url":"https://example.com"}}}',
+            id="altered-url",
+        ),
+        pytest.param(
+            b'{"mcpServers":{"atlassian":{"type":"http",'
+            b'"url":"https://mcp.atlassian.com/v1/mcp/authv2",'
+            b'"headers":{"Authorization":"redacted"}}}}',
+            id="extra-atlassian-field",
+        ),
+        pytest.param(
+            b'{"mcpServers":{"atlassian":{"type":"http",'
+            b'"url":"https://mcp.atlassian.com/v1/mcp/authv2"},'
+            b'"other":{"type":"http","url":"https://example.com"}}}',
+            id="extra-server",
+        ),
+    ],
+)
+def test_work_profile_warns_on_every_other_cursor_mcp_document(
+    paths: RuntimePaths,
+    content: bytes,
+) -> None:
+    """Keep altered, ambiguous, or expanded MCP state outside desired state."""
+    cursor = paths.home / ".cursor"
+    cursor.mkdir()
+    (cursor / "mcp.json").write_bytes(content)
+
+    findings = assistant_checks(
+        enabled=frozenset({"cursor"}),
+        paths=paths,
+        runner=StatefulAssistantFake(paths.home),
+        profiles=("default", "work"),
+    )
+
+    assert "cursor.legacy-mcp" in {finding.id for finding in findings}
 
 
 def test_skills_report_names_only_collisions_and_managed_drift(

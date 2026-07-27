@@ -55,6 +55,13 @@ resources:
     source: assistants/cursor/keybindings.json
     destination: Library/Application Support/Cursor/User/keybindings.json
 
+  - id: cursor.atlassian-mcp
+    kind: file
+    owner: cursor
+    source: assistants/cursor/atlassian-workaround.json
+    destination: .cursor/mcp.json
+    profiles: [work]
+
   - id: cursor.user-rules
     kind: manual
     owner: cursor

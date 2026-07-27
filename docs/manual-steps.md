@@ -27,7 +27,10 @@
     capabilities or `~/.cursor/plugins/cache` as desired state. A reviewed
     local plugin is managed only at `~/.cursor/plugins/local/<name>/`.
 11. Enable each enabled agent's first-party browser capability and authorize
-    the official Notion integration when needed.
+    the official Notion integration when needed. For work-profile Cursor,
+    complete OAuth for the reviewed Atlassian HTTP compatibility entry when
+    prompted. The bootstrap manages only its secret-free endpoint; do not add
+    Playwright or GitLab servers to that file.
 12. Do not manually install the abandoned experimental marketplace setup; it is
     not part of desired state.
 13. Finish with `./bootstrap doctor --profile work`, or use

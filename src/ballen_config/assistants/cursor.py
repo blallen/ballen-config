@@ -8,6 +8,7 @@ from typing import TypedDict, cast
 
 from pydantic import BaseModel, ConfigDict
 
+from ballen_config.assistants.cursor_mcp import is_approved_atlassian_mcp
 from ballen_config.assistants.instructions import render_native_instructions
 from ballen_config.assistants.json import StrictJsonError, strict_json_loads
 from ballen_config.assistants.models import ExtensionCatalog, ExtensionSpec
@@ -457,7 +458,7 @@ def configuration(
     setup: ResolvedSetup,
     paths: RuntimePaths,
 ) -> ConfigurationContribution:
-    """Return Cursor-owned settings, keybindings, and manual User Rules.
+    """Return Cursor-owned settings, keybindings, MCP, and manual User Rules.
 
     Args:
         setup: Fully resolved component and profile selection.
@@ -485,9 +486,21 @@ def configuration(
         paths,
         Path("assistants/cursor/user-rules.md"),
     )
+    atlassian_mcp = (
+        _reviewed_source(
+            paths,
+            Path("assistants/cursor/atlassian-workaround.json"),
+        )
+        if "work" in setup.profiles
+        else None
+    )
     _load_json_object(base, label="Cursor settings base")
     _load_json_object(work, label="Cursor settings work overlay")
     _load_json_array(keybindings, label="Cursor keybindings")
+    if atlassian_mcp is not None and not is_approved_atlassian_mcp(
+        atlassian_mcp.read_bytes()
+    ):
+        raise ValueError("Cursor Atlassian MCP source must be exact")
 
     settings_spec = ManagedFileSpec(
         id="cursor-settings",
@@ -518,8 +531,21 @@ def configuration(
         component="cursor",
         renderer_id="cursor-user-rules",
     )
+    specs = [settings_spec, keybindings_spec, rules_spec]
+    if atlassian_mcp is not None:
+        specs.append(
+            ManagedFileSpec(
+                id="cursor-atlassian-mcp",
+                source=atlassian_mcp,
+                destination=Path(".cursor/mcp.json"),
+                method=ApplyMethod.COPY,
+                mode=0o600,
+                component="cursor",
+                validator_id="json",
+            )
+        )
     return ConfigurationContribution(
-        specs=(settings_spec, keybindings_spec, rules_spec),
+        specs=tuple(specs),
         renderers={
             "cursor-settings": cursor_settings_renderer(
                 paths,

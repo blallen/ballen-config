@@ -87,6 +87,14 @@ first-party capabilities are deliberate manual steps. Use each agent's
 first-party browser capability rather than a global Playwright MCP, GitLab
 through `glab`, and official Notion integrations.
 
+The work profile has one narrow MCP exception: it manages a secret-free
+Atlassian HTTP entry in `~/.cursor/mcp.json` because Cursor's official
+Atlassian integration is currently unreliable for this account. The reviewed
+endpoint is `https://mcp.atlassian.com/v1/mcp/authv2`; OAuth still happens on
+the destination machine, and no token is stored here. Any additional server,
+field, or endpoint remains unmanaged drift. Playwright and GitLab MCP servers
+remain excluded.
+
 `jujutsu-workflow` is the first reviewed shared skill. It is stored once in
 this desired-state repository and independently copied into each selected
 agent's native skill root. Cursor cross-tool import is neither configured nor

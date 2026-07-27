@@ -10,6 +10,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Final
 
+from ballen_config.assistants.cursor_mcp import is_approved_atlassian_mcp
 from ballen_config.doctor import (
     CheckSeverity,
     DoctorCheck,
@@ -271,6 +272,7 @@ def assistant_checks(
     enabled: Collection[str],
     paths: RuntimePaths,
     runner: Runner,
+    profiles: Collection[str] = (),
     pending_actions: Sequence[InstallAction] = (),
     unmanaged_extension_count: int = 0,
 ) -> tuple[DoctorCheck, ...]:
@@ -280,6 +282,7 @@ def assistant_checks(
         enabled: Enabled coding-agent names after profile and skip resolution.
         paths: Approved runtime filesystem roots.
         runner: Command runner used only for agent-native sign-in status.
+        profiles: Expanded profile identifiers selected for this invocation.
         pending_actions: Unapplied installation actions to report.
         unmanaged_extension_count: Advisory count of Cursor extensions to review.
 
@@ -353,14 +356,19 @@ def assistant_checks(
         elif (
             mcp := _safe_home_path(paths.home, Path(".cursor/mcp.json"))
         ) is not None and mcp.is_file():
-            add(
-                _finding(
-                    "cursor.legacy-mcp",
-                    FindingStatus.MANUAL,
-                    CheckSeverity.WARNING,
-                    "Cursor MCP configuration requires manual review",
+            try:
+                approved = is_approved_atlassian_mcp(mcp.read_bytes())
+            except OSError:
+                approved = False
+            if "work" not in profiles or not approved:
+                add(
+                    _finding(
+                        "cursor.legacy-mcp",
+                        FindingStatus.MANUAL,
+                        CheckSeverity.WARNING,
+                        "Cursor MCP configuration requires manual review",
+                    )
                 )
-            )
         worktrees = _safe_home_path(paths.home, Path(".cursor/worktrees"))
         if worktrees is None:
             add(

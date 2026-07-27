@@ -279,6 +279,7 @@ class AssistantOrchestrator:
                 enabled=_enabled_agents(setup),
                 paths=paths,
                 runner=runner,
+                profiles=setup.profiles,
                 pending_actions=tuple(pending_actions),
             ),
         )

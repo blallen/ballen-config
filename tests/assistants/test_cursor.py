@@ -127,6 +127,19 @@ def cursor_source_repo(tmp_path: Path) -> Path:
     (cursor_root / "settings.base.json").write_text("{}\n")
     (cursor_root / "settings.work.json").write_text("{}\n")
     (cursor_root / "keybindings.json").write_text("[]\n")
+    (cursor_root / "atlassian-workaround.json").write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "atlassian": {
+                        "type": "http",
+                        "url": "https://mcp.atlassian.com/v1/mcp/authv2",
+                    }
+                }
+            }
+        )
+        + "\n"
+    )
     (cursor_root / "user-rules.md").write_text("# Cursor additions\n")
     (shared_root / "engineering.md").write_text("# Engineering\n")
     (shared_root / "rtk.md").write_text("# RTK\n")
@@ -302,6 +315,47 @@ def test_configuration_emits_one_profile_aware_settings_spec(
         assert "claudeCode.environmentVariables" not in rendered
     else:
         assert rendered["claudeCode.environmentVariables"] == expected_environment
+
+
+@pytest.mark.parametrize(
+    ("profiles", "managed"),
+    [
+        pytest.param(("default",), False, id="default-profile"),
+        pytest.param(("default", "work"), True, id="work-profile"),
+    ],
+)
+def test_configuration_manages_atlassian_mcp_only_for_work(
+    repo_root: Path,
+    temporary_home: Path,
+    profiles: tuple[str, ...],
+    managed: bool,
+) -> None:
+    """Install the exact secret-free Atlassian workaround only for work."""
+    paths = RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home)
+    contribution = configuration(
+        _resolved_setup("cursor", profiles=profiles),
+        paths,
+    )
+    specs = {spec.id: spec for spec in contribution.specs}
+
+    if not managed:
+        assert "cursor-atlassian-mcp" not in specs
+        return
+
+    spec = specs["cursor-atlassian-mcp"]
+    assert spec.destination == Path(".cursor/mcp.json")
+    assert spec.method is ApplyMethod.COPY
+    assert spec.mode == 0o600
+    assert spec.component == "cursor"
+    assert spec.validator_id == "json"
+    assert json.loads(spec.source.read_bytes()) == {
+        "mcpServers": {
+            "atlassian": {
+                "type": "http",
+                "url": "https://mcp.atlassian.com/v1/mcp/authv2",
+            }
+        }
+    }
 
 
 def test_renderers_preserve_unrelated_cursor_native_state(
@@ -854,6 +908,7 @@ def test_inventory_is_synchronized_with_cursor_sources_and_catalog(
     settings = by_id["cursor.settings"]
     work = by_id["cursor.settings.work"]
     keybindings = by_id["cursor.keybindings"]
+    atlassian_mcp = by_id["cursor.atlassian-mcp"]
     rules = by_id["cursor.user-rules"]
     extensions = by_id["cursor.extensions.catalog"]
     assert isinstance(settings, FileResource)
@@ -863,6 +918,9 @@ def test_inventory_is_synchronized_with_cursor_sources_and_catalog(
     assert work.profiles == ("work",)
     assert work.destination == settings.destination
     assert isinstance(keybindings, FileResource)
+    assert isinstance(atlassian_mcp, FileResource)
+    assert atlassian_mcp.profiles == ("work",)
+    assert atlassian_mcp.destination == Path(".cursor/mcp.json")
     assert isinstance(rules, ManualResource)
     assert rules.source is not None
     assert isinstance(extensions, CatalogResource)

@@ -314,8 +314,12 @@ bootstrap:
 - `CLAUDE.md` is rewritten around the new staged workflow. Its instructions to
   copy `~/.aws`, inject GitLab tokens, and automate the old Cursor MCP file are
   removed.
-- `cursor/mcp.json` is removed. It currently configures global Playwright,
-  GitLab, and Notion servers that are intentionally absent from the new design.
+- The legacy `cursor/mcp.json` is removed. Its global Playwright, GitLab, and
+  Notion servers are intentionally absent from the new design. A later
+  work-profile exception manages only the secret-free Atlassian HTTP endpoint
+  at `~/.cursor/mcp.json` while Cursor's official Atlassian integration remains
+  unreliable. OAuth remains destination-local, and any additional server,
+  field, or endpoint is drift rather than portable desired state.
 - The GitLab Workflow editor extension is removed from
   `cursor/extensions.txt`; GitLab support is `glab` only.
 - `cursor/extensions.txt` is rebuilt from the current Cursor profile rather

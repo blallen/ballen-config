@@ -121,6 +121,74 @@ def test_policy_rejects_agent_specific_operational_rules(
     )
 
 
+def test_policy_allows_only_reviewed_cursor_atlassian_workaround(
+    tmp_path: Path,
+) -> None:
+    """Permit the exact secret-free source at its single reviewed path."""
+    relative = Path("assistants/cursor/atlassian-workaround.json")
+    path = tmp_path / relative
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        """{
+  "mcpServers": {
+    "atlassian": {
+      "type": "http",
+      "url": "https://mcp.atlassian.com/v1/mcp/authv2"
+    }
+  }
+}
+"""
+    )
+
+    assert scan_paths(tmp_path, (relative,)) == ()
+
+
+@pytest.mark.parametrize(
+    ("relative", "content"),
+    [
+        pytest.param(
+            "assistants/cursor/other.json",
+            '{"mcpServers":{"atlassian":{"type":"http",'
+            '"url":"https://mcp.atlassian.com/v1/mcp/authv2"}}}',
+            id="wrong-path",
+        ),
+        pytest.param(
+            "assistants/cursor/atlassian-workaround.json",
+            '{"mcpServers":{"atlassian":{"type":"http","url":"https://example.com"}}}',
+            id="altered-url",
+        ),
+        pytest.param(
+            "assistants/cursor/atlassian-workaround.json",
+            '{"mcpServers":{"atlassian":{"type":"http",'
+            '"url":"https://mcp.atlassian.com/v1/mcp/authv2"},'
+            '"other":{"type":"http","url":"https://example.com"}}}',
+            id="extra-server",
+        ),
+        pytest.param(
+            "assistants/cursor/atlassian-workaround.json",
+            '{"mcpServers":{"atlassian":{"type":"http",'
+            '"url":"https://mcp.atlassian.com/v1/mcp/authv2",'
+            '"url":"https://example.com"}}}',
+            id="duplicate-key",
+        ),
+    ],
+)
+def test_policy_rejects_every_other_cursor_mcp_source(
+    tmp_path: Path,
+    relative: str,
+    content: str,
+) -> None:
+    """Keep the policy exception path-bound and document-exact."""
+    path = tmp_path / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content)
+
+    assert Violation(rule="forbidden-mcp", path=relative) in scan_paths(
+        tmp_path,
+        (Path(relative),),
+    )
+
+
 @pytest.mark.parametrize(
     "content",
     [

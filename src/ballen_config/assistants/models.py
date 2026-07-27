@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from enum import StrEnum
 from pathlib import PurePosixPath
-from typing import Annotated, Literal, Self
+from typing import Annotated, Final, Literal, Self
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 
@@ -71,10 +71,18 @@ _MANAGED_STATE_PATH_WORDS = frozenset(
     }
 )
 _PATH_WORD_PATTERN = re.compile(r"[a-z0-9]+")
+_CURSOR_ATLASSIAN_MCP_ID: Final = "cursor.atlassian-mcp"
+_CURSOR_ATLASSIAN_MCP_SOURCE: Final = PurePosixPath(
+    "assistants/cursor/atlassian-workaround.json"
+)
+_CURSOR_ATLASSIAN_MCP_DESTINATION: Final = PurePosixPath(".cursor/mcp.json")
+_APPROVED_MANAGED_STATE_PATHS: Final = frozenset({_CURSOR_ATLASSIAN_MCP_DESTINATION})
 
 
 def _validate_managed_file_path(path: PurePosixPath) -> PurePosixPath:
     """Reject file-copy paths that represent local agent state."""
+    if path in _APPROVED_MANAGED_STATE_PATHS:
+        return path
     words = {
         word
         for part in path.parts
@@ -119,6 +127,30 @@ class FileResource(ResourceBase):
     mode: Literal[0o600, 0o700] = 0o600
     targets: ConcreteTargets = ()
     role: Literal["direct", "render-source", "overlay", "suffix"] = "direct"
+
+    @model_validator(mode="after")
+    def validate_managed_state_exception(self) -> Self:
+        """Bind the Cursor MCP path exception to one exact work resource."""
+        uses_exception = (
+            self.source in _APPROVED_MANAGED_STATE_PATHS
+            or self.destination in _APPROVED_MANAGED_STATE_PATHS
+        )
+        if not uses_exception:
+            return self
+        approved = (
+            self.id == _CURSOR_ATLASSIAN_MCP_ID
+            and self.owner is AgentName.CURSOR
+            and self.source == _CURSOR_ATLASSIAN_MCP_SOURCE
+            and self.destination == _CURSOR_ATLASSIAN_MCP_DESTINATION
+            and self.profiles == ("work",)
+            and self.required
+            and self.mode == 0o600
+            and not self.targets
+            and self.role == "direct"
+        )
+        if not approved:
+            raise ValueError("file resource path represents managed local state")
+        return self
 
 
 class HookResource(ResourceBase):
