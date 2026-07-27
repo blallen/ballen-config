@@ -343,7 +343,14 @@ def test_successful_all_orders_every_cli_seam(
     ]
 
 
-@pytest.mark.parametrize("stage", ["install", "configure", "all"])
+@pytest.mark.parametrize(
+    "stage",
+    [
+        pytest.param("install", id="install"),
+        pytest.param("configure", id="configure"),
+        pytest.param("all", id="all"),
+    ],
+)
 def test_declined_mutating_stage_calls_no_executor(
     stage: str,
     repo_root: Path,
@@ -533,8 +540,8 @@ def test_doctor_is_independent_and_never_confirms(
 @pytest.mark.parametrize(
     "arguments",
     [
-        ("unknown-stage",),
-        ("plan", "--profile", "unknown"),
+        pytest.param(("unknown-stage",), id="unknown-stage"),
+        pytest.param(("plan", "--profile", "unknown"), id="unknown-profile"),
     ],
 )
 def test_invalid_arguments_or_profile_have_no_commands_or_files(
@@ -839,12 +846,19 @@ def test_dynamic_action_must_exactly_match_static_candidate(
     assert install_calls == [()]
 
 
-@pytest.mark.parametrize("stage", ("plan", "configure", "doctor"))
+@pytest.mark.parametrize(
+    "stage",
+    (
+        pytest.param("plan", id="plan"),
+        pytest.param("configure", id="configure"),
+        pytest.param("doctor", id="doctor"),
+    ),
+)
 @pytest.mark.parametrize(
     "candidate_suppliers,dynamic_suppliers",
     [
-        ((), (lambda *_args: (),)),
-        ((lambda *_args: (),), ()),
+        pytest.param((), (lambda *_args: (),), id="missing-candidates"),
+        pytest.param((lambda *_args: (),), (), id="missing-dynamic-suppliers"),
     ],
 )
 def test_unpaired_install_suppliers_fail_closed_for_every_stage(

@@ -398,7 +398,16 @@ def test_dotted_cursor_local_plugin_ids_keep_distinct_state_and_destinations(
     }.issubset(state.managed)
 
 
-@pytest.mark.parametrize("stage", ["plan", "install", "configure", "doctor", "all"])
+@pytest.mark.parametrize(
+    "stage",
+    [
+        pytest.param("plan", id="plan"),
+        pytest.param("install", id="install"),
+        pytest.param("configure", id="configure"),
+        pytest.param("doctor", id="doctor"),
+        pytest.param("all", id="all"),
+    ],
+)
 @pytest.mark.parametrize("skip_all", [False, True], ids=["enabled", "all-skipped"])
 def test_invalid_cursor_local_tree_fails_preflight_without_effects(
     invalid_cursor_local_plugin_repo: Path,
@@ -630,7 +639,14 @@ def test_work_all_converges_native_resources_and_skips_codex(
     )
 
 
-@pytest.mark.parametrize("skipped", ("cursor", "claude-code", "codex"))
+@pytest.mark.parametrize(
+    "skipped",
+    (
+        pytest.param("cursor", id="cursor"),
+        pytest.param("claude-code", id="claude-code"),
+        pytest.param("codex", id="codex"),
+    ),
+)
 def test_single_agent_skip_removes_its_production_surface(
     skipped: str,
     repo_root: Path,
@@ -995,7 +1011,13 @@ def test_work_all_preserves_excluded_agent_state_bytes_and_tree_identity(
     )
 
 
-@pytest.mark.parametrize("stage", ("install", "all"))
+@pytest.mark.parametrize(
+    "stage",
+    (
+        pytest.param("install", id="install"),
+        pytest.param("all", id="all"),
+    ),
+)
 def test_core_install_id_collision_stops_before_mutation(
     stage: str,
     repo_root: Path,
@@ -1043,7 +1065,13 @@ def test_core_install_id_collision_stops_before_mutation(
     assert (state_path.read_bytes() if state_path.exists() else None) == state_before
 
 
-@pytest.mark.parametrize("profile", ("default", "work"))
+@pytest.mark.parametrize(
+    "profile",
+    (
+        pytest.param("default", id="default"),
+        pytest.param("work", id="work"),
+    ),
+)
 def test_candidate_actions_cover_every_possible_native_action(
     profile: str,
     repo_root: Path,

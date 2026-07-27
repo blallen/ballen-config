@@ -309,7 +309,14 @@ def test_symlinked_skill_root_is_not_traversed(
     )
 
 
-@pytest.mark.parametrize("kind", ["root", "tree", "worktrees"])
+@pytest.mark.parametrize(
+    "kind",
+    [
+        pytest.param("root", id="root"),
+        pytest.param("tree", id="tree"),
+        pytest.param("worktrees", id="worktrees"),
+    ],
+)
 def test_diagnostic_scans_cap_every_entry(
     paths: RuntimePaths, monkeypatch: pytest.MonkeyPatch, kind: str
 ) -> None:
@@ -364,7 +371,14 @@ def test_diagnostic_scans_cap_every_entry(
         )
 
 
-@pytest.mark.parametrize("kind", ["root", "tree", "worktrees"])
+@pytest.mark.parametrize(
+    "kind",
+    [
+        pytest.param("root", id="root"),
+        pytest.param("tree", id="tree"),
+        pytest.param("worktrees", id="worktrees"),
+    ],
+)
 def test_scan_caps_do_not_request_a_fourth_entry(
     paths: RuntimePaths, monkeypatch: pytest.MonkeyPatch, kind: str
 ) -> None:

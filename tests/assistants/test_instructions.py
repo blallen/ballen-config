@@ -67,7 +67,13 @@ def test_render_order_and_trailing_newline_are_exact() -> None:
     assert not rendered.endswith("\n\n")
 
 
-@pytest.mark.parametrize("suffix", ["# Cursor additions\n", "# Claude additions\n"])
+@pytest.mark.parametrize(
+    "suffix",
+    [
+        pytest.param("# Cursor additions\n", id="cursor-additions"),
+        pytest.param("# Claude additions\n", id="claude-additions"),
+    ],
+)
 def test_cursor_and_claude_embed_canonical_sections(
     repo_root: Path,
     suffix: str,
@@ -121,9 +127,9 @@ def test_relative_rtk_include_is_rejected() -> None:
 @pytest.mark.parametrize(
     ("field", "value"),
     [
-        ("engineering", "{{ generated }}"),
-        ("rtk", "plugins/cache/generated"),
-        ("agent_suffix", "{{ native-template }}"),
+        pytest.param("engineering", "{{ generated }}", id="engineering-template"),
+        pytest.param("rtk", "plugins/cache/generated", id="rtk-cache"),
+        pytest.param("agent_suffix", "{{ native-template }}", id="suffix-template"),
     ],
 )
 def test_rendered_instructions_reject_generated_state(

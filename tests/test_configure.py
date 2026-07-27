@@ -111,7 +111,13 @@ def test_second_apply_is_unchanged_without_backup(config_paths: RuntimePaths) ->
     assert not (config_paths.backup_root / "two").exists()
 
 
-@pytest.mark.parametrize("method", [ApplyMethod.COPY, ApplyMethod.RENDER])
+@pytest.mark.parametrize(
+    "method",
+    [
+        pytest.param(ApplyMethod.COPY, id="copy"),
+        pytest.param(ApplyMethod.RENDER, id="render"),
+    ],
+)
 def test_matching_file_bytes_with_wrong_mode_are_updated(
     config_paths: RuntimePaths,
     method: ApplyMethod,

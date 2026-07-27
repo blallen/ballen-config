@@ -200,20 +200,42 @@ def test_keybindings_preserve_the_reviewed_bindings(repo_root: Path) -> None:
 @pytest.mark.parametrize(
     ("filename", "content", "message"),
     [
-        ("settings.base.json", "[]\n", "settings base must be a JSON object"),
-        (
+        pytest.param(
+            "settings.base.json",
+            "[]\n",
+            "settings base must be a JSON object",
+            id="base-array",
+        ),
+        pytest.param(
             "settings.work.json",
             "[]\n",
             "settings work overlay must be a JSON object",
+            id="work-array",
         ),
-        ("keybindings.json", "{}\n", "keybindings must be a JSON array"),
-        ("settings.base.json", "{\n", "invalid Cursor settings base JSON"),
-        (
+        pytest.param(
+            "keybindings.json",
+            "{}\n",
+            "keybindings must be a JSON array",
+            id="keybindings-object",
+        ),
+        pytest.param(
+            "settings.base.json",
+            "{\n",
+            "invalid Cursor settings base JSON",
+            id="base-invalid-json",
+        ),
+        pytest.param(
             "settings.work.json",
             "{\n",
             "invalid Cursor settings work overlay JSON",
+            id="work-invalid-json",
         ),
-        ("keybindings.json", "[\n", "invalid Cursor keybindings JSON"),
+        pytest.param(
+            "keybindings.json",
+            "[\n",
+            "invalid Cursor keybindings JSON",
+            id="keybindings-invalid-json",
+        ),
     ],
 )
 def test_configuration_validates_every_json_source_before_specs(
@@ -238,13 +260,14 @@ def test_configuration_validates_every_json_source_before_specs(
 @pytest.mark.parametrize(
     ("profiles", "expected_environment"),
     [
-        (("default",), None),
-        (
+        pytest.param(("default",), None, id="default-profile"),
+        pytest.param(
             ("default", "work"),
             [
                 "CLAUDE_CODE_USE_BEDROCK=1",
                 "AWS_REGION=us-east-1",
             ],
+            id="default-work-profiles",
         ),
     ],
 )
@@ -539,7 +562,13 @@ def test_bundled_manifest_ids_ignore_packages_without_extension_identity(
     )
 
 
-@pytest.mark.parametrize("manifest_bytes", (b"{", b'{"publisher": 1, "name": "x"}'))
+@pytest.mark.parametrize(
+    "manifest_bytes",
+    (
+        pytest.param(b"{", id="invalid-json"),
+        pytest.param(b'{"publisher": 1, "name": "x"}', id="invalid-field-type"),
+    ),
+)
 def test_install_normalizes_invalid_bundled_manifest_inspection(
     manifest_bytes: bytes,
     temporary_home: Path,
@@ -783,14 +812,14 @@ def test_failed_cursor_extension_inspection_never_plans_installs(
 @pytest.mark.parametrize(
     "identifier",
     [
-        "missing-dot",
-        "Publisher.extension",
-        "publisher.Extension",
-        ".extension",
-        "publisher.",
-        "publisher.extension.extra",
-        "publisher/extension",
-        "publisher_name.extension",
+        pytest.param("missing-dot", id="missing-separator"),
+        pytest.param("Publisher.extension", id="uppercase-publisher"),
+        pytest.param("publisher.Extension", id="uppercase-extension"),
+        pytest.param(".extension", id="missing-publisher"),
+        pytest.param("publisher.", id="missing-extension"),
+        pytest.param("publisher.extension.extra", id="extra-segment"),
+        pytest.param("publisher/extension", id="slash-separator"),
+        pytest.param("publisher_name.extension", id="underscore-publisher"),
     ],
 )
 def test_extension_spec_rejects_non_normalized_identifiers(
