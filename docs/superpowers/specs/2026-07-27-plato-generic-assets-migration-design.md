@@ -74,10 +74,12 @@ state.
    globally injected.
 9. Standards own normative engineering guidance. Skills own procedures and
    reference stable standards identifiers rather than restating the rules.
-10. Cross-asset links and shared-skill references resolve through declared
-    catalog dependencies or co-packaged relative paths after native delivery.
-    External command, plugin, and connector prerequisites use a separate,
-    testable runtime contract.
+10. Shared-skill dependencies are declared in the catalog. Any skill-to-skill
+    runtime reference additionally requires a validated invocation contract.
+    Other cross-asset links resolve through co-packaged relative paths or a
+    tested projection manifest after native delivery. External command,
+    plugin, and connector prerequisites use a separate, testable runtime
+    contract.
 11. Version-sensitive claims are verified against primary sources during
     promotion; conflicts and intentional departures are recorded.
 12. The program is extract-only with respect to Plato. A workstream modifies
@@ -112,11 +114,17 @@ assistants/
 │   │   └── <skill-name>/
 │   └── agent-architecture/  # illustrative until delivery is designed
 │       ├── README.md
-│       ├── directory-structure.md
-│       ├── agent-service-pattern.md
-│       ├── models-and-errors.md
-│       ├── tool-design.md
-│       └── framework-overlays/
+│       ├── core/
+│       │   ├── concepts-and-lifecycle.md
+│       │   ├── directory-and-layer-patterns.md
+│       │   ├── contracts-and-tools.md
+│       │   ├── testing-and-evals.md
+│       │   ├── maturity-tiers.md
+│       │   ├── readme-templates.md
+│       │   └── demo-apps.md
+│       └── reference-profiles/
+│           ├── README.md
+│           └── pydantic-ai/
 ├── cursor/
 ├── claude/
 └── codex/
@@ -227,7 +235,8 @@ Each promoted skill:
 - owns workflow rather than copying normative standards text;
 - detects `.jj/` before using staged diffs, branches, default-branch names, or
   worktree semantics, and uses Jujutsu procedures when applicable;
-- declares every required shared-skill and cross-asset reference; and
+- declares every required shared-skill dependency and keeps other cross-asset
+  references co-packaged or covered by a tested projection manifest; and
 - uses one common-denominator `SKILL.md` and co-packaged native reference files
   only where agent tool surfaces genuinely differ.
 
@@ -236,24 +245,35 @@ native root. It does not render target-specific skill variants. Distinct
 entrypoints therefore use distinct qualified skill names unless a later
 adapter design explicitly adds per-target rendering.
 
-Catalog skill dependencies validate installation eligibility only. They do not
-invoke or progressively load another skill, and they do not model external
-commands, plugins, or connectors. Runtime loading and external prerequisites
-require separate contracts in the detailed skills design, such as skill
-instructions, target restrictions, documented prerequisites, or `doctor`
-checks.
+Catalog skill dependencies are an install-time contract: they validate that a
+compatible skill set can be delivered together, but catalog metadata does not
+itself invoke or progressively load another skill. Some skills may explicitly
+request another installed skill at runtime, but that is a separate
+agent-native capability. The detailed design must prove the invocation syntax,
+loading behavior, and fallback for each selected target before relying on it.
+When supported, the invoking `SKILL.md` declares the runtime relationship and
+the matching catalog dependency ensures the invoked skill is installed. When
+it is not proven, required references remain co-packaged with the invoking
+skill.
+
+External commands, plugins, and connectors are not skill dependencies. They
+require separate, testable contracts in the detailed skills design, such as
+target restrictions, documented prerequisites, graceful fallback behavior, or
+`doctor` checks.
 
 ### Progressive Standards Loading
 
 The detailed skills design will evaluate whether to package the fuller
 standards library as:
 
-1. one shared standards-reference skill invoked by review workflows;
+1. one shared standards-reference skill explicitly invoked by review
+   workflows where target support is proven;
 2. focused language or task standards skills; or
 3. references bundled only with the skills that need them.
 
 The design must avoid duplicated standards authorities. This decision is
-deliberately deferred until the skill dependency graph is reviewed in detail.
+deliberately deferred until the install-time dependency graph and runtime
+invocation graph are reviewed in detail.
 
 Review-derived lessons default to the current repository's local standards
 authority. Updating shared `ballen-config` standards requires a separate,
@@ -268,24 +288,41 @@ This workstream extracts reusable application-agent structure and design
 patterns from Plato's `docs/agent_charter/`. It is not a coding-assistant
 persona and is not part of the global `AGENTS.md` or `CLAUDE.md` instructions.
 
-The reusable core is expected to be a framework-neutral Python
-application-agent pattern covering:
+The reusable core is a framework-agnostic application-agent charter covering:
 
-- clear responsibilities for `agent.py`, `tools.py`, `service.py`, `models.py`,
-  `constants.py`, and `exceptions.py`;
-- optional `mcp.py` and framework integration boundaries;
-- thin tools delegating to a service layer;
-- typed inputs, outputs, dependencies, and errors without prescribing one
-  framework's base classes or envelopes;
-- public API and import-direction principles whose exact contracts are chosen
-  by the detailed design; and
-- application-agent-specific testing and documentation deltas that reference,
-  rather than restate, the canonical standards library.
+- agent identity, mission, supported tasks, and non-goals;
+- agent definition, environment or dependencies, session, and run lifecycle;
+- distinct transport request/response, application input/output, model
+  message, and tool-result contracts;
+- capabilities, tool effects and approvals, errors, artifacts, observability,
+  and handoff behavior;
+- logical separation among agent orchestration, tools, services, models or
+  contracts, configuration, exceptions, and optional transport or MCP
+  boundaries;
+- testing, evaluation, maturity, README, and demo expectations; and
+- application-agent-specific deltas that reference, rather than restate, the
+  canonical engineering standards.
 
-PydanticAI construction, `@agent.instructions`, dynamic instruction
-registration, and the source
-`.cursor/rules/agent_prompt_decomposition.mdc` belong to the explicit
-PydanticAI overlay.
+The core may illustrate logical responsibilities with familiar Python modules
+such as `agent.py`, `tools.py`, `service.py`, `models.py`, `constants.py`,
+`exceptions.py`, and optional `mcp.py`, but those filenames are not universal
+runtime requirements.
+
+PydanticAI is the primary worked reference profile. It makes the charter
+concrete with a Python directory layout, agent construction, dynamic
+instructions and prompt decomposition, typed dependencies, tools, services,
+tests, evals, and demo applications. It also retains reviewed candidate
+examples of base request/response, input/output, `ToolResult`, dependency, and
+exception classes. The detailed design decides their exact shapes and whether
+they are tested documentation snippets, scaffold fixtures, or both. They are
+translation source material, not mandatory base classes or an importable
+`ballen-config` runtime library.
+
+Claude Agent SDK and Claude Managed Agents form one deferred runtime family;
+Cursor Cloud Agents is a separate deferred profile. This migration records
+their intended profile boundaries in the reference-profile index but does not
+claim parity or provide speculative implementations. Their mappings can be
+designed after practical experience with those runtimes.
 
 ### Extraction Boundary
 
@@ -295,19 +332,27 @@ The generic architecture removes:
 - fixed Plato capability rosters and base classes;
 - internal authentication, AWS, S3, GitLab, and corporate SSL behavior;
 - required Logfire decorators or project names;
-- fixed MCP request/response bases;
-- unfinished charter backlog items; and
+- Plato-specific MCP base classes and model-routing fields presented as
+  universal requirements;
+- unfinished charter backlog items from `todos.md`; and
 - domain examples presented as universal architecture.
 
-Framework-specific practices, including PydanticAI conventions, belong in
-explicit overlays rather than the framework-neutral core.
+Framework-specific mechanics belong in explicit reference profiles rather than
+the framework-neutral core. Native delivery to Cursor, Claude Code, and Codex
+is a separate concern: each coding assistant receives the same reviewed
+charter through its own configuration model, regardless of which application
+runtime a project uses.
 
 The detailed design must classify every source under `docs/agent_charter/` as
-core, framework overlay, separate skill or template, deferred, or Plato-only.
-The incomplete `testing.md` and `maturity_tiers.md` documents and `todos.md`
-are deferred by default. `evals.md`, `demo_apps.md`, and
-`readme_templates.md` require explicit placement outside or inside the
-architecture core.
+core, reference profile, separate skill or template, deferred, or Plato-only.
+The migration retains and cleans the reusable material in `testing.md`,
+`maturity_tiers.md`, `evals.md`, `demo_apps.md`, and `readme_templates.md`;
+their current completeness does not determine their target quality.
+Retained material must meet the detailed design's completion and review
+criteria before installation; unfinished placeholders are deferred rather
+than promoted. Newly authored material records its own primary sources instead
+of being attributed solely to Plato provenance. `todos.md` remains historical
+planning material and is not migrated.
 
 The extraction evaluates rather than inherits Plato contracts, including:
 
@@ -319,8 +364,9 @@ The extraction evaluates rather than inherits Plato contracts, including:
 - `@dataclass` dependency containers; and
 - sequential mutation-tool requirements.
 
-Rejected or framework-specific contracts remain in a Plato or framework
-overlay.
+Accepted contracts become either portable charter requirements or clearly
+labelled PydanticAI reference examples. Rejected or Plato-specific contracts
+remain in Plato.
 
 ### Delivery
 
@@ -348,9 +394,11 @@ separate ownership and conflict design before adoption.
 | GitLab/MR operations | Skills |
 | Progressive loading of detailed standards | Skills design, using standards sources |
 | Application-agent directory and layer pattern | Agent architecture |
+| Framework-agnostic application-agent contracts | Agent architecture core |
 | General testing and documentation rules | Standards |
 | Application-agent-specific testing/documentation deltas | Agent architecture |
-| PydanticAI construction and prompt decomposition | Agent-architecture overlay |
+| PydanticAI construction, examples, and prompt decomposition | PydanticAI reference profile |
+| Claude and Cursor runtime mappings | Deferred agent-architecture profiles |
 | Repository-local lesson promotion | Current repository |
 | Shared standards promotion | Explicit `ballen-config` review workflow |
 | Plato package, domain, CI, auth, and infrastructure rules | Plato |
@@ -399,8 +447,12 @@ Every workstream must verify:
 - catalog names, source paths, frontmatter, targets, profiles, dependencies,
   and provenance;
 - stable standards identifiers and resolution of every cross-asset reference;
+- target-by-target proof for any skill-to-skill runtime invocation;
 - absence of duplicated normative standards inside workflow skills or
   architecture guidance;
+- no installed placeholder or unfinished charter content;
+- runnable tests for delivered PydanticAI snippets or scaffold fixtures,
+  without an import-time dependency on `ballen-config`;
 - deterministic native rendering or copying for every installable output
   delivered by that workstream;
 - whole-agent skip behavior and unmanaged collision preservation;
@@ -427,11 +479,13 @@ designs:
 - the precise first set and naming of promoted skills;
 - GitLab connector versus CLI adaptations for each agent;
 - whether executable configuration templates belong in `ballen-config`;
-- the framework-neutral versus PydanticAI overlay boundary; and
+- which reviewed Plato contracts become portable requirements versus
+  PydanticAI reference examples;
 - the canonical storage and projection model for application-agent
   architecture;
 - whether application-agent architecture needs a project scaffold in addition
-  to a skill.
+  to a skill; and
+- the timing and depth of future Claude and Cursor runtime profiles.
 
 ## Success Criteria
 
@@ -442,6 +496,10 @@ The program is successful when:
   configuration;
 - global instructions remain concise;
 - deeper guidance is available without being loaded by default;
+- the application-agent charter is framework agnostic while its PydanticAI
+  profile remains concrete, runnable, and tested;
+- deferred Claude and Cursor profiles are not represented as implemented or
+  equivalent;
 - Plato-specific rules and operational state remain in Plato;
 - each migration can be reviewed, landed, or deferred independently; and
 - future updates have one clear generic authority and one clear Plato overlay.
