@@ -18,10 +18,30 @@ from ballen_config.assistants.models import (
     ExtensionCatalog,
     FileResource,
     HookResource,
-    NativePluginCatalog,
+    PluginCatalog,
     PortableResource,
     SkillCatalog,
 )
+
+type CatalogDocument = ExtensionCatalog | PluginCatalog | SkillCatalog
+
+
+class LoadedCatalog(BaseModel):
+    """One inventory catalog parsed from one immutable file read."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    resource_id: str
+    document: ExtensionCatalog | PluginCatalog | SkillCatalog
+
+
+class LoadedInventory(BaseModel):
+    """Validated inventory plus every parsed catalog document."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    inventory: AssistantInventory
+    catalogs: tuple[LoadedCatalog, ...]
 
 
 class ResolvedInventory(BaseModel):
@@ -66,28 +86,25 @@ def _validated_source(source: PurePosixPath, root: Path) -> Path:
     return resolved
 
 
-def _catalog_ids(resource: CatalogResource, source: Path) -> tuple[str, ...]:
-    """Parse one declared subcatalog and return its ordered identifiers.
+def _load_catalog(resource: CatalogResource, source: Path) -> CatalogDocument:
+    """Parse one declared subcatalog using its declared document type.
 
     Args:
         resource: Inventory catalog declaration.
         source: Validated catalog source path.
 
     Returns:
-        Ordered catalog identifiers.
+        Validated immutable catalog document.
     """
     payload = yaml.safe_load(source.read_text())
     if resource.catalog_kind is CatalogKind.EXTENSION:
-        extensions = ExtensionCatalog.model_validate(payload)
-        return tuple(item.id for item in extensions.extensions)
+        return ExtensionCatalog.model_validate(payload)
     if resource.catalog_kind is CatalogKind.PLUGIN:
-        plugins = NativePluginCatalog.model_validate(payload)
-        return tuple(item.id for item in plugins.plugins)
-    skills = SkillCatalog.model_validate(payload)
-    return tuple(item.name for item in skills.skills)
+        return PluginCatalog.model_validate(payload)
+    return SkillCatalog.model_validate(payload)
 
 
-def load_inventory(path: Path, repo_root: Path | None = None) -> AssistantInventory:
+def load_inventory(path: Path, repo_root: Path | None = None) -> LoadedInventory:
     """Load an assistant inventory and validate all local sources.
 
     Inventory schema validation deliberately precedes filesystem inspection so
@@ -99,26 +116,27 @@ def load_inventory(path: Path, repo_root: Path | None = None) -> AssistantInvent
             omitted, the parent of the ``assistants`` directory is used.
 
     Returns:
-        Validated assistant inventory.
+        Validated assistant inventory and each catalog document.
 
     Raises:
-        ValueError: If a source is absent, unsafe, or out of sync with its
-            flattened catalog identifiers.
+        ValueError: If a source is absent or unsafe.
     """
     inventory = AssistantInventory.model_validate(yaml.safe_load(path.read_text()))
     root = (repo_root or path.parent.parent).resolve(strict=True)
+    catalogs: list[LoadedCatalog] = []
     for resource in inventory.resources:
         source = resource.source
         if source is None:
             continue
         candidate = _validated_source(source, root)
         if isinstance(resource, CatalogResource):
-            actual_ids = _catalog_ids(resource, candidate)
-            if actual_ids != resource.item_ids:
-                raise ValueError(
-                    f"catalog item_ids differ for {resource.id}: {actual_ids!r}"
+            catalogs.append(
+                LoadedCatalog(
+                    resource_id=resource.id,
+                    document=_load_catalog(resource, candidate),
                 )
-    return inventory
+            )
+    return LoadedInventory(inventory=inventory, catalogs=tuple(catalogs))
 
 
 def resolve_inventory(

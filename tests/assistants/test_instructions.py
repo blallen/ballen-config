@@ -149,13 +149,16 @@ def test_inventory_loads_reviewed_shared_instruction_and_hook_resources(
     repo_root: Path,
 ) -> None:
     """Keep reviewed shared resources and the seeded skill catalog synchronized."""
-    inventory = load_inventory(repo_root / "assistants/inventory.yaml", repo_root)
+    inventory = load_inventory(
+        repo_root / "assistants/inventory.yaml", repo_root
+    ).inventory
     by_id = {resource.id: resource for resource in inventory.resources}
     assert {identifier for identifier in by_id if identifier.startswith("shared.")} == {
         "shared.engineering",
         "shared.rtk",
         "shared.rtk-hook",
         "shared.skills.catalog",
+        "shared.plugins.catalog",
     }
     engineering = by_id["shared.engineering"]
     rtk = by_id["shared.rtk"]
@@ -168,4 +171,3 @@ def test_inventory_loads_reviewed_shared_instruction_and_hook_resources(
     assert set(hook.targets) == {"cursor", "claude-code"}
     catalog = by_id["shared.skills.catalog"]
     assert isinstance(catalog, CatalogResource)
-    assert catalog.item_ids == ("jujutsu-workflow",)

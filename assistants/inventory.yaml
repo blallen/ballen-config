@@ -26,7 +26,13 @@ resources:
     source: assistants/shared/skills/catalog.yaml
     catalog_kind: skill
     targets: [cursor, claude-code, codex]
-    item_ids: [jujutsu-workflow]
+
+  - id: shared.plugins.catalog
+    kind: catalog
+    owner: shared
+    source: assistants/shared/plugins/catalog.yaml
+    catalog_kind: plugin
+    targets: [cursor, claude-code, codex]
 
   - id: cursor.settings
     kind: file
@@ -70,33 +76,6 @@ resources:
     owner: cursor
     source: assistants/cursor/extensions.yaml
     catalog_kind: extension
-    item_ids:
-      - adamviola.parquet-explorer
-      - anthropic.claude-code
-      - anysphere.remote-containers
-      - anysphere.remote-ssh
-      - bierner.markdown-mermaid
-      - bierner.markdown-preview-github-styles
-      - charliermarsh.ruff
-      - davidanson.vscode-markdownlint
-      - esbenp.prettier-vscode
-      - humao.rest-client
-      - jjk.jjk
-      - matangover.mypy
-      - mhutchie.git-graph
-      - ms-azuretools.vscode-docker
-      - ms-python.python
-      - ms-toolsai.jupyter
-      - ms-vscode.atom-keybindings
-      - ms-vscode.makefile-tools
-      - openai.chatgpt
-      - redhat.vscode-yaml
-      - samuelcolvin.jinjahtml
-      - shd101wyy.markdown-preview-enhanced
-      - tamasfe.even-better-toml
-      - tomoki1207.pdf
-      - visualjj.visualjj
-      - velociraptor115.vscode-jj-graph
 
   - id: claude.settings
     kind: file
@@ -121,22 +100,6 @@ resources:
     kind: manual
     owner: claude-code
     summary: Connect the official Notion integration from Claude's integration UI when needed.
-
-  - id: claude.plugins.catalog
-    kind: catalog
-    owner: claude-code
-    source: assistants/claude/plugins.yaml
-    catalog_kind: plugin
-    item_ids:
-      - bigspin@bigspinai
-      - context-mode@claude-context-mode
-      - frontend-design@claude-plugins-official
-      - iterative-development@prime-radiant-marketplace
-      - logfire@claude-plugins-official
-      - ponytail@ponytail
-      - pydantic-ai@claude-plugins-official
-      - superpowers@claude-plugins-official
-      - superpowers-developing-for-claude-code@superpowers-marketplace
 
   - id: codex.config
     kind: file
@@ -167,17 +130,3 @@ resources:
     kind: manual
     owner: codex
     summary: Connect the official Notion integration from Codex's integration UI when needed.
-
-  - id: codex.plugins.catalog
-    kind: catalog
-    owner: codex
-    source: assistants/codex/plugins.yaml
-    catalog_kind: plugin
-    item_ids:
-      - bigspin@bigspinai
-      - context-mode@context-mode
-      - frontend-design@claude-plugins-official
-      - github@claude-plugins-official
-      - logfire@claude-plugins-official
-      - superpowers@claude-plugins-official
-      - superpowers-developing-for-claude-code@superpowers-marketplace

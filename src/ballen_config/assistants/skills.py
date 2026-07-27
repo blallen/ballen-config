@@ -321,6 +321,7 @@ def _canonical_source(skill: SkillSpec, paths: RuntimePaths) -> Path:
 def configuration(
     setup: ResolvedSetup,
     paths: RuntimePaths,
+    catalog: SkillCatalog,
 ) -> ConfigurationContribution:
     """Resolve every eligible shared skill through core tree primitives.
 
@@ -341,10 +342,6 @@ def configuration(
     """
     if not any(setup.is_enabled(agent) for agent in ("cursor", "claude-code", "codex")):
         return ConfigurationContribution()
-    catalog_path = paths.repo_root / "assistants/shared/skills/catalog.yaml"
-    catalog = SkillCatalog.model_validate(
-        yaml.safe_load(catalog_path.read_text(encoding="utf-8"))
-    )
     selected = tuple(
         (skill, targets)
         for skill in sorted(catalog.skills, key=lambda item: item.name)

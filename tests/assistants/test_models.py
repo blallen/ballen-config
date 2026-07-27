@@ -13,7 +13,6 @@ from ballen_config.assistants.models import (
     ExtensionCatalog,
     ExtensionSpec,
     NativeMarketplacePlugin,
-    NativePluginCatalog,
     PluginCatalog,
     SkillCatalog,
 )
@@ -42,17 +41,6 @@ from ballen_config.assistants.models import (
             },
             "event",
             id="hook-event",
-        ),
-        pytest.param(
-            {
-                "id": "shared.skills.catalog",
-                "kind": "catalog",
-                "owner": "shared",
-                "source": "assistants/shared/skills/catalog.yaml",
-                "catalog_kind": "skill",
-            },
-            "item_ids",
-            id="catalog-item-ids",
         ),
         pytest.param(
             {
@@ -196,22 +184,6 @@ def test_gallery_extensions_forbid_vsix_metadata(
         )
 
 
-def test_plugin_catalog_rejects_unknown_marketplace() -> None:
-    """Require every plugin marketplace to be declared."""
-    with pytest.raises(ValidationError, match="unknown marketplaces"):
-        NativePluginCatalog.model_validate(
-            {
-                "marketplaces": [],
-                "plugins": [
-                    {
-                        "id": "example@missing",
-                        "marketplace": "missing",
-                    }
-                ],
-            }
-        )
-
-
 def test_extension_catalog_rejects_duplicate_ids() -> None:
     """Reject ambiguous extension identifiers."""
     with pytest.raises(ValidationError, match="duplicate extension id"):
@@ -223,58 +195,6 @@ def test_extension_catalog_rejects_duplicate_ids() -> None:
                 ]
             }
         )
-
-
-@pytest.mark.parametrize(
-    ("catalog", "message"),
-    [
-        (
-            {
-                "marketplaces": [
-                    {"name": "official", "source": "official"},
-                    {"name": "official", "source": "duplicate"},
-                ],
-                "plugins": [],
-            },
-            "duplicate marketplace name",
-        ),
-        (
-            {
-                "marketplaces": [{"name": "official", "source": "official"}],
-                "plugins": [
-                    {
-                        "id": "example@official",
-                        "marketplace": "official",
-                    },
-                    {
-                        "id": "example@official",
-                        "marketplace": "official",
-                    },
-                ],
-            },
-            "duplicate plugin id",
-        ),
-        (
-            {
-                "marketplaces": [{"name": "official", "source": "official"}],
-                "plugins": [
-                    {
-                        "id": "example@other",
-                        "marketplace": "official",
-                    }
-                ],
-            },
-            "plugin marketplace suffix",
-        ),
-    ],
-)
-def test_plugin_catalog_rejects_ambiguous_declarations(
-    catalog: dict[str, object],
-    message: str,
-) -> None:
-    """Reject duplicate catalog keys and mismatched plugin suffixes."""
-    with pytest.raises(ValidationError, match=message):
-        NativePluginCatalog.model_validate(catalog)
 
 
 def test_plugin_catalog_accepts_shared_native_and_cursor_variants() -> None:
@@ -748,7 +668,6 @@ def test_file_resources_reject_managed_local_state_paths(
             "source": "assistants/shared/skills/catalog.yaml",
             "catalog_kind": "skill",
             "targets": ["cursor"],
-            "item_ids": [],
         },
     ],
 )

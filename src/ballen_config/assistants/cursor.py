@@ -6,7 +6,6 @@ import json
 from pathlib import Path
 from typing import TypedDict, cast
 
-import yaml
 from pydantic import BaseModel, ConfigDict
 
 from ballen_config.assistants.instructions import render_native_instructions
@@ -51,13 +50,6 @@ class ExtensionState(BaseModel):
 
 class CursorExtensionInspectionError(RuntimeError):
     """A normalized failure to inspect installed Cursor extensions."""
-
-
-def _catalog(path: Path) -> ExtensionCatalog:
-    """Load the reviewed extension catalog."""
-    return ExtensionCatalog.model_validate(
-        yaml.safe_load(path.read_text(encoding="utf-8"))
-    )
 
 
 def _decode_json(source: bytes, *, label: str) -> object:
@@ -205,7 +197,7 @@ def read_bundled_extensions(root: Path) -> frozenset[str]:
 
 
 def resolve_extensions(
-    catalog_path: Path,
+    catalog: ExtensionCatalog,
     *,
     enabled_agents: frozenset[str],
     installed: frozenset[str],
@@ -214,7 +206,7 @@ def resolve_extensions(
     """Resolve desired and diagnostic extension sets independently.
 
     Args:
-        catalog_path: Reviewed extension catalog.
+        catalog: Preloaded reviewed extension catalog.
         enabled_agents: Selected coding-agent component identifiers.
         installed: Extensions reported by the Cursor CLI.
         bundled: Extensions packaged with Cursor.
@@ -222,7 +214,6 @@ def resolve_extensions(
     Returns:
         Deterministic installed, bundled, missing, skipped, and extra sets.
     """
-    catalog = _catalog(catalog_path)
     normalized_installed = frozenset(item.casefold() for item in installed)
     normalized_bundled = frozenset(item.casefold() for item in bundled)
     desired = {
@@ -267,7 +258,7 @@ def jj_graph_action(extension: ExtensionSpec) -> InstallAction:
 
 
 def plan_cursor_extension_actions(
-    catalog_path: Path,
+    catalog: ExtensionCatalog,
     *,
     enabled_agents: frozenset[str],
     installed: frozenset[str],
@@ -276,7 +267,7 @@ def plan_cursor_extension_actions(
     """Translate missing Cursor features into core install actions.
 
     Args:
-        catalog_path: Reviewed extension catalog.
+        catalog: Preloaded reviewed extension catalog.
         enabled_agents: Selected coding-agent component identifiers.
         installed: Extensions reported by the Cursor CLI.
         bundled: Extensions packaged with Cursor.
@@ -284,10 +275,9 @@ def plan_cursor_extension_actions(
     Returns:
         Deterministic gallery and verified-download actions.
     """
-    catalog = _catalog(catalog_path)
     by_id = {extension.id: extension for extension in catalog.extensions}
     state = resolve_extensions(
-        catalog_path,
+        catalog,
         enabled_agents=enabled_agents,
         installed=installed,
         bundled=bundled,
@@ -310,7 +300,7 @@ def plan_cursor_extension_actions(
 
 def install_actions(
     setup: ResolvedSetup,
-    paths: RuntimePaths,
+    catalog: ExtensionCatalog,
     runner: Runner,
     *,
     bundled_root: Path = _DEFAULT_BUNDLED_ROOT,
@@ -319,7 +309,7 @@ def install_actions(
 
     Args:
         setup: Fully resolved component and profile selection.
-        paths: Approved checkout, home, state, and backup roots.
+        catalog: Preloaded reviewed extension catalog.
         runner: Captured native-command boundary.
         bundled_root: Injectable packaged extension root.
 
@@ -347,12 +337,8 @@ def install_actions(
         for identifier in ("cursor", "claude-code", "codex")
         if setup.is_enabled(identifier)
     )
-    catalog_path = _reviewed_source(
-        paths,
-        Path("assistants/cursor/extensions.yaml"),
-    )
     return plan_cursor_extension_actions(
-        catalog_path,
+        catalog,
         enabled_agents=enabled_agents,
         installed=installed,
         bundled=bundled,

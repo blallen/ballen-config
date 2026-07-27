@@ -11,13 +11,7 @@ from typing import Literal, TypedDict
 import pytest
 
 import ballen_config.cli as cli
-from ballen_config.assistants import (
-    AssistantPlanContributor,
-    configuration,
-    doctor_checks,
-    install_action_candidates,
-    install_actions,
-)
+from ballen_config.assistants import AssistantOrchestrator
 from ballen_config.assistants.claude import ClaudePluginInspectionError
 from ballen_config.cli import RunResult, main, run
 from ballen_config.install import InstallAction, InstallStageReport
@@ -128,6 +122,8 @@ def run_with_assistants(
         }
     )
     messages = output if output is not None else []
+    paths = RuntimePaths.from_roots(repo_root=repo_root, home=home)
+    assistants = AssistantOrchestrator(paths)
     return run(
         arguments,
         repo_root=repo_root,
@@ -137,16 +133,79 @@ def run_with_assistants(
         confirm=lambda _prompt: True,
         output=messages.append,
         timestamp=lambda: "20260726T120000Z",
-        install_action_candidate_suppliers=(install_action_candidates,),
-        install_action_suppliers=(install_actions,),
-        configuration_suppliers=(configuration,),
-        doctor_check_suppliers=(doctor_checks,),
-        plan_contributors=(
-            AssistantPlanContributor(
-                RuntimePaths.from_roots(repo_root=repo_root, home=home)
-            ),
-        ),
+        preflight_suppliers=(assistants.preflight,),
+        install_action_candidate_suppliers=(assistants.install_action_candidates,),
+        install_action_suppliers=(assistants.install_actions,),
+        configuration_suppliers=(assistants.configuration,),
+        doctor_check_suppliers=(assistants.doctor_checks,),
+        plan_contributors=(assistants,),
     )
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        pytest.param(("plan",), id="plan"),
+        pytest.param(("install",), id="install"),
+        pytest.param(("configure",), id="configure"),
+        pytest.param(("doctor",), id="doctor"),
+        pytest.param(("all",), id="all"),
+        pytest.param(
+            (
+                "all",
+                "--skip",
+                "cursor",
+                "--skip",
+                "claude-code",
+                "--skip",
+                "codex",
+            ),
+            id="all-agents-skipped",
+        ),
+    ],
+)
+def test_invalid_shared_catalog_stops_before_native_or_state_mutation(
+    arguments: tuple[str, ...],
+    invalid_repo_root: Path,
+    temporary_home: Path,
+    fake_runner: StatefulAssistantFake,
+) -> None:
+    """Reject malformed shared YAML before every stage's effects or confirmation."""
+    paths = RuntimePaths.from_roots(
+        repo_root=invalid_repo_root,
+        home=temporary_home,
+    )
+    assistants = AssistantOrchestrator(paths)
+    confirmations: list[str] = []
+
+    result = run(
+        arguments,
+        repo_root=invalid_repo_root,
+        home=temporary_home,
+        runner=fake_runner,
+        downloader=fake_runner,
+        confirm=lambda prompt: confirmations.append(prompt) or True,
+        output=lambda _message: pytest.fail("output after failed preflight"),
+        timestamp=lambda: "20260727T120000Z",
+        preflight_suppliers=(assistants.preflight,),
+        install_action_candidate_suppliers=(assistants.install_action_candidates,),
+        install_action_suppliers=(assistants.install_actions,),
+        configuration_suppliers=(assistants.configuration,),
+        doctor_check_suppliers=(assistants.doctor_checks,),
+        plan_contributors=(assistants,),
+    )
+
+    assert result == RunResult(
+        exit_code=2,
+        report=cli.StageReport(outcomes=("assistant desired-state preflight failed",)),
+    )
+    assert fake_runner.commands == []
+    assert fake_runner.downloads == []
+    assert confirmations == []
+    assert list(temporary_home.iterdir()) == []
+    assert not paths.state_root.exists()
+    assert not paths.backup_root.exists()
+    assert not StateStore(paths).path.exists()
 
 
 def test_aggregate_callbacks_omit_every_cursor_surface_when_skipped(
@@ -158,9 +217,11 @@ def test_aggregate_callbacks_omit_every_cursor_surface_when_skipped(
     )
     paths = RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home)
 
-    actions = install_actions(setup, paths, fake_runner)
-    contribution = configuration(setup, paths)
-    plan = AssistantPlanContributor(paths).actions(setup)
+    assistants = AssistantOrchestrator(paths)
+    assistants.preflight(setup, paths)
+    actions = assistants.install_actions(setup, paths, fake_runner)
+    contribution = assistants.configuration(setup, paths)
+    plan = assistants.actions(setup)
 
     assert not any(action.component_id.startswith("cursor.") for action in actions)
     assert not any(spec.component == "cursor" for spec in contribution.specs)
@@ -175,19 +236,21 @@ def test_main_registers_exported_callbacks_and_runs_real_aggregate_plan(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Main passes exported callbacks and the captured callbacks drive real output."""
+    """Main wires one orchestrator's bound callbacks into the real CLI path."""
     saved_run = cli.run
+    monkeypatch.setattr(Path, "home", staticmethod(lambda: temporary_home))
 
     def wrapped(arguments: Sequence[str], **kwargs: object) -> RunResult:
-        assert kwargs["install_action_suppliers"] == (install_actions,)
-        assert kwargs["install_action_candidate_suppliers"] == (
-            install_action_candidates,
+        assert all(callable(item) for item in kwargs["preflight_suppliers"])
+        assert all(callable(item) for item in kwargs["install_action_suppliers"])
+        assert all(
+            callable(item) for item in kwargs["install_action_candidate_suppliers"]
         )
-        assert kwargs["configuration_suppliers"] == (configuration,)
-        assert kwargs["doctor_check_suppliers"] == (doctor_checks,)
+        assert all(callable(item) for item in kwargs["configuration_suppliers"])
+        assert all(callable(item) for item in kwargs["doctor_check_suppliers"])
         contributors = kwargs["plan_contributors"]
         assert isinstance(contributors, tuple)
-        assert isinstance(contributors[1], AssistantPlanContributor)
+        assert isinstance(contributors[1], AssistantOrchestrator)
         fake_runner.satisfy_core_commands()
         return saved_run(
             arguments,
@@ -198,6 +261,7 @@ def test_main_registers_exported_callbacks_and_runs_real_aggregate_plan(
             confirm=lambda _prompt: True,
             output=print,
             timestamp=lambda: "20260726T120000Z",
+            preflight_suppliers=kwargs["preflight_suppliers"],
             install_action_candidate_suppliers=kwargs[
                 "install_action_candidate_suppliers"
             ],
@@ -224,11 +288,13 @@ def test_doctor_normalizes_claude_native_inspection_failure(
     )
     paths = RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home)
     monkeypatch.setattr(
-        "ballen_config.assistants.claude_install_actions",
+        "ballen_config.assistants.orchestrator.claude_install_actions",
         lambda *_args: (_ for _ in ()).throw(ClaudePluginInspectionError("secret")),
     )
 
-    findings = doctor_checks(setup, paths, fake_runner)
+    assistants = AssistantOrchestrator(paths)
+    assistants.preflight(setup, paths)
+    findings = assistants.doctor_checks(setup, paths, fake_runner)
 
     unavailable = next(
         finding for finding in findings if finding.id == "claude.unavailable"
@@ -267,7 +333,9 @@ def test_aggregate_install_and_doctor_normalize_bundled_cursor_read_failure(
         home=temporary_home,
         runner=fake_runner,
     )
-    findings = doctor_checks(setup, paths, fake_runner)
+    assistants = AssistantOrchestrator(paths)
+    assistants.preflight(setup, paths)
+    findings = assistants.doctor_checks(setup, paths, fake_runner)
 
     assert installed == RunResult(
         exit_code=1,
@@ -735,8 +803,10 @@ def test_candidate_actions_cover_every_possible_native_action(
     )
     paths = RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home)
 
-    candidates = install_action_candidates(setup, paths)
-    dynamic = install_actions(setup, paths, fake_runner)
+    assistants = AssistantOrchestrator(paths)
+    assistants.preflight(setup, paths)
+    candidates = assistants.install_action_candidates(setup, paths)
+    dynamic = assistants.install_actions(setup, paths, fake_runner)
 
     assert {action.component_id for action in dynamic} <= {
         action.component_id for action in candidates

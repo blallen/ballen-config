@@ -131,13 +131,12 @@ class HookResource(ResourceBase):
 
 
 class CatalogResource(ResourceBase):
-    """A typed subcatalog whose ordered item IDs are flattened for audit."""
+    """A typed subcatalog referenced once by the central inventory."""
 
     kind: Literal["catalog"]
     source: PurePosixPath
     catalog_kind: CatalogKind
     targets: ConcreteTargets = ()
-    item_ids: tuple[str, ...]
 
 
 class ManualResource(ResourceBase):
@@ -205,83 +204,6 @@ class ExtensionCatalog(BaseModel):
         ids = [extension.id for extension in self.extensions]
         if len(ids) != len(set(ids)):
             raise ValueError("duplicate extension id")
-        return self
-
-
-class NativeMarketplace(BaseModel):
-    """One marketplace after target and profile projection."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    name: str = Field(min_length=1)
-    source: str = Field(min_length=1)
-    profiles: tuple[str, ...] = ("default",)
-
-
-class NativePlugin(BaseModel):
-    """One native plugin after target and profile projection."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    id: str = Field(min_length=1)
-    marketplace: str = Field(min_length=1)
-    profiles: tuple[str, ...] = ("default",)
-    required: bool = True
-
-
-class NativePluginCatalog(BaseModel):
-    """One concrete native target's selected marketplace state."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    marketplaces: tuple[NativeMarketplace, ...]
-    plugins: tuple[NativePlugin, ...]
-
-    @model_validator(mode="after")
-    def validate_marketplaces(self) -> Self:
-        """Reject ambiguous or inconsistent plugin catalog declarations."""
-        marketplace_names = [marketplace.name for marketplace in self.marketplaces]
-        if len(marketplace_names) != len(set(marketplace_names)):
-            raise ValueError("duplicate marketplace name")
-
-        plugin_ids = [plugin.id for plugin in self.plugins]
-        if len(plugin_ids) != len(set(plugin_ids)):
-            raise ValueError("duplicate plugin id")
-
-        marketplace_by_name = {
-            marketplace.name: marketplace for marketplace in self.marketplaces
-        }
-        names = set(marketplace_by_name)
-        unknown = {
-            plugin.marketplace
-            for plugin in self.plugins
-            if plugin.marketplace not in names
-        }
-        if unknown:
-            raise ValueError(f"unknown marketplaces: {sorted(unknown)}")
-
-        profile_mismatches = [
-            plugin.id
-            for plugin in self.plugins
-            if not set(plugin.profiles).issubset(
-                marketplace_by_name[plugin.marketplace].profiles
-            )
-        ]
-        if profile_mismatches:
-            raise ValueError(
-                "plugin profiles must be a subset of marketplace profiles: "
-                f"{sorted(profile_mismatches)}"
-            )
-
-        mismatched = [
-            plugin.id
-            for plugin in self.plugins
-            if plugin.id.rpartition("@")[1:] != ("@", plugin.marketplace)
-        ]
-        if mismatched:
-            raise ValueError(
-                f"plugin marketplace suffix mismatch: {sorted(mismatched)}"
-            )
         return self
 
 

@@ -8,12 +8,12 @@ from pathlib import Path
 from typing import TypedDict, cast
 
 import tomlkit
-import yaml
 from pydantic import BaseModel, ConfigDict, ValidationError
 
+from ballen_config.assistants.desired_state import PluginCatalogProjection
 from ballen_config.assistants.instructions import render_native_instructions
 from ballen_config.assistants.json import StrictJsonError, strict_json_loads
-from ballen_config.assistants.models import NativePluginCatalog
+from ballen_config.assistants.models import AgentName
 from ballen_config.assistants.sources import reviewed_regular_file as _reviewed_source
 from ballen_config.configure import (
     ApplyMethod,
@@ -122,35 +122,22 @@ def codex_settings_renderer() -> Renderer:
     return render
 
 
-def _catalog(path: Path) -> NativePluginCatalog:
-    """Load one reviewed Codex plugin catalog."""
-    return NativePluginCatalog.model_validate(
-        yaml.safe_load(path.read_text(encoding="utf-8"))
-    )
-
-
 def plan_codex_plugins(
-    catalog_path: Path,
+    catalog: PluginCatalogProjection,
     *,
-    profiles: tuple[str, ...],
     installed: frozenset[str],
     known_marketplaces: frozenset[str] = frozenset(),
 ) -> tuple[InstallAction, ...]:
     """Plan missing Codex marketplace actions followed by plugin actions."""
-    catalog = _catalog(catalog_path)
-    active_profiles = set(profiles)
-    selected_plugins = tuple(
-        plugin
-        for plugin in catalog.plugins
-        if active_profiles.intersection(plugin.profiles)
-    )
+    if catalog.target is not AgentName.CODEX:
+        raise ValueError("Codex plugin catalog must target codex")
+    selected_plugins = catalog.native_plugins
     selected_marketplaces = {plugin.marketplace for plugin in selected_plugins}
     actions: list[InstallAction] = []
     for marketplace in catalog.marketplaces:
         if (
             marketplace.name not in selected_marketplaces
             or marketplace.name in known_marketplaces
-            or not active_profiles.intersection(marketplace.profiles)
         ):
             continue
         required = any(
@@ -221,7 +208,7 @@ def _marketplace_snapshot(result: object) -> list[CodexMarketplaceEntry]:
 
 
 def install_actions(
-    setup: ResolvedSetup, paths: RuntimePaths, runner: Runner
+    setup: ResolvedSetup, catalog: PluginCatalogProjection, runner: Runner
 ) -> tuple[InstallAction, ...]:
     """Inspect native Codex state and plan only missing plugin actions."""
     if "codex" in setup.skipped or not setup.is_enabled("codex"):
@@ -252,10 +239,8 @@ def install_actions(
         UnicodeDecodeError,
     ) as error:
         raise CodexPluginInspectionError("Codex plugin inspection failed") from error
-    catalog_path = _reviewed_source(paths, Path("assistants/codex/plugins.yaml"))
     return plan_codex_plugins(
-        catalog_path,
-        profiles=setup.profiles,
+        catalog,
         installed=frozenset(plugin["id"] for plugin in snapshot["plugins"]),
         known_marketplaces=frozenset(
             marketplace["name"] for marketplace in known_marketplaces

@@ -93,6 +93,30 @@ def _resolved_setup(
 
 
 @pytest.fixture
+def extension_catalog() -> ExtensionCatalog:
+    """Build the focused Cursor extension catalog used by adapter tests."""
+    return ExtensionCatalog.model_validate(
+        {
+            "extensions": [
+                {"id": "anthropic.claude-code", "condition": "claude-code"},
+                {"id": "bierner.markdown-mermaid"},
+                {"id": "ms-python.python"},
+                {"id": "openai.chatgpt", "condition": "codex"},
+                {
+                    "id": "velociraptor115.vscode-jj-graph",
+                    "install_mode": "vsix",
+                    "required": False,
+                    "version": "0.0.9",
+                    "size_bytes": 10_291_769,
+                    "url": _JJ_GRAPH_URL,
+                    "sha256": _JJ_GRAPH_SHA256,
+                },
+            ]
+        }
+    )
+
+
+@pytest.fixture
 def cursor_source_repo(tmp_path: Path) -> Path:
     """Create minimal reviewed Cursor configuration sources."""
     repo = tmp_path / "repo"
@@ -459,12 +483,11 @@ def test_extension_catalog_is_exact_ordered_and_gallery_entries_are_unpinned(
 
 
 def test_agent_extensions_follow_enabled_claude_and_codex(
-    repo_root: Path,
+    extension_catalog: ExtensionCatalog,
 ) -> None:
     """Install assistant extensions only when that assistant is enabled."""
-    path = repo_root / "assistants/cursor/extensions.yaml"
     without_agents = resolve_extensions(
-        path,
+        extension_catalog,
         enabled_agents=frozenset({"cursor"}),
         installed=frozenset(),
         bundled=frozenset(),
@@ -477,7 +500,7 @@ def test_agent_extensions_follow_enabled_claude_and_codex(
     )
 
     with_agents = resolve_extensions(
-        path,
+        extension_catalog,
         enabled_agents=frozenset({"cursor", "claude-code", "codex"}),
         installed=frozenset(),
         bundled=frozenset(),
@@ -487,10 +510,12 @@ def test_agent_extensions_follow_enabled_claude_and_codex(
     assert with_agents.skipped_condition == ()
 
 
-def test_bundled_extension_satisfies_desired_feature(repo_root: Path) -> None:
+def test_bundled_extension_satisfies_desired_feature(
+    extension_catalog: ExtensionCatalog,
+) -> None:
     """Avoid reinstalling a feature already bundled with Cursor."""
     state = resolve_extensions(
-        repo_root / "assistants/cursor/extensions.yaml",
+        extension_catalog,
         enabled_agents=frozenset({"cursor"}),
         installed=frozenset(),
         bundled=frozenset({"ms-python.python"}),
@@ -517,9 +542,9 @@ def test_bundled_manifest_ids_ignore_packages_without_extension_identity(
 @pytest.mark.parametrize("manifest_bytes", (b"{", b'{"publisher": 1, "name": "x"}'))
 def test_install_normalizes_invalid_bundled_manifest_inspection(
     manifest_bytes: bytes,
-    repo_root: Path,
     temporary_home: Path,
     fake_runner: StatefulAssistantFake,
+    extension_catalog: ExtensionCatalog,
 ) -> None:
     """Bundled package metadata failures do not escape the Cursor adapter."""
     bundled_root = temporary_home / "Cursor/extensions"
@@ -527,10 +552,10 @@ def test_install_normalizes_invalid_bundled_manifest_inspection(
     manifest.parent.mkdir(parents=True)
     manifest.write_bytes(manifest_bytes)
     setup = _resolved_setup("cursor")
-    paths = RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home)
-
     with pytest.raises(CursorExtensionInspectionError):
-        install_actions(setup, paths, fake_runner, bundled_root=bundled_root)
+        install_actions(
+            setup, extension_catalog, fake_runner, bundled_root=bundled_root
+        )
 
 
 def test_obsolete_and_transitive_extensions_are_excluded(repo_root: Path) -> None:
@@ -554,10 +579,12 @@ def test_obsolete_and_transitive_extensions_are_excluded(repo_root: Path) -> Non
     assert declared.isdisjoint(forbidden)
 
 
-def test_gallery_action_uses_exact_extension_id(repo_root: Path) -> None:
+def test_gallery_action_uses_exact_extension_id(
+    extension_catalog: ExtensionCatalog,
+) -> None:
     """Install gallery entries without version locking."""
     actions = plan_cursor_extension_actions(
-        repo_root / "assistants/cursor/extensions.yaml",
+        extension_catalog,
         enabled_agents=frozenset({"cursor"}),
         installed=frozenset(),
         bundled=frozenset(),
@@ -578,13 +605,13 @@ def test_gallery_action_uses_exact_extension_id(repo_root: Path) -> None:
 
 
 def test_jj_graph_action_uses_exact_optional_verified_download(
-    repo_root: Path,
+    extension_catalog: ExtensionCatalog,
 ) -> None:
     """Delegate the audited optional VSIX entirely to the core installer."""
     action = next(
         item
         for item in plan_cursor_extension_actions(
-            repo_root / "assistants/cursor/extensions.yaml",
+            extension_catalog,
             enabled_agents=frozenset({"cursor"}),
             installed=frozenset(),
             bundled=frozenset(),
@@ -611,16 +638,20 @@ def test_vsix_fake_download_installs_and_core_cleans_up(
     """Exercise verified download, install, and cleanup without network access."""
     payload = b"fixture-vsix-bytes"
     url = "https://example.invalid/vscode-jj-graph-0.0.9.vsix"
-    catalog_path = tmp_path / "extensions.yaml"
-    catalog_path.write_text(
-        "extensions:\n"
-        "  - id: velociraptor115.vscode-jj-graph\n"
-        "    install_mode: vsix\n"
-        "    required: false\n"
-        "    version: 0.0.9\n"
-        f"    size_bytes: {len(payload)}\n"
-        f"    url: {url}\n"
-        f"    sha256: {sha256(payload).hexdigest()}\n"
+    catalog = ExtensionCatalog.model_validate(
+        {
+            "extensions": [
+                {
+                    "id": "velociraptor115.vscode-jj-graph",
+                    "install_mode": "vsix",
+                    "required": False,
+                    "version": "0.0.9",
+                    "size_bytes": len(payload),
+                    "url": url,
+                    "sha256": sha256(payload).hexdigest(),
+                }
+            ]
+        }
     )
     fake_runner.add_vsix(
         url=url,
@@ -628,7 +659,7 @@ def test_vsix_fake_download_installs_and_core_cleans_up(
         extension_id="velociraptor115.vscode-jj-graph",
     )
     action = plan_cursor_extension_actions(
-        catalog_path,
+        catalog,
         enabled_agents=frozenset({"cursor"}),
         installed=frozenset(),
         bundled=frozenset(),
@@ -648,7 +679,7 @@ def test_vsix_fake_download_installs_and_core_cleans_up(
 
 
 def test_extension_resolution_reports_independent_deterministic_sets(
-    repo_root: Path,
+    extension_catalog: ExtensionCatalog,
 ) -> None:
     """Keep installed, bundled, skipped, missing, and extra states distinct."""
     installed = frozenset(
@@ -659,7 +690,7 @@ def test_extension_resolution_reports_independent_deterministic_sets(
     )
     bundled = frozenset({"ms-python.python"})
     state = resolve_extensions(
-        repo_root / "assistants/cursor/extensions.yaml",
+        extension_catalog,
         enabled_agents=frozenset({"cursor"}),
         installed=installed,
         bundled=bundled,
@@ -670,7 +701,7 @@ def test_extension_resolution_reports_independent_deterministic_sets(
         bundled=bundled,
         missing=tuple(
             sorted(
-                set(_EXTENSION_IDS)
+                {item.id for item in extension_catalog.extensions}
                 - installed
                 - bundled
                 - {
@@ -687,10 +718,12 @@ def test_extension_resolution_reports_independent_deterministic_sets(
     )
 
 
-def test_unmanaged_extensions_are_diagnostic_only(repo_root: Path) -> None:
+def test_unmanaged_extensions_are_diagnostic_only(
+    extension_catalog: ExtensionCatalog,
+) -> None:
     """Never produce removal actions for extensions outside the catalog."""
     actions = plan_cursor_extension_actions(
-        repo_root / "assistants/cursor/extensions.yaml",
+        extension_catalog,
         enabled_agents=frozenset({"cursor"}),
         installed=frozenset({"unmanaged.extra"}),
         bundled=frozenset(),
@@ -705,13 +738,9 @@ def test_skipped_cursor_returns_before_native_or_bundled_inspection(
     tmp_path: Path,
 ) -> None:
     """Avoid CLI, packaged-extension, and catalog reads when Cursor is skipped."""
-    paths = RuntimePaths.from_roots(
-        repo_root=tmp_path / "absent-repo",
-        home=temporary_home,
-    )
     actions = install_actions(
         _resolved_setup("codex", skipped=("cursor",)),
-        paths,
+        ExtensionCatalog(extensions=()),
         fake_runner,
         bundled_root=tmp_path / "must-not-be-read",
     )
@@ -720,10 +749,10 @@ def test_skipped_cursor_returns_before_native_or_bundled_inspection(
 
 
 def test_failed_cursor_extension_inspection_never_plans_installs(
-    repo_root: Path,
     fake_runner: StatefulAssistantFake,
     temporary_home: Path,
     tmp_path: Path,
+    extension_catalog: ExtensionCatalog,
 ) -> None:
     """Fail closed without exposing native output or producing install actions."""
     command = ("cursor", "--list-extensions")
@@ -733,10 +762,6 @@ def test_failed_cursor_extension_inspection_never_plans_installs(
         stdout="sensitive stdout",
         stderr="sensitive stderr",
     )
-    paths = RuntimePaths.from_roots(
-        repo_root=repo_root,
-        home=temporary_home,
-    )
 
     with pytest.raises(
         RuntimeError,
@@ -744,7 +769,7 @@ def test_failed_cursor_extension_inspection_never_plans_installs(
     ) as error:
         install_actions(
             _resolved_setup("cursor"),
-            paths,
+            extension_catalog,
             fake_runner,
             bundled_root=tmp_path / "must-not-be-read",
         )
@@ -794,7 +819,7 @@ def test_inventory_is_synchronized_with_cursor_sources_and_catalog(
     inventory = load_inventory(
         repo_root / "assistants/inventory.yaml",
         repo_root,
-    )
+    ).inventory
     by_id = {resource.id: resource for resource in inventory.resources}
 
     settings = by_id["cursor.settings"]
@@ -812,7 +837,7 @@ def test_inventory_is_synchronized_with_cursor_sources_and_catalog(
     assert isinstance(rules, ManualResource)
     assert rules.source is not None
     assert isinstance(extensions, CatalogResource)
-    assert extensions.item_ids == _EXTENSION_IDS
+    assert extensions.catalog_kind.value == "extension"
 
 
 def test_cursor_adapter_is_publicly_exported() -> None:

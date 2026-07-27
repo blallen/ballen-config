@@ -4,10 +4,24 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 import yaml
 
-from ballen_config.assistants.desired_state import project_plugin_catalog
-from ballen_config.assistants.models import AgentName, PluginCatalog
+from ballen_config.assistants.desired_state import (
+    AssistantDesiredStateError,
+    load_desired_state,
+    project_plugin_catalog,
+)
+from ballen_config.assistants.models import (
+    AgentName,
+    ExtensionCatalog,
+    PluginCatalog,
+    SkillCatalog,
+)
+from ballen_config.assistants.orchestrator import AssistantOrchestrator
+from ballen_config.manifests import ManifestRepository
+from ballen_config.models import ResolutionRequest
+from ballen_config.runtime import RuntimePaths
 
 
 def _targeted_catalog() -> PluginCatalog:
@@ -180,3 +194,99 @@ def test_shared_plugin_catalog_parses_against_targeted_models(repo_root: Path) -
     )
     assert projection.cursor_marketplace_plugins == ()
     assert projection.cursor_local_plugins == ()
+
+
+def test_load_desired_state_validates_every_catalog_before_resolution(
+    repo_root: Path,
+) -> None:
+    """Load all typed documents even when no concrete agent remains enabled."""
+    desired = load_desired_state(
+        repo_root,
+        ("default",),
+        frozenset({"cursor", "claude-code", "codex"}),
+    )
+
+    assert isinstance(desired.extension_catalog, ExtensionCatalog)
+    assert isinstance(desired.skill_catalog, SkillCatalog)
+    assert isinstance(desired.plugin_catalog, PluginCatalog)
+    assert desired.plugin_projections == ()
+
+
+def test_skipped_agent_removes_only_its_projection(repo_root: Path) -> None:
+    """Apply skips only after every shared catalog has been validated."""
+    desired = load_desired_state(
+        repo_root,
+        ("default",),
+        frozenset({"codex"}),
+    )
+
+    assert tuple(projection.target for projection in desired.plugin_projections) == (
+        AgentName.CURSOR,
+        AgentName.CLAUDE,
+    )
+    with pytest.raises(ValueError, match="missing plugin projection: codex"):
+        desired.plugin_projection(AgentName.CODEX)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        pytest.param("repo_root", Path("/tmp/other-repo"), id="repo-root"),
+        pytest.param("home", Path("/tmp/other-home"), id="home"),
+        pytest.param("state_root", Path("/tmp/other-state"), id="state-root"),
+        pytest.param("backup_root", Path("/tmp/other-backups"), id="backup-root"),
+    ],
+)
+def test_orchestrator_rejects_every_runtime_path_difference(
+    repo_root: Path,
+    temporary_home: Path,
+    field: str,
+    value: Path,
+) -> None:
+    """Bind cached desired state to all runtime roots, profiles, and skips."""
+    setup = ManifestRepository.load(repo_root / "manifests").resolve(
+        ResolutionRequest()
+    )
+    paths = RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home)
+    orchestrator = AssistantOrchestrator(paths)
+
+    orchestrator.preflight(setup, paths)
+    orchestrator.preflight(setup, paths)
+    different_paths = paths.model_copy(update={field: value})
+
+    with pytest.raises(
+        AssistantDesiredStateError,
+        match="assistant desired-state preflight failed",
+    ):
+        orchestrator.preflight(setup, different_paths)
+
+
+@pytest.mark.parametrize(
+    "changed_request",
+    [
+        pytest.param(
+            ResolutionRequest(profile="work"),
+            id="profiles",
+        ),
+        pytest.param(
+            ResolutionRequest(skips=("codex",)),
+            id="skips",
+        ),
+    ],
+)
+def test_orchestrator_rejects_profile_or_skip_identity_changes(
+    repo_root: Path,
+    temporary_home: Path,
+    changed_request: ResolutionRequest,
+) -> None:
+    """Reject every profile or skip key change after desired-state loading."""
+    repository = ManifestRepository.load(repo_root / "manifests")
+    paths = RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home)
+    orchestrator = AssistantOrchestrator(paths)
+    orchestrator.preflight(repository.resolve(ResolutionRequest()), paths)
+
+    with pytest.raises(
+        AssistantDesiredStateError,
+        match="assistant desired-state preflight failed",
+    ):
+        orchestrator.preflight(repository.resolve(changed_request), paths)

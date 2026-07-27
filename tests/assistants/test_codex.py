@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-import yaml
 
 from ballen_config.assistants.codex import (
     CodexPluginInspectionError,
@@ -17,7 +16,12 @@ from ballen_config.assistants.codex import (
     load_stable_settings,
     plan_codex_plugins,
 )
+from ballen_config.assistants.desired_state import (
+    PluginCatalogProjection,
+    project_plugin_catalog,
+)
 from ballen_config.assistants.inventory import load_inventory
+from ballen_config.assistants.models import AgentName, PluginCatalog
 from ballen_config.configure import ApplyMethod
 from ballen_config.models import Component, Manager, ResolvedSetup
 from ballen_config.runtime import RuntimePaths
@@ -32,6 +36,84 @@ def _setup(*, profiles: tuple[str, ...] = ("default",)) -> ResolvedSetup:
             Component(id="codex", manager=Manager.BREW_FORMULA, package="codex"),
         ),
         skipped=(),
+    )
+
+
+@pytest.fixture
+def codex_projection() -> PluginCatalogProjection:
+    """Build the focused Codex plugin projection used by adapter tests."""
+    return PluginCatalogProjection.model_validate(
+        {
+            "target": "codex",
+            "marketplaces": [
+                {
+                    "name": "bigspinai",
+                    "source": "bigspinai/toolkit",
+                    "targets": ["codex"],
+                },
+                {
+                    "name": "claude-plugins-official",
+                    "source": "anthropics/claude-plugins-official",
+                    "targets": ["codex"],
+                },
+                {
+                    "name": "context-mode",
+                    "source": "mksglu/claude-context-mode",
+                    "targets": ["codex"],
+                },
+                {
+                    "name": "superpowers-marketplace",
+                    "source": "obra/superpowers-marketplace",
+                    "targets": ["codex"],
+                },
+            ],
+            "native_plugins": [
+                {
+                    "kind": "native-marketplace",
+                    "id": "bigspin@bigspinai",
+                    "marketplace": "bigspinai",
+                    "targets": ["codex"],
+                },
+                {
+                    "kind": "native-marketplace",
+                    "id": "context-mode@context-mode",
+                    "marketplace": "context-mode",
+                    "targets": ["codex"],
+                },
+                {
+                    "kind": "native-marketplace",
+                    "id": "frontend-design@claude-plugins-official",
+                    "marketplace": "claude-plugins-official",
+                    "targets": ["codex"],
+                },
+                {
+                    "kind": "native-marketplace",
+                    "id": "github@claude-plugins-official",
+                    "marketplace": "claude-plugins-official",
+                    "targets": ["codex"],
+                },
+                {
+                    "kind": "native-marketplace",
+                    "id": "logfire@claude-plugins-official",
+                    "marketplace": "claude-plugins-official",
+                    "targets": ["codex"],
+                },
+                {
+                    "kind": "native-marketplace",
+                    "id": "superpowers@claude-plugins-official",
+                    "marketplace": "claude-plugins-official",
+                    "targets": ["codex"],
+                },
+                {
+                    "kind": "native-marketplace",
+                    "id": "superpowers-developing-for-claude-code@superpowers-marketplace",
+                    "marketplace": "superpowers-marketplace",
+                    "targets": ["codex"],
+                },
+            ],
+            "cursor_marketplace_plugins": [],
+            "cursor_local_plugins": [],
+        }
     )
 
 
@@ -91,12 +173,11 @@ def test_renderer_fails_closed_for_invalid_native_toml(
 
 
 def test_plugin_actions_are_exact_ordered_and_profile_independent(
-    repo_root: Path,
+    codex_projection: PluginCatalogProjection,
 ) -> None:
     """Plan the same ordered JSON actions for each supported profile."""
     default_actions = plan_codex_plugins(
-        repo_root / "assistants/codex/plugins.yaml",
-        profiles=("default",),
+        codex_projection,
         installed=frozenset(),
     )
     assert default_actions[0].argv == (
@@ -104,70 +185,73 @@ def test_plugin_actions_are_exact_ordered_and_profile_independent(
         "plugin",
         "marketplace",
         "add",
-        "anthropics/claude-plugins-official",
+        "bigspinai/toolkit",
         "--json",
     )
     assert all(action.argv[-1] == "--json" for action in default_actions)
     work_actions = plan_codex_plugins(
-        repo_root / "assistants/codex/plugins.yaml",
-        profiles=("default", "work"),
+        codex_projection,
         installed=frozenset(),
     )
     assert work_actions == default_actions
 
 
-def test_plugin_planner_filters_optional_work_catalog_entries(tmp_path: Path) -> None:
-    """Select optional work entries after required default JSON actions."""
-    catalog_path = tmp_path / "plugins.yaml"
-    catalog_path.write_text(
-        "marketplaces:\n"
-        "  - name: default-marketplace\n"
-        "    source: example/default\n"
-        "    profiles: [default]\n"
-        "  - name: work-marketplace\n"
-        "    source: example/work\n"
-        "    profiles: [work]\n"
-        "plugins:\n"
-        "  - id: default-plugin@default-marketplace\n"
-        "    marketplace: default-marketplace\n"
-        "    profiles: [default]\n"
-        "  - id: work-plugin@work-marketplace\n"
-        "    marketplace: work-marketplace\n"
-        "    profiles: [work]\n"
-        "    required: false\n"
+def test_plugin_planner_preserves_optional_preprojected_actions() -> None:
+    """Keep optional requiredness after target/profile projection."""
+    catalog = PluginCatalog.model_validate(
+        {
+            "marketplaces": [
+                {
+                    "name": "work-marketplace",
+                    "source": "example/work",
+                    "targets": ["codex"],
+                    "profiles": ["work"],
+                }
+            ],
+            "plugins": [
+                {
+                    "kind": "native-marketplace",
+                    "id": "work-plugin@work-marketplace",
+                    "marketplace": "work-marketplace",
+                    "targets": ["codex"],
+                    "profiles": ["work"],
+                    "required": False,
+                }
+            ],
+        }
+    )
+    projection = project_plugin_catalog(
+        catalog, target=AgentName.CODEX, profiles=("default", "work")
     )
 
-    default_actions = plan_codex_plugins(
-        catalog_path, profiles=("default",), installed=frozenset()
-    )
-    assert [action.component_id for action in default_actions] == [
-        "codex.marketplace.default-marketplace",
-        "codex.plugin.default-plugin@default-marketplace",
-    ]
+    actions = plan_codex_plugins(projection, installed=frozenset())
 
-    work_actions = plan_codex_plugins(
-        catalog_path, profiles=("default", "work"), installed=frozenset()
-    )
-    assert [action.component_id for action in work_actions] == [
-        "codex.marketplace.default-marketplace",
+    assert [action.component_id for action in actions] == [
         "codex.marketplace.work-marketplace",
-        "codex.plugin.default-plugin@default-marketplace",
         "codex.plugin.work-plugin@work-marketplace",
     ]
-    assert all(not action.required for action in work_actions[1::2])
+    assert all(not action.required for action in actions)
 
 
-def test_plugin_catalog_declares_only_retained_default_profile(repo_root: Path) -> None:
-    """Keep all retained Codex catalog entries available in both profiles."""
-    source = yaml.safe_load(
-        (repo_root / "assistants/codex/plugins.yaml").read_text(encoding="utf-8")
+def test_planner_rejects_a_projection_for_another_agent() -> None:
+    """Keep native command ownership aligned with the concrete target."""
+    projection = PluginCatalogProjection.model_validate(
+        {
+            "target": "claude-code",
+            "marketplaces": [],
+            "native_plugins": [],
+            "cursor_marketplace_plugins": [],
+            "cursor_local_plugins": [],
+        }
     )
-    assert all(item["profiles"] == ["default"] for item in source["marketplaces"])
-    assert all(item["profiles"] == ["default"] for item in source["plugins"])
+    with pytest.raises(ValueError, match="target codex"):
+        plan_codex_plugins(projection, installed=frozenset())
 
 
 def test_native_plugin_inspection_accepts_installed_plugin_records(
-    repo_root: Path, temporary_home: Path, fake_runner: StatefulAssistantFake
+    temporary_home: Path,
+    fake_runner: StatefulAssistantFake,
+    codex_projection: PluginCatalogProjection,
 ) -> None:
     """Use the current native plugin-list schema to avoid duplicate actions."""
     fake_runner.add(
@@ -192,7 +276,7 @@ def test_native_plugin_inspection_accepts_installed_plugin_records(
 
     actions = install_actions(
         _setup(),
-        RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home),
+        codex_projection,
         fake_runner,
     )
 
@@ -222,9 +306,9 @@ def test_native_plugin_inspection_accepts_installed_plugin_records(
     ],
 )
 def test_native_plugin_inspection_fails_closed_for_malformed_native_records(
-    repo_root: Path,
     temporary_home: Path,
     fake_runner: StatefulAssistantFake,
+    codex_projection: PluginCatalogProjection,
     plugin_list: str,
     marketplace_list: str,
     expected_commands: tuple[tuple[str, ...], ...],
@@ -244,7 +328,7 @@ def test_native_plugin_inspection_fails_closed_for_malformed_native_records(
     ):
         install_actions(
             _setup(),
-            RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home),
+            codex_projection,
             fake_runner,
         )
     assert fake_runner.commands == list(expected_commands)
@@ -264,9 +348,9 @@ def test_native_plugin_inspection_fails_closed_for_malformed_native_records(
     ],
 )
 def test_native_plugin_inspection_normalizes_command_failures(
-    repo_root: Path,
     temporary_home: Path,
     fake_runner: StatefulAssistantFake,
+    codex_projection: PluginCatalogProjection,
     command: tuple[str, ...],
 ) -> None:
     """Normalize either native inspection command failure."""
@@ -277,20 +361,23 @@ def test_native_plugin_inspection_normalizes_command_failures(
     ):
         install_actions(
             _setup(),
-            RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home),
+            codex_projection,
             fake_runner,
         )
 
 
 def test_enabled_inspection_fails_closed_and_skip_does_nothing(
-    repo_root: Path, temporary_home: Path, fake_runner: StatefulAssistantFake
+    repo_root: Path,
+    temporary_home: Path,
+    fake_runner: StatefulAssistantFake,
+    codex_projection: PluginCatalogProjection,
 ) -> None:
     """Reject ambiguous inspection while skipped Codex never touches boundaries."""
     skipped = ResolvedSetup(profiles=("default",), components=(), skipped=("codex",))
     assert (
         install_actions(
             skipped,
-            RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home),
+            codex_projection,
             fake_runner,
         )
         == ()
@@ -306,7 +393,7 @@ def test_enabled_inspection_fails_closed_and_skip_does_nothing(
     ):
         install_actions(
             _setup(),
-            RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home),
+            codex_projection,
             fake_runner,
         )
 
@@ -356,7 +443,7 @@ def test_instruction_and_configuration_own_only_codex_resources(
 
 def test_inventory_is_synchronized_and_excludes_local_state(repo_root: Path) -> None:
     """Declare only Codex portable resources in the central inventory."""
-    inventory = load_inventory(repo_root / "assistants/inventory.yaml")
+    inventory = load_inventory(repo_root / "assistants/inventory.yaml").inventory
     codex = [
         resource for resource in inventory.resources if resource.owner.value == "codex"
     ]
@@ -366,6 +453,5 @@ def test_inventory_is_synchronized_and_excludes_local_state(repo_root: Path) -> 
         "codex.rtk",
         "codex.browser",
         "codex.notion",
-        "codex.plugins.catalog",
     ]
     assert all("hook" not in resource.id for resource in codex)

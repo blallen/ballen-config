@@ -375,7 +375,9 @@ def test_inventory_manual_resources_are_exact_and_unique(repo_root: Path) -> Non
     """Declare portable first-party browser and Notion setup guidance."""
     from ballen_config.assistants.inventory import load_inventory
 
-    inventory = load_inventory(repo_root / "assistants/inventory.yaml", repo_root)
+    inventory = load_inventory(
+        repo_root / "assistants/inventory.yaml", repo_root
+    ).inventory
     manual = {item.id: item for item in inventory.resources if item.kind == "manual"}
     expected = {
         "cursor.browser": "Enable Cursor's first-party browser capability if it is not already enabled.",

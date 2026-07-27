@@ -7,6 +7,8 @@ from pathlib import Path
 
 import pytest
 
+import ballen_config.cli as cli
+from ballen_config.assistants.desired_state import AssistantDesiredStateError
 from ballen_config.cli import (
     STAGES,
     RunResult,
@@ -15,9 +17,16 @@ from ballen_config.cli import (
     parse_args,
     run,
 )
-from ballen_config.configure import ConfigAction, ConfigureStageReport
+from ballen_config.configure import (
+    ConfigAction,
+    ConfigurationContribution,
+    ConfigureStageReport,
+    core_configuration,
+)
 from ballen_config.doctor import CheckSeverity, DoctorFinding, FindingStatus
 from ballen_config.install import InstallAction, InstallStageReport
+from ballen_config.manifests import ManifestRepository
+from ballen_config.planning import PlanAction
 from ballen_config.runner import CommandResult
 
 
@@ -119,6 +128,163 @@ class FakeDownloader:
     ) -> None:
         """Reject an unexpected download."""
         raise AssertionError("no download expected")
+
+
+def test_preflight_runs_before_all_supplier_and_state_boundaries(
+    repo_root: Path,
+    fake_home: Path,
+) -> None:
+    """Reject invalid desired state before any supplied or native boundary."""
+    events: list[str] = []
+
+    def preflight(_setup: object, _paths: object) -> None:
+        events.append("preflight")
+        raise AssistantDesiredStateError("assistant desired-state preflight failed")
+
+    def candidate(_setup: object, _paths: object) -> tuple[InstallAction, ...]:
+        events.append("candidate")
+        return ()
+
+    def configuration(_setup: object, _paths: object) -> ConfigurationContribution:
+        events.append("configuration")
+        return ConfigurationContribution()
+
+    result = run(
+        ("all",),
+        repo_root=repo_root,
+        home=fake_home,
+        runner=FakeRunner(),
+        downloader=FakeDownloader(),
+        confirm=lambda _prompt: pytest.fail("confirmation after failed preflight"),
+        output=lambda _message: pytest.fail("plan output after failed preflight"),
+        timestamp=lambda: "fixed",
+        preflight_suppliers=(preflight,),
+        install_action_candidate_suppliers=(candidate,),
+        install_action_suppliers=(
+            lambda _setup, _paths, _runner: pytest.fail("native inspection"),
+        ),
+        configuration_suppliers=(configuration,),
+    )
+
+    assert result == RunResult(
+        exit_code=2,
+        report=StageReport(outcomes=("assistant desired-state preflight failed",)),
+    )
+    assert events == ["preflight"]
+
+
+def test_successful_all_orders_every_cli_seam(
+    repo_root: Path,
+    fake_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Order manifest, planning, mutation, and diagnostic seams on success."""
+    events: list[str] = []
+    original_manifest_load = ManifestRepository.load
+    original_engine_factory = cli.ConfigurationEngine
+    original_inspector = cli.ResolvedInspector
+    original_doctor = cli.run_doctor
+
+    def load_manifest(root: Path) -> ManifestRepository:
+        events.append("manifest")
+        return original_manifest_load(root)
+
+    def preflight(_setup: object, _paths: object) -> None:
+        events.append("preflight")
+
+    def candidates(_setup: object, _paths: object) -> tuple[InstallAction, ...]:
+        events.append("candidates")
+        return (InstallAction(component_id="agent.plugin", argv=("agent", "add")),)
+
+    def native_actions(*_args: object) -> tuple[InstallAction, ...]:
+        events.append("native-inspection")
+        return (InstallAction(component_id="agent.plugin", argv=("agent", "add")),)
+
+    def configuration(_setup: object, _paths: object) -> ConfigurationContribution:
+        events.append("configuration")
+        return ConfigurationContribution()
+
+    class Contributor:
+        """Record the custom plan-contributor seam."""
+
+        def actions(self, _setup: object) -> tuple[PlanAction, ...]:
+            """Record plan contribution without adding a duplicate action."""
+            events.append("contributor")
+            return ()
+
+    def engine_factory(**kwargs: object) -> object:
+        events.append("engine")
+        return original_engine_factory(**kwargs)
+
+    def inspector_factory(*args: object) -> object:
+        events.append("inspector")
+        return original_inspector(*args)
+
+    def install(**kwargs: object) -> InstallStageReport:
+        events.append("base-install" if kwargs["components"] else "assistant-install")
+        return InstallStageReport(exit_code=0, outcomes=())
+
+    def configured_core(*args: object) -> ConfigurationContribution:
+        events.append("core-configuration")
+        return core_configuration(*args)
+
+    monkeypatch.setattr(ManifestRepository, "load", staticmethod(load_manifest))
+    monkeypatch.setattr("ballen_config.cli.core_configuration", configured_core)
+    monkeypatch.setattr("ballen_config.cli.ConfigurationEngine", engine_factory)
+    monkeypatch.setattr("ballen_config.cli.ResolvedInspector", inspector_factory)
+    monkeypatch.setattr("ballen_config.cli.run_install", install)
+    monkeypatch.setattr(
+        "ballen_config.cli.run_configure",
+        lambda *_args: (
+            events.append("configure")
+            or ConfigureStageReport(actions=(), changed_count=0)
+        ),
+    )
+    monkeypatch.setattr(
+        "ballen_config.cli.core_doctor_checks",
+        lambda *_args, **_kwargs: events.append("core-doctor") or (),
+    )
+    monkeypatch.setattr(
+        "ballen_config.cli.run_doctor",
+        lambda checks: events.append("doctor") or original_doctor(checks),
+    )
+
+    result = run(
+        ("all",),
+        repo_root=repo_root,
+        home=fake_home,
+        runner=FakeRunner(),
+        downloader=FakeDownloader(),
+        confirm=lambda _prompt: events.append("confirmation") or True,
+        output=lambda _message: None,
+        timestamp=lambda: "fixed",
+        preflight_suppliers=(preflight,),
+        install_action_candidate_suppliers=(candidates,),
+        install_action_suppliers=(native_actions,),
+        configuration_suppliers=(configuration,),
+        doctor_check_suppliers=(lambda *_args: events.append("doctor-supplier") or (),),
+        plan_contributors=(Contributor(),),
+    )
+
+    assert result.exit_code == 0
+    assert events == [
+        "manifest",
+        "preflight",
+        "candidates",
+        "core-configuration",
+        "configuration",
+        "engine",
+        "inspector",
+        "contributor",
+        "confirmation",
+        "base-install",
+        "native-inspection",
+        "assistant-install",
+        "configure",
+        "core-doctor",
+        "doctor-supplier",
+        "doctor",
+    ]
 
 
 @pytest.mark.parametrize("stage", ["install", "configure", "all"])
