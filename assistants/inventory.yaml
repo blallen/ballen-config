@@ -137,8 +137,6 @@ resources:
       - pydantic-ai@claude-plugins-official
       - superpowers@claude-plugins-official
       - superpowers-developing-for-claude-code@superpowers-marketplace
-      - ami-qsp-tools@piste
-      - fieldkit@piste
 
   - id: codex.config
     kind: file
@@ -183,5 +181,3 @@ resources:
       - logfire@claude-plugins-official
       - superpowers@claude-plugins-official
       - superpowers-developing-for-claude-code@superpowers-marketplace
-      - ami-qsp-tools@piste
-      - fieldkit@piste

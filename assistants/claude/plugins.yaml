@@ -11,9 +11,6 @@ marketplaces:
     source: prime-radiant-inc/prime-radiant-marketplace
   - name: ponytail
     source: DietrichGebert/ponytail
-  - name: piste
-    source: git@gitlab.com:flagship-informatics/internal-open-source/piste.git
-    profiles: [work]
 
 plugins:
   - id: bigspin@bigspinai
@@ -34,11 +31,3 @@ plugins:
     marketplace: claude-plugins-official
   - id: superpowers-developing-for-claude-code@superpowers-marketplace
     marketplace: superpowers-marketplace
-  - id: ami-qsp-tools@piste
-    marketplace: piste
-    profiles: [work]
-    required: false
-  - id: fieldkit@piste
-    marketplace: piste
-    profiles: [work]
-    required: false

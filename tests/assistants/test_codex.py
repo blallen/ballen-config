@@ -90,8 +90,10 @@ def test_renderer_fails_closed_for_invalid_native_toml(
         )
 
 
-def test_plugin_actions_are_exact_ordered_and_profile_aware(repo_root: Path) -> None:
-    """Plan JSON marketplace actions before JSON plugin actions."""
+def test_plugin_actions_are_exact_ordered_and_profile_independent(
+    repo_root: Path,
+) -> None:
+    """Plan the same ordered JSON actions for each supported profile."""
     default_actions = plan_codex_plugins(
         repo_root / "assistants/codex/plugins.yaml",
         profiles=("default",),
@@ -106,30 +108,62 @@ def test_plugin_actions_are_exact_ordered_and_profile_aware(repo_root: Path) -> 
         "--json",
     )
     assert all(action.argv[-1] == "--json" for action in default_actions)
-    assert all("piste" not in " ".join(action.argv) for action in default_actions)
     work_actions = plan_codex_plugins(
         repo_root / "assistants/codex/plugins.yaml",
         profiles=("default", "work"),
         installed=frozenset(),
     )
-    assert [action.component_id for action in work_actions][-2:] == [
-        "codex.plugin.ami-qsp-tools@piste",
-        "codex.plugin.fieldkit@piste",
-    ]
-    assert all(
-        not action.required for action in work_actions if "piste" in action.component_id
+    assert work_actions == default_actions
+
+
+def test_plugin_planner_filters_optional_work_catalog_entries(tmp_path: Path) -> None:
+    """Select optional work entries after required default JSON actions."""
+    catalog_path = tmp_path / "plugins.yaml"
+    catalog_path.write_text(
+        "marketplaces:\n"
+        "  - name: default-marketplace\n"
+        "    source: example/default\n"
+        "    profiles: [default]\n"
+        "  - name: work-marketplace\n"
+        "    source: example/work\n"
+        "    profiles: [work]\n"
+        "plugins:\n"
+        "  - id: default-plugin@default-marketplace\n"
+        "    marketplace: default-marketplace\n"
+        "    profiles: [default]\n"
+        "  - id: work-plugin@work-marketplace\n"
+        "    marketplace: work-marketplace\n"
+        "    profiles: [work]\n"
+        "    required: false\n"
     )
 
+    default_actions = plan_codex_plugins(
+        catalog_path, profiles=("default",), installed=frozenset()
+    )
+    assert [action.component_id for action in default_actions] == [
+        "codex.marketplace.default-marketplace",
+        "codex.plugin.default-plugin@default-marketplace",
+    ]
 
-def test_plugin_catalog_explicitly_declares_every_profile(repo_root: Path) -> None:
-    """Keep default and work profile selection visible in the reviewed source."""
+    work_actions = plan_codex_plugins(
+        catalog_path, profiles=("default", "work"), installed=frozenset()
+    )
+    assert [action.component_id for action in work_actions] == [
+        "codex.marketplace.default-marketplace",
+        "codex.marketplace.work-marketplace",
+        "codex.plugin.default-plugin@default-marketplace",
+        "codex.plugin.work-plugin@work-marketplace",
+    ]
+    assert all(not action.required for action in work_actions[1::2])
+
+
+def test_plugin_catalog_declares_only_retained_default_profile(repo_root: Path) -> None:
+    """Keep all retained Codex catalog entries available in both profiles."""
     source = yaml.safe_load(
         (repo_root / "assistants/codex/plugins.yaml").read_text(encoding="utf-8")
     )
-    assert all(item["profiles"] == ["default"] for item in source["marketplaces"][:-1])
-    assert source["marketplaces"][-1]["profiles"] == ["work"]
-    assert all(item["profiles"] == ["default"] for item in source["plugins"][:-2])
-    assert all(item["profiles"] == ["work"] for item in source["plugins"][-2:])
+    assert all(item["profiles"] == ["default"] for item in source["marketplaces"])
+    assert all(item["profiles"] == ["default"] for item in source["plugins"])
 
 
 def test_enabled_inspection_fails_closed_and_skip_does_nothing(

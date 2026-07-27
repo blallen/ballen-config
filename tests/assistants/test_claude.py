@@ -63,8 +63,10 @@ def test_stable_settings_omit_local_state(repo_root: Path) -> None:
     assert all(term not in serialized.casefold() for term in forbidden)
 
 
-def test_plugin_actions_are_scoped_ordered_and_profile_aware(repo_root: Path) -> None:
-    """Plan marketplace registration before deterministic user plugin installs."""
+def test_plugin_actions_are_scoped_ordered_and_profile_independent(
+    repo_root: Path,
+) -> None:
+    """Plan the same ordered native actions for each supported profile."""
     default_actions = plan_claude_plugins(
         repo_root / "assistants/claude/plugins.yaml",
         profiles=("default",),
@@ -84,21 +86,55 @@ def test_plugin_actions_are_scoped_ordered_and_profile_aware(repo_root: Path) ->
         action.argv[0:3] == ("claude", "plugin", "install")
         for action in default_actions[6:]
     )
-    assert all("piste" not in " ".join(action.argv) for action in default_actions)
     assert all(
         action.component_id.startswith("claude.marketplace.")
         for action in default_actions[:6]
     )
-
     work_actions = plan_claude_plugins(
         repo_root / "assistants/claude/plugins.yaml",
         profiles=("default", "work"),
         installed=frozenset(),
     )
-    optional = {action.component_id: action.required for action in work_actions}
-    assert optional["claude.marketplace.piste"] is False
-    assert optional["claude.plugin.ami-qsp-tools@piste"] is False
-    assert optional["claude.plugin.fieldkit@piste"] is False
+    assert work_actions == default_actions
+
+
+def test_plugin_planner_filters_optional_work_catalog_entries(tmp_path: Path) -> None:
+    """Select optional work entries after required default native actions."""
+    catalog_path = tmp_path / "plugins.yaml"
+    catalog_path.write_text(
+        "marketplaces:\n"
+        "  - name: default-marketplace\n"
+        "    source: example/default\n"
+        "  - name: work-marketplace\n"
+        "    source: example/work\n"
+        "    profiles: [work]\n"
+        "plugins:\n"
+        "  - id: default-plugin@default-marketplace\n"
+        "    marketplace: default-marketplace\n"
+        "  - id: work-plugin@work-marketplace\n"
+        "    marketplace: work-marketplace\n"
+        "    profiles: [work]\n"
+        "    required: false\n"
+    )
+
+    default_actions = plan_claude_plugins(
+        catalog_path, profiles=("default",), installed=frozenset()
+    )
+    assert [action.component_id for action in default_actions] == [
+        "claude.marketplace.default-marketplace",
+        "claude.plugin.default-plugin@default-marketplace",
+    ]
+
+    work_actions = plan_claude_plugins(
+        catalog_path, profiles=("default", "work"), installed=frozenset()
+    )
+    assert [action.component_id for action in work_actions] == [
+        "claude.marketplace.default-marketplace",
+        "claude.marketplace.work-marketplace",
+        "claude.plugin.default-plugin@default-marketplace",
+        "claude.plugin.work-plugin@work-marketplace",
+    ]
+    assert all(not action.required for action in work_actions[1::2])
 
 
 def test_registered_native_entries_are_noops(repo_root: Path) -> None:

@@ -18,6 +18,8 @@
    Cursor is enabled.
 9. Enable each enabled agent's first-party browser capability and authorize
    the official Notion integration when needed.
-10. Finish with `./bootstrap doctor --profile work`, or use
+10. Do not manually install the abandoned experimental marketplace setup; it is
+    not part of desired state.
+11. Finish with `./bootstrap doctor --profile work`, or use
    `./bootstrap doctor --profile default` for the default profile. Resolve only
    the normalized manual findings.

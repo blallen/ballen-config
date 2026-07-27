@@ -73,10 +73,10 @@ explicit collision rejection; the agents do not share configuration formats.
 Cursor uses a base settings file plus a work-only Bedrock overlay. Curated
 feature extensions include Jupyter's transitive support, and the optional JJ
 Graph extension is a pinned VSIX. Claude and Codex use their native plugin
-catalogs; work-only Piste marketplace entries remain optional. Use each
-agent's first-party browser capability rather than a global Playwright MCP,
-GitLab through `glab`, and official Notion integrations. Cursor User Rules
-and some first-party capabilities are deliberate manual steps.
+catalogs. The abandoned experimental marketplace setup is not part of desired
+state. Use each agent's first-party browser capability rather than a global
+Playwright MCP, GitLab through `glab`, and official Notion integrations. Cursor
+User Rules and some first-party capabilities are deliberate manual steps.
 
 Only generic skills are promoted into the shared catalog; repository-specific
 skills remain in add-ons. Sessions, history, memories, auth, trust,

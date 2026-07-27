@@ -452,10 +452,10 @@ def test_all_agent_skips_leave_no_assistant_plan_or_native_commands(
     assert "codex." not in rendered
 
 
-def test_default_and_work_profiles_diverge_only_in_work_agent_resources(
+def test_default_and_work_profiles_diverge_only_in_cursor_bedrock_resources(
     repo_root: Path, temporary_home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Only the work production path adds Bedrock and optional Piste resources."""
+    """Only the work production path adds Cursor Bedrock configuration."""
     monkeypatch.setattr(
         "ballen_config.assistants.cursor.read_bundled_extensions",
         lambda _root: frozenset(),
@@ -497,12 +497,26 @@ def test_default_and_work_profiles_diverge_only_in_work_agent_resources(
     )
     assert "claudeCode.environmentVariables" not in default_settings
     assert "claudeCode.environmentVariables" in work_settings
-    assert not any("piste" in " ".join(command) for command in default_runner.commands)
-    assert any("piste" in " ".join(command) for command in work_runner.commands)
-    assert not any("piste" in outcome for outcome in default_result.report.outcomes)
-    assert any(
-        "claude.marketplace.piste" in outcome for outcome in work_result.report.outcomes
-    )
+    default_agent_commands = [
+        command
+        for command in default_runner.commands
+        if command[0] in {"claude", "codex"}
+    ]
+    work_agent_commands = [
+        command for command in work_runner.commands if command[0] in {"claude", "codex"}
+    ]
+    assert work_agent_commands == default_agent_commands
+    default_agent_outcomes = [
+        outcome
+        for outcome in default_result.report.outcomes
+        if outcome.startswith(("claude.", "codex."))
+    ]
+    work_agent_outcomes = [
+        outcome
+        for outcome in work_result.report.outcomes
+        if outcome.startswith(("claude.", "codex."))
+    ]
+    assert work_agent_outcomes == default_agent_outcomes
     assert all("BEDROCK" not in outcome for outcome in work_result.report.outcomes)
 
 

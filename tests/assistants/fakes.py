@@ -40,9 +40,6 @@ class StatefulAssistantFake:
                 "prime-radiant-marketplace"
             ),
             "DietrichGebert/ponytail": "ponytail",
-            (
-                "git@gitlab.com:flagship-informatics/internal-open-source/piste.git"
-            ): "piste",
             "context-mode": "context-mode",
         }
 
