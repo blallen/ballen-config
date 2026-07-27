@@ -6,9 +6,14 @@ import pytest
 from pydantic import ValidationError
 
 from ballen_config.assistants.models import (
+    AgentName,
     AssistantInventory,
+    CursorLocalPlugin,
+    CursorMarketplacePlugin,
     ExtensionCatalog,
     ExtensionSpec,
+    NativeMarketplacePlugin,
+    NativePluginCatalog,
     PluginCatalog,
     SkillCatalog,
 )
@@ -194,7 +199,7 @@ def test_gallery_extensions_forbid_vsix_metadata(
 def test_plugin_catalog_rejects_unknown_marketplace() -> None:
     """Require every plugin marketplace to be declared."""
     with pytest.raises(ValidationError, match="unknown marketplaces"):
-        PluginCatalog.model_validate(
+        NativePluginCatalog.model_validate(
             {
                 "marketplaces": [],
                 "plugins": [
@@ -269,7 +274,345 @@ def test_plugin_catalog_rejects_ambiguous_declarations(
 ) -> None:
     """Reject duplicate catalog keys and mismatched plugin suffixes."""
     with pytest.raises(ValidationError, match=message):
-        PluginCatalog.model_validate(catalog)
+        NativePluginCatalog.model_validate(catalog)
+
+
+def test_plugin_catalog_accepts_shared_native_and_cursor_variants() -> None:
+    """Accept each targeted plugin representation in the shared catalog."""
+    catalog = PluginCatalog.model_validate(
+        {
+            "marketplaces": [
+                {
+                    "name": "official",
+                    "source": "owner/repository",
+                    "targets": ["claude-code", "codex"],
+                    "profiles": ["default"],
+                }
+            ],
+            "plugins": [
+                {
+                    "kind": "native-marketplace",
+                    "id": "example@official",
+                    "marketplace": "official",
+                    "targets": ["claude-code", "codex"],
+                    "profiles": ["default"],
+                    "required": True,
+                },
+                {
+                    "kind": "cursor-marketplace",
+                    "id": "cursor-example",
+                    "targets": ["cursor"],
+                    "profiles": ["default"],
+                    "required": False,
+                    "scope": "user",
+                    "verification": "manual",
+                },
+                {
+                    "kind": "cursor-local",
+                    "id": "local-example",
+                    "source": "assistants/shared/plugins/local/local-example",
+                    "targets": ["cursor"],
+                    "profiles": ["default"],
+                    "required": True,
+                },
+            ],
+        }
+    )
+    native, cursor_marketplace, cursor_local = catalog.plugins
+    assert isinstance(native, NativeMarketplacePlugin)
+    assert native.marketplace == "official"
+    assert native.targets == (AgentName.CLAUDE, AgentName.CODEX)
+    assert native.required is True
+    assert isinstance(cursor_marketplace, CursorMarketplacePlugin)
+    assert cursor_marketplace.scope == "user"
+    assert cursor_marketplace.verification == "manual"
+    assert cursor_marketplace.required is False
+    assert isinstance(cursor_local, CursorLocalPlugin)
+    assert cursor_local.source.as_posix() == (
+        "assistants/shared/plugins/local/local-example"
+    )
+    assert cursor_local.targets == (AgentName.CURSOR,)
+    assert cursor_local.required is True
+
+
+@pytest.mark.parametrize(
+    "targets",
+    [
+        pytest.param([], id="empty"),
+        pytest.param(["shared"], id="shared"),
+        pytest.param(["cursor", "cursor"], id="duplicate"),
+    ],
+)
+def test_plugin_catalog_rejects_invalid_target_sets(targets: list[str]) -> None:
+    """Reject empty, non-concrete, and duplicate target selections."""
+    payload = {
+        "marketplaces": [
+            {
+                "name": "official",
+                "source": "owner/repository",
+                "targets": targets,
+                "profiles": ["default"],
+            }
+        ],
+        "plugins": [],
+    }
+    with pytest.raises(ValidationError):
+        PluginCatalog.model_validate(payload)
+
+
+def test_plugin_catalog_rejects_duplicate_identity_for_overlapping_target() -> None:
+    """Prevent one native alias from resolving to different sources per target."""
+    payload = {
+        "marketplaces": [
+            {
+                "name": "official",
+                "source": "owner/one",
+                "targets": ["claude-code", "codex"],
+            },
+            {
+                "name": "official",
+                "source": "owner/two",
+                "targets": ["codex"],
+            },
+        ],
+        "plugins": [],
+    }
+    with pytest.raises(ValidationError, match="duplicate marketplace identity"):
+        PluginCatalog.model_validate(payload)
+
+
+def test_plugin_catalog_rejects_duplicate_plugin_identity_for_overlapping_target() -> (
+    None
+):
+    """Prevent a target from receiving conflicting declarations for one plugin ID."""
+    payload = {
+        "marketplaces": [
+            {
+                "name": "official",
+                "source": "owner/repository",
+                "targets": ["claude-code", "codex"],
+            }
+        ],
+        "plugins": [
+            {
+                "kind": "native-marketplace",
+                "id": "example@official",
+                "marketplace": "official",
+                "targets": ["claude-code", "codex"],
+            },
+            {
+                "kind": "native-marketplace",
+                "id": "example@official",
+                "marketplace": "official",
+                "targets": ["codex"],
+            },
+        ],
+    }
+    with pytest.raises(ValidationError, match="duplicate plugin identity"):
+        PluginCatalog.model_validate(payload)
+
+
+def test_disjoint_targets_may_reuse_marketplace_name() -> None:
+    """Allow target-specific aliases that happen to share a display name."""
+    catalog = PluginCatalog.model_validate(
+        {
+            "marketplaces": [
+                {
+                    "name": "official",
+                    "source": "owner/claude",
+                    "targets": ["claude-code"],
+                },
+                {
+                    "name": "official",
+                    "source": "owner/codex",
+                    "targets": ["codex"],
+                },
+            ],
+            "plugins": [],
+        }
+    )
+    assert len(catalog.marketplaces) == 2
+
+
+@pytest.mark.parametrize(
+    ("marketplace", "plugin", "message"),
+    [
+        pytest.param(
+            {
+                "name": "official",
+                "source": "owner/repository",
+                "targets": ["claude-code"],
+            },
+            {
+                "kind": "native-marketplace",
+                "id": "example@official",
+                "marketplace": "official",
+                "targets": ["codex"],
+            },
+            "not covered",
+            id="target",
+        ),
+        pytest.param(
+            {
+                "name": "official",
+                "source": "owner/repository",
+                "targets": ["claude-code"],
+                "profiles": ["default"],
+            },
+            {
+                "kind": "native-marketplace",
+                "id": "example@official",
+                "marketplace": "official",
+                "targets": ["claude-code"],
+                "profiles": ["work"],
+            },
+            "profiles must be a subset",
+            id="profile",
+        ),
+    ],
+)
+def test_native_plugin_requires_marketplace_coverage(
+    marketplace: dict[str, object], plugin: dict[str, object], message: str
+) -> None:
+    """Require native plugins to be eligible wherever their marketplace is used."""
+    with pytest.raises(ValidationError, match=message):
+        PluginCatalog.model_validate(
+            {"marketplaces": [marketplace], "plugins": [plugin]}
+        )
+
+
+def test_native_plugin_suffix_matches_marketplace_alias() -> None:
+    """Keep native plugin IDs coupled to their declared marketplace alias."""
+    with pytest.raises(ValidationError, match="suffix mismatch"):
+        PluginCatalog.model_validate(
+            {
+                "marketplaces": [
+                    {
+                        "name": "official",
+                        "source": "owner/repository",
+                        "targets": ["claude-code"],
+                    }
+                ],
+                "plugins": [
+                    {
+                        "kind": "native-marketplace",
+                        "id": "example@other",
+                        "marketplace": "official",
+                        "targets": ["claude-code"],
+                    }
+                ],
+            }
+        )
+
+
+@pytest.mark.parametrize("kind", ["cursor-marketplace", "cursor-local"])
+def test_cursor_variants_reject_non_cursor_targets(kind: str) -> None:
+    """Restrict Cursor-specific representations to Cursor alone."""
+    plugin: dict[str, object] = {
+        "kind": kind,
+        "id": "example",
+        "targets": ["claude-code"],
+    }
+    if kind == "cursor-marketplace":
+        plugin.update(scope="user", verification="manual")
+    else:
+        plugin["source"] = "assistants/shared/plugins/local/example"
+    with pytest.raises(ValidationError, match="target only cursor"):
+        PluginCatalog.model_validate({"marketplaces": [], "plugins": [plugin]})
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        pytest.param("scope", "workspace", id="scope"),
+        pytest.param("verification", "automatic", id="verification"),
+    ],
+)
+def test_cursor_marketplace_requires_manual_user_selection(
+    field: str, value: str
+) -> None:
+    """Keep marketplace-only Cursor entries explicitly manual and user-scoped."""
+    plugin = {
+        "kind": "cursor-marketplace",
+        "id": "example",
+        "targets": ["cursor"],
+        "scope": "user",
+        "verification": "manual",
+        field: value,
+    }
+    with pytest.raises(ValidationError):
+        PluginCatalog.model_validate({"marketplaces": [], "plugins": [plugin]})
+
+
+@pytest.mark.parametrize(
+    ("dependency_targets", "dependency_profiles", "message"),
+    [
+        pytest.param(
+            ["cursor"], ["default", "work"], "dependency targets", id="target"
+        ),
+        pytest.param(
+            ["cursor", "codex"], ["default"], "dependency profiles", id="profile"
+        ),
+    ],
+)
+def test_skill_dependencies_cover_dependent_eligibility(
+    dependency_targets: list[str], dependency_profiles: list[str], message: str
+) -> None:
+    """Require every dependency to be eligible for each dependent invocation."""
+    with pytest.raises(ValidationError, match=message):
+        SkillCatalog.model_validate(
+            {
+                "skills": [
+                    {
+                        "name": "base",
+                        "source": "assistants/shared/skills/base",
+                        "targets": dependency_targets,
+                        "profiles": dependency_profiles,
+                        "dependencies": [],
+                        "provenance": "reviewed",
+                        "portability_status": "reviewed-generic",
+                    },
+                    {
+                        "name": "dependent",
+                        "source": "assistants/shared/skills/dependent",
+                        "targets": ["cursor", "codex"],
+                        "profiles": ["default", "work"],
+                        "dependencies": ["base"],
+                        "provenance": "reviewed",
+                        "portability_status": "reviewed-generic",
+                    },
+                ]
+            }
+        )
+
+
+def test_shared_skill_dependency_may_cover_more_targets_and_profiles() -> None:
+    """Permit dependencies with a broader eligibility envelope."""
+    catalog = SkillCatalog.model_validate(
+        {
+            "skills": [
+                {
+                    "name": "base",
+                    "source": "assistants/shared/skills/base",
+                    "targets": ["cursor", "claude-code", "codex"],
+                    "profiles": ["default", "work"],
+                    "dependencies": [],
+                    "provenance": "reviewed",
+                    "portability_status": "reviewed-generic",
+                },
+                {
+                    "name": "dependent",
+                    "source": "assistants/shared/skills/dependent",
+                    "targets": ["cursor", "codex"],
+                    "profiles": ["work"],
+                    "dependencies": ["base"],
+                    "provenance": "reviewed",
+                    "portability_status": "reviewed-generic",
+                },
+            ]
+        }
+    )
+    assert catalog.skills[1].dependencies == ("base",)
 
 
 @pytest.mark.parametrize(

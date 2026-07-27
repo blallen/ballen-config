@@ -19,7 +19,7 @@ from ballen_config.assistants.claude import (
 )
 from ballen_config.assistants.hooks import hook_contribution
 from ballen_config.assistants.inventory import load_inventory
-from ballen_config.assistants.models import FileResource, PluginCatalog
+from ballen_config.assistants.models import FileResource, NativePluginCatalog
 from ballen_config.configure import ApplyMethod
 from ballen_config.install import Installer
 from ballen_config.models import Component, Manager, ResolvedSetup
@@ -475,7 +475,7 @@ def test_native_plugin_inspection_rejects_duplicate_json_keys(
 def test_plugin_catalog_rejects_plugin_profile_outside_marketplace_profile() -> None:
     """Reject catalog entries that could register private sources by default."""
     with pytest.raises(ValueError, match="plugin profiles must be a subset"):
-        PluginCatalog.model_validate(
+        NativePluginCatalog.model_validate(
             {
                 "marketplaces": [
                     {

@@ -706,7 +706,7 @@ def test_selected_dependency_must_also_be_eligible(
             _catalog_item("consumer", dependencies=("base",)),
         ],
     )
-    with pytest.raises(ValueError, match="dependency is not eligible"):
+    with pytest.raises(ValueError, match="dependency profiles do not cover"):
         configuration(_resolved_setup("cursor"), skill_paths)
 
 
@@ -723,7 +723,7 @@ def test_selected_dependency_cannot_target_only_a_skipped_agent(
             _catalog_item("consumer", dependencies=("base",)),
         ],
     )
-    with pytest.raises(ValueError, match="dependency is not eligible"):
+    with pytest.raises(ValueError, match="dependency targets do not cover"):
         configuration(_resolved_setup("cursor"), skill_paths)
 
 
@@ -744,7 +744,7 @@ def test_dependency_must_cover_consumer_enabled_targets(
             ),
         ],
     )
-    with pytest.raises(ValueError, match="dependency target coverage"):
+    with pytest.raises(ValueError, match="dependency targets do not cover"):
         configuration(_resolved_setup("cursor", "codex"), skill_paths)
 
 

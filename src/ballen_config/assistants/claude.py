@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 from ballen_config.assistants.hooks import claude_hook_fragment
 from ballen_config.assistants.instructions import render_native_instructions
 from ballen_config.assistants.json import StrictJsonError, strict_json_loads
-from ballen_config.assistants.models import PluginCatalog
+from ballen_config.assistants.models import NativePluginCatalog
 from ballen_config.assistants.sources import reviewed_regular_file as _reviewed_source
 from ballen_config.configure import (
     ApplyMethod,
@@ -185,7 +185,7 @@ def load_stable_settings_bytes(source: bytes) -> ClaudeStableSettings:
         raise ClaudeSettingsError("invalid Claude settings") from error
 
 
-def _catalog(path: Path) -> PluginCatalog:
+def _catalog(path: Path) -> NativePluginCatalog:
     """Load one reviewed Claude plugin catalog.
 
     Args:
@@ -194,7 +194,7 @@ def _catalog(path: Path) -> PluginCatalog:
     Returns:
         Validated plugin catalog.
     """
-    return PluginCatalog.model_validate(
+    return NativePluginCatalog.model_validate(
         yaml.safe_load(path.read_text(encoding="utf-8"))
     )
 

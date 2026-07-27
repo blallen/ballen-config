@@ -18,7 +18,7 @@ from ballen_config.assistants.models import (
     ExtensionCatalog,
     FileResource,
     HookResource,
-    PluginCatalog,
+    NativePluginCatalog,
     PortableResource,
     SkillCatalog,
 )
@@ -81,7 +81,7 @@ def _catalog_ids(resource: CatalogResource, source: Path) -> tuple[str, ...]:
         extensions = ExtensionCatalog.model_validate(payload)
         return tuple(item.id for item in extensions.extensions)
     if resource.catalog_kind is CatalogKind.PLUGIN:
-        plugins = PluginCatalog.model_validate(payload)
+        plugins = NativePluginCatalog.model_validate(payload)
         return tuple(item.id for item in plugins.plugins)
     skills = SkillCatalog.model_validate(payload)
     return tuple(item.name for item in skills.skills)
