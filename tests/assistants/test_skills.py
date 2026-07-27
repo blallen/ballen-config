@@ -339,6 +339,31 @@ def test_same_name_different_hash_in_cursor_scanned_root_is_collision(
     assert str(temporary_home) not in str(error.value)
 
 
+def test_non_cursor_targets_ignore_divergent_cursor_skill(
+    source_skill: Path,
+    temporary_home: Path,
+) -> None:
+    """Plan only requested native roots when Cursor is not a target."""
+    conflict = temporary_home / ".cursor/skills/example-skill"
+    conflict.mkdir(parents=True)
+    (conflict / "SKILL.md").write_text(
+        "---\nname: example-skill\ndescription: Different.\n---\n"
+    )
+
+    actions = plan_skill_copies(
+        source=source_skill,
+        name="example-skill",
+        targets=(AgentName.CLAUDE, AgentName.CODEX),
+        home=temporary_home,
+        state=BootstrapState(),
+    )
+
+    assert {action.relative_destination for action in actions} == {
+        Path(".claude/skills/example-skill"),
+        Path(".agents/skills/example-skill"),
+    }
+
+
 def test_identical_destination_is_a_no_op(
     source_skill: Path,
     temporary_home: Path,

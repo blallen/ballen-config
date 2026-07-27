@@ -260,8 +260,13 @@ def plan_skill_copies(
         )
         desired[destination] = (target, resource_id, relative, record)
 
+    scanned_roots = (
+        _CURSOR_SCANNED_ROOTS
+        if AgentName.CURSOR in targets
+        else tuple(_SKILL_ROOTS[target] for target in targets)
+    )
     current_digests: dict[Path, str] = {}
-    for relative_root in _CURSOR_SCANNED_ROOTS:
+    for relative_root in scanned_roots:
         relative = relative_root / name
         candidate = _candidate(home, relative)
         metadata = _metadata(candidate)

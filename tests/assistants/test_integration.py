@@ -785,6 +785,34 @@ def test_aggregate_configure_copies_and_tracks_shared_jujutsu_workflow_skill(
         ).read_bytes()
 
 
+def test_aggregate_plan_skips_divergent_cursor_shared_skill_when_cursor_skipped(
+    repo_root: Path,
+    temporary_home: Path,
+    fake_runner: StatefulAssistantFake,
+) -> None:
+    """Allow a Claude and Codex plan to ignore a skipped Cursor skill tree."""
+    conflict = temporary_home / ".cursor/skills/jujutsu-workflow"
+    conflict.mkdir(parents=True)
+    (conflict / "SKILL.md").write_text(
+        "---\nname: jujutsu-workflow\ndescription: Different.\n---\n"
+    )
+    output: list[str] = []
+
+    result = run_with_assistants(
+        ("plan", "--skip", "cursor"),
+        repo_root=repo_root,
+        home=temporary_home,
+        runner=fake_runner,
+        output=output,
+    )
+
+    assert result.exit_code == 0
+    rendered = "\n".join(output)
+    assert "shared-skill-jujutsu-workflow-claude-code" in rendered
+    assert "shared-skill-jujutsu-workflow-codex" in rendered
+    assert "shared-skill-jujutsu-workflow-cursor" not in rendered
+
+
 def test_all_agent_skips_leave_no_assistant_plan_or_native_commands(
     repo_root: Path,
     temporary_home: Path,
