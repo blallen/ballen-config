@@ -45,25 +45,6 @@ class CodexStableSettings(BaseModel):
     service_tier: str
 
 
-class CodexPluginEntry(TypedDict):
-    """One plugin entry returned by Codex's native CLI."""
-
-    id: str
-
-
-class CodexMarketplaceEntry(TypedDict):
-    """One marketplace entry returned by Codex's native CLI."""
-
-    name: str
-
-
-class CodexPluginSnapshot(TypedDict):
-    """The strictly validated Codex plugin-list payload."""
-
-    plugins: list[CodexPluginEntry]
-    marketplaces: list[CodexMarketplaceEntry]
-
-
 class CodexNativePluginEntry(TypedDict):
     """The installed-plugin fields consumed from Codex's native CLI."""
 
@@ -171,8 +152,8 @@ def plan_codex_plugins(
     return tuple(actions)
 
 
-def _plugin_snapshot(result: object) -> CodexPluginSnapshot:
-    """Validate the minimal native plugin-list payload used for planning."""
+def _installed_plugin_ids(result: object) -> frozenset[str]:
+    """Validate native plugin-list payload and return installed IDs."""
     if not isinstance(result, dict):
         raise CodexPluginInspectionError("Codex plugin inspection failed")
     installed = result.get("installed")
@@ -183,14 +164,13 @@ def _plugin_snapshot(result: object) -> CodexPluginSnapshot:
         for item in installed
     ):
         raise CodexPluginInspectionError("Codex plugin inspection failed")
-    plugins = [
-        {"id": cast(CodexNativePluginEntry, item)["pluginId"]} for item in installed
-    ]
-    return cast(CodexPluginSnapshot, {"plugins": plugins, "marketplaces": []})
+    return frozenset(
+        cast(CodexNativePluginEntry, item)["pluginId"] for item in installed
+    )
 
 
-def _marketplace_snapshot(result: object) -> list[CodexMarketplaceEntry]:
-    """Validate the marketplace-list fields used for planning."""
+def _marketplace_names(result: object) -> frozenset[str]:
+    """Validate native marketplace-list payload and return marketplace names."""
     if not isinstance(result, dict):
         raise CodexPluginInspectionError("Codex plugin inspection failed")
     marketplaces = result.get("marketplaces")
@@ -201,10 +181,9 @@ def _marketplace_snapshot(result: object) -> list[CodexMarketplaceEntry]:
         for item in marketplaces
     ):
         raise CodexPluginInspectionError("Codex plugin inspection failed")
-    return [
-        {"name": cast(CodexNativeMarketplaceEntry, item)["name"]}
-        for item in marketplaces
-    ]
+    return frozenset(
+        cast(CodexNativeMarketplaceEntry, item)["name"] for item in marketplaces
+    )
 
 
 def install_actions(
@@ -217,7 +196,7 @@ def install_actions(
     if listed["returncode"] != 0:
         raise CodexPluginInspectionError("Codex plugin inspection failed")
     try:
-        snapshot = _plugin_snapshot(strict_json_loads(listed["stdout"]))
+        installed = _installed_plugin_ids(strict_json_loads(listed["stdout"]))
     except (
         CodexPluginInspectionError,
         StrictJsonError,
@@ -229,7 +208,7 @@ def install_actions(
     if marketplaces["returncode"] != 0:
         raise CodexPluginInspectionError("Codex plugin inspection failed")
     try:
-        known_marketplaces = _marketplace_snapshot(
+        known_marketplaces = _marketplace_names(
             strict_json_loads(marketplaces["stdout"])
         )
     except (
@@ -241,10 +220,8 @@ def install_actions(
         raise CodexPluginInspectionError("Codex plugin inspection failed") from error
     return plan_codex_plugins(
         catalog,
-        installed=frozenset(plugin["id"] for plugin in snapshot["plugins"]),
-        known_marketplaces=frozenset(
-            marketplace["name"] for marketplace in known_marketplaces
-        ),
+        installed=installed,
+        known_marketplaces=known_marketplaces,
     )
 
 

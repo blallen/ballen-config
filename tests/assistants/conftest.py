@@ -10,6 +10,12 @@ from pathlib import Path
 import pytest
 import yaml
 
+from ballen_config.assistants.desired_state import (
+    PluginCatalogProjection,
+    project_plugin_catalog,
+)
+from ballen_config.assistants.inventory import load_inventory
+from ballen_config.assistants.models import AgentName, PluginCatalog
 from tests.assistants.fakes import StatefulAssistantFake
 
 
@@ -31,6 +37,42 @@ type CursorLocalPluginRepoFactory = Callable[
 def repo_root() -> Path:
     """Return the checkout root used by assistant tests."""
     return Path(__file__).resolve().parents[2]
+
+
+@pytest.fixture(scope="session")
+def target_aware_plugin_catalog() -> PluginCatalog:
+    """Load the checked-in shared plugin catalog through production inventory."""
+    root = Path(__file__).resolve().parents[2]
+    loaded = load_inventory(root / "assistants/inventory.yaml", root)
+    for catalog in loaded.catalogs:
+        if catalog.resource_id == "shared.plugins.catalog":
+            assert isinstance(catalog.document, PluginCatalog)
+            return catalog.document
+    raise AssertionError("shared plugin catalog is missing from inventory")
+
+
+@pytest.fixture
+def claude_projection(
+    target_aware_plugin_catalog: PluginCatalog,
+) -> PluginCatalogProjection:
+    """Project the checked-in catalog for Claude adapter tests."""
+    return project_plugin_catalog(
+        target_aware_plugin_catalog,
+        target=AgentName.CLAUDE,
+        profiles=("default",),
+    )
+
+
+@pytest.fixture
+def codex_projection(
+    target_aware_plugin_catalog: PluginCatalog,
+) -> PluginCatalogProjection:
+    """Project the checked-in catalog for Codex adapter tests."""
+    return project_plugin_catalog(
+        target_aware_plugin_catalog,
+        target=AgentName.CODEX,
+        profiles=("default",),
+    )
 
 
 @pytest.fixture
@@ -78,15 +120,7 @@ def cursor_local_plugin_repo_factory(
     index = 0
 
     def create(specifications: tuple[CursorLocalPluginFixture, ...]) -> Path:
-        """Copy the checkout and append declared local plugins.
-
-        Args:
-            specifications: Plugin trees and matching catalog declarations to
-                create beneath the copied checkout.
-
-        Returns:
-            A copied repository whose local plugin catalog matches its trees.
-        """
+        """Copy the checkout and append declared local plugins."""
         nonlocal index
         index += 1
         copied = tmp_path / f"cursor-local-plugin-repository-{index}"
