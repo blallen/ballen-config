@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+import shutil
 import stat
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Literal, TypedDict
 
 import pytest
+import yaml
 
 import ballen_config.cli as cli
 from ballen_config.assistants import AssistantOrchestrator
@@ -19,6 +21,10 @@ from ballen_config.manifests import ManifestRepository
 from ballen_config.models import Manager, ResolutionRequest
 from ballen_config.runtime import RuntimePaths
 from ballen_config.state import StateStore
+from tests.assistants.conftest import (
+    CursorLocalPluginFixture,
+    CursorLocalPluginRepoFactory,
+)
 from tests.assistants.fakes import StatefulAssistantFake
 
 
@@ -142,6 +148,70 @@ def run_with_assistants(
     )
 
 
+def _copy_checkout(repo_root: Path, destination: Path) -> Path:
+    """Copy one checkout without runtime and source-control state."""
+    shutil.copytree(
+        repo_root,
+        destination,
+        ignore=shutil.ignore_patterns(
+            ".git",
+            ".jj",
+            ".venv",
+            ".pytest_cache",
+            ".ruff_cache",
+            ".mypy_cache",
+            "__pycache__",
+        ),
+    )
+    return destination
+
+
+@pytest.fixture
+def cursor_marketplace_repo(repo_root: Path, tmp_path: Path) -> Path:
+    """Copy the checkout with one explicit manual Cursor marketplace plugin."""
+    copied = _copy_checkout(repo_root, tmp_path / "cursor-marketplace")
+    catalog_path = copied / "assistants/shared/plugins/catalog.yaml"
+    payload = yaml.safe_load(catalog_path.read_text(encoding="utf-8"))
+    payload["plugins"].append(
+        {
+            "kind": "cursor-marketplace",
+            "id": "example-plugin",
+            "targets": ["cursor"],
+            "profiles": ["default"],
+            "required": True,
+            "scope": "user",
+            "verification": "manual",
+        }
+    )
+    catalog_path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+    return copied
+
+
+@pytest.fixture
+def cursor_local_plugin_repo(
+    cursor_local_plugin_repo_factory: CursorLocalPluginRepoFactory,
+) -> Path:
+    """Copy the checkout with one reviewed native Cursor local plugin."""
+    return cursor_local_plugin_repo_factory(
+        (CursorLocalPluginFixture(id="example-local"),)
+    )
+
+
+@pytest.fixture
+def invalid_cursor_local_plugin_repo(
+    cursor_local_plugin_repo_factory: CursorLocalPluginRepoFactory,
+) -> Path:
+    """Copy the checkout with a valid declaration and mismatched local tree."""
+    return cursor_local_plugin_repo_factory(
+        (
+            CursorLocalPluginFixture(
+                id="example-local",
+                manifest_name="different-name",
+            ),
+        )
+    )
+
+
 @pytest.mark.parametrize(
     "arguments",
     [
@@ -206,6 +276,166 @@ def test_invalid_shared_catalog_stops_before_native_or_state_mutation(
     assert not paths.state_root.exists()
     assert not paths.backup_root.exists()
     assert not StateStore(paths).path.exists()
+
+
+def test_cursor_marketplace_never_reads_private_state_or_runs_command(
+    cursor_marketplace_repo: Path,
+    temporary_home: Path,
+    fake_runner: StatefulAssistantFake,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Keep Cursor marketplace declarations manual and private-state-free."""
+    private_roots = (
+        temporary_home / ".cursor/plugins/cache",
+        temporary_home / "Library/Application Support/Cursor/User/globalStorage",
+    )
+    original_read_bytes = Path.read_bytes
+
+    def guarded_read_bytes(path: Path) -> bytes:
+        if any(path == root or path.is_relative_to(root) for root in private_roots):
+            pytest.fail(f"private Cursor state read: {path.name}")
+        return original_read_bytes(path)
+
+    monkeypatch.setattr(Path, "read_bytes", guarded_read_bytes)
+    plan_output: list[str] = []
+    doctor_output: list[str] = []
+    cursor_only = ("--skip", "claude-code", "--skip", "codex")
+    planned = run_with_assistants(
+        ("plan", *cursor_only),
+        repo_root=cursor_marketplace_repo,
+        home=temporary_home,
+        runner=fake_runner,
+        output=plan_output,
+    )
+    diagnosed = run_with_assistants(
+        ("doctor", *cursor_only),
+        repo_root=cursor_marketplace_repo,
+        home=temporary_home,
+        runner=fake_runner,
+        output=doctor_output,
+    )
+
+    assert planned.exit_code == diagnosed.exit_code == 0
+    assert "cursor.plugin.example-plugin" in "\n".join(plan_output)
+    assert "cursor.plugin.example-plugin" in "\n".join(doctor_output)
+    assert not any(
+        command[0].startswith("cursor") and "plugin" in command[1:]
+        for command in fake_runner.commands
+    )
+
+
+def test_cursor_local_plugin_converges_and_is_idempotent(
+    cursor_local_plugin_repo: Path,
+    temporary_home: Path,
+    fake_runner: StatefulAssistantFake,
+) -> None:
+    """Converge one reviewed local plugin through the core tree engine."""
+    first = run_with_assistants(
+        ("configure",),
+        repo_root=cursor_local_plugin_repo,
+        home=temporary_home,
+        runner=fake_runner,
+    )
+    destination = temporary_home / ".cursor/plugins/local/example-local"
+    first_snapshot = {
+        path.relative_to(destination): path.read_bytes()
+        for path in sorted(destination.rglob("*"))
+        if path.is_file()
+    }
+    second = run_with_assistants(
+        ("configure",),
+        repo_root=cursor_local_plugin_repo,
+        home=temporary_home,
+        runner=fake_runner,
+    )
+    second_snapshot = {
+        path.relative_to(destination): path.read_bytes()
+        for path in sorted(destination.rglob("*"))
+        if path.is_file()
+    }
+    paths = RuntimePaths.from_roots(
+        repo_root=cursor_local_plugin_repo,
+        home=temporary_home,
+    )
+    state = StateStore(paths).load()
+
+    assert first.exit_code == second.exit_code == 0
+    assert first.report.changed_count >= 1
+    assert second.report.changed_count == 0
+    assert second_snapshot == first_snapshot
+    assert "cursor-local-plugin-example-local" in state.managed
+    assert not paths.backup_root.exists()
+
+
+def test_dotted_cursor_local_plugin_ids_keep_distinct_state_and_destinations(
+    cursor_local_plugin_repo_factory: CursorLocalPluginRepoFactory,
+    temporary_home: Path,
+    fake_runner: StatefulAssistantFake,
+) -> None:
+    """Preserve dotted IDs without colliding with a similarly named plugin."""
+    repo_root = cursor_local_plugin_repo_factory(
+        (
+            CursorLocalPluginFixture(id="example.local", skill_name="dotted-skill"),
+            CursorLocalPluginFixture(id="example-local", skill_name="dash-skill"),
+        )
+    )
+
+    result = run_with_assistants(
+        ("configure",),
+        repo_root=repo_root,
+        home=temporary_home,
+        runner=fake_runner,
+    )
+    paths = RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home)
+    state = StateStore(paths).load()
+
+    assert result.exit_code == 0
+    assert (temporary_home / ".cursor/plugins/local/example.local").is_dir()
+    assert (temporary_home / ".cursor/plugins/local/example-local").is_dir()
+    assert {
+        "cursor-local-plugin-example.local",
+        "cursor-local-plugin-example-local",
+    }.issubset(state.managed)
+
+
+@pytest.mark.parametrize("stage", ["plan", "install", "configure", "doctor", "all"])
+@pytest.mark.parametrize("skip_all", [False, True], ids=["enabled", "all-skipped"])
+def test_invalid_cursor_local_tree_fails_preflight_without_effects(
+    invalid_cursor_local_plugin_repo: Path,
+    temporary_home: Path,
+    fake_runner: StatefulAssistantFake,
+    stage: str,
+    skip_all: bool,
+) -> None:
+    """Validate raw local trees before skips, commands, or filesystem effects."""
+    arguments: tuple[str, ...] = (stage,)
+    if skip_all:
+        arguments += (
+            "--skip",
+            "cursor",
+            "--skip",
+            "claude-code",
+            "--skip",
+            "codex",
+        )
+
+    result = run_with_assistants(
+        arguments,
+        repo_root=invalid_cursor_local_plugin_repo,
+        home=temporary_home,
+        runner=fake_runner,
+    )
+    paths = RuntimePaths.from_roots(
+        repo_root=invalid_cursor_local_plugin_repo,
+        home=temporary_home,
+    )
+
+    assert result.exit_code == 2
+    assert result.report.outcomes == ("assistant desired-state preflight failed",)
+    assert fake_runner.commands == []
+    assert not paths.state_root.exists()
+    assert not paths.backup_root.exists()
+    assert not (temporary_home / ".cursor/plugins/local").exists()
 
 
 def test_aggregate_callbacks_omit_every_cursor_surface_when_skipped(

@@ -7,6 +7,10 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, ConfigDict, ValidationError
 
+from ballen_config.assistants.cursor_plugins import (
+    ValidatedCursorLocalPlugin,
+    validate_cursor_local_plugins,
+)
 from ballen_config.assistants.inventory import (
     LoadedInventory,
     ResolvedInventory,
@@ -60,6 +64,7 @@ class AssistantDesiredState(BaseModel):
     skill_catalog: SkillCatalog
     plugin_catalog: PluginCatalog
     plugin_projections: tuple[PluginCatalogProjection, ...]
+    validated_cursor_local_plugins: tuple[ValidatedCursorLocalPlugin, ...]
 
     def plugin_projection(
         self,
@@ -84,6 +89,26 @@ class AssistantDesiredState(BaseModel):
         if len(matches) != 1:
             raise ValueError(f"missing plugin projection: {target.value}")
         return matches[0]
+
+    def cursor_local_plugin_snapshots(self) -> tuple[ValidatedCursorLocalPlugin, ...]:
+        """Return active Cursor local-plugin snapshots without revalidation.
+
+        Returns:
+            Profile-eligible preflight snapshots in deterministic identifier
+            order.
+
+        Raises:
+            ValueError: If an active projection lacks its validated snapshot.
+        """
+        projection = self.plugin_projection(AgentName.CURSOR)
+        by_id = {
+            snapshot.plugin.id: snapshot
+            for snapshot in self.validated_cursor_local_plugins
+        }
+        try:
+            return tuple(by_id[plugin.id] for plugin in projection.cursor_local_plugins)
+        except KeyError as error:
+            raise ValueError("missing validated Cursor local plugin") from error
 
 
 def _catalog(
@@ -112,6 +137,44 @@ def _catalog(
     if len(matches) != 1 or not isinstance(matches[0], expected_type):
         raise ValueError(f"invalid assistant catalog: {resource_id}")
     return matches[0]
+
+
+def _cursor_shared_skill_names(catalog: SkillCatalog) -> frozenset[str]:
+    """Return every shared skill declared for Cursor before profile filtering.
+
+    Args:
+        catalog: Fully validated shared skill catalog.
+
+    Returns:
+        Names reserved by any Cursor-targeted shared skill.
+    """
+    return frozenset(
+        skill.name for skill in catalog.skills if AgentName.CURSOR in skill.targets
+    )
+
+
+def _validated_cursor_local_plugins(
+    catalog: PluginCatalog,
+    *,
+    repo_root: Path,
+    shared_skill_names: frozenset[str],
+) -> tuple[ValidatedCursorLocalPlugin, ...]:
+    """Validate every declared local plugin before profiles or skips apply.
+
+    Args:
+        catalog: Fully validated all-target plugin catalog.
+        repo_root: Repository checkout containing reviewed plugin sources.
+        shared_skill_names: Every shared skill reserved for Cursor.
+    """
+    return validate_cursor_local_plugins(
+        tuple(
+            plugin
+            for plugin in catalog.plugins
+            if isinstance(plugin, CursorLocalPlugin)
+        ),
+        repo_root=repo_root,
+        shared_skill_names=shared_skill_names,
+    )
 
 
 def load_desired_state(
@@ -145,6 +208,11 @@ def load_desired_state(
         assert isinstance(extension_catalog, ExtensionCatalog)
         assert isinstance(skill_catalog, SkillCatalog)
         assert isinstance(plugin_catalog, PluginCatalog)
+        validated_local_plugins = _validated_cursor_local_plugins(
+            plugin_catalog,
+            repo_root=repo_root,
+            shared_skill_names=_cursor_shared_skill_names(skill_catalog),
+        )
         resolved_inventory = resolve_inventory(
             loaded.inventory,
             profiles=profiles,
@@ -168,6 +236,7 @@ def load_desired_state(
             skill_catalog=skill_catalog,
             plugin_catalog=plugin_catalog,
             plugin_projections=projections,
+            validated_cursor_local_plugins=validated_local_plugins,
         )
     except (OSError, ValidationError, ValueError, yaml.YAMLError) as error:
         raise AssistantDesiredStateError(

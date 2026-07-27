@@ -91,8 +91,8 @@ def hash_skill_tree(root: Path) -> str:
     return digest
 
 
-def _declared_name(root: Path) -> str:
-    """Parse the bounded initial YAML frontmatter name.
+def declared_skill_name(root: Path) -> str:
+    """Return a bounded, validated skill name from one regular tree.
 
     Args:
         root: Validated skill root containing ``SKILL.md``.
@@ -213,7 +213,7 @@ def plan_skill_copies(
     _validate_targets(targets)
     home = _validated_home(home)
     source_digest = hash_skill_tree(source)
-    if source.name != name or _declared_name(source) != name:
+    if source.name != name or declared_skill_name(source) != name:
         raise ValueError("skill name mismatch")
 
     desired: dict[

@@ -7,6 +7,9 @@ from pathlib import Path
 import pytest
 import yaml
 
+import ballen_config.assistants.cursor_plugins as cursor_plugins_module
+import ballen_config.assistants.desired_state as desired_state_module
+from ballen_config.assistants.cursor_plugins import ValidatedCursorLocalPlugin
 from ballen_config.assistants.desired_state import (
     AssistantDesiredStateError,
     load_desired_state,
@@ -14,6 +17,7 @@ from ballen_config.assistants.desired_state import (
 )
 from ballen_config.assistants.models import (
     AgentName,
+    CursorLocalPlugin,
     ExtensionCatalog,
     PluginCatalog,
     SkillCatalog,
@@ -22,6 +26,10 @@ from ballen_config.assistants.orchestrator import AssistantOrchestrator
 from ballen_config.manifests import ManifestRepository
 from ballen_config.models import ResolutionRequest
 from ballen_config.runtime import RuntimePaths
+from tests.assistants.conftest import (
+    CursorLocalPluginFixture,
+    CursorLocalPluginRepoFactory,
+)
 
 
 def _targeted_catalog() -> PluginCatalog:
@@ -226,6 +234,83 @@ def test_skipped_agent_removes_only_its_projection(repo_root: Path) -> None:
     )
     with pytest.raises(ValueError, match="missing plugin projection: codex"):
         desired.plugin_projection(AgentName.CODEX)
+
+
+def test_load_desired_state_validates_raw_cursor_local_plugins_before_skips(
+    cursor_local_plugin_repo_factory: CursorLocalPluginRepoFactory,
+) -> None:
+    """Reject an invalid inactive local plugin before target projection occurs."""
+    copied = cursor_local_plugin_repo_factory(
+        (
+            CursorLocalPluginFixture(
+                id="example-local",
+                manifest_name="different-name",
+            ),
+        )
+    )
+
+    with pytest.raises(
+        AssistantDesiredStateError,
+        match="assistant desired-state preflight failed",
+    ):
+        load_desired_state(
+            copied,
+            ("default",),
+            frozenset({"cursor", "claude-code", "codex"}),
+        )
+
+
+def test_orchestrator_configuration_reuses_preflight_local_plugin_snapshot(
+    cursor_local_plugin_repo_factory: CursorLocalPluginRepoFactory,
+    temporary_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Validate local plugin semantics once before configuration consumes them."""
+    repo_root = cursor_local_plugin_repo_factory(
+        (CursorLocalPluginFixture(id="example-local"),)
+    )
+    paths = RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home)
+    setup = ManifestRepository.load(repo_root / "manifests").resolve(
+        ResolutionRequest()
+    )
+    calls = 0
+
+    original_validation = desired_state_module.validate_cursor_local_plugins
+
+    def record_validation(
+        plugins: tuple[CursorLocalPlugin, ...],
+        *,
+        repo_root: Path,
+        shared_skill_names: frozenset[str],
+    ) -> tuple[ValidatedCursorLocalPlugin, ...]:
+        """Count whole-catalog preflight validation without changing results."""
+        nonlocal calls
+        calls += 1
+        return original_validation(
+            plugins,
+            repo_root=repo_root,
+            shared_skill_names=shared_skill_names,
+        )
+
+    monkeypatch.setattr(
+        desired_state_module,
+        "validate_cursor_local_plugins",
+        record_validation,
+    )
+    monkeypatch.setattr(
+        cursor_plugins_module,
+        "validate_cursor_local_plugin",
+        lambda *_args, **_kwargs: pytest.fail("configuration revalidated plugin"),
+    )
+    orchestrator = AssistantOrchestrator(paths)
+
+    orchestrator.preflight(setup, paths)
+    contribution = orchestrator.configuration(setup, paths)
+
+    assert calls == 1
+    assert [
+        spec.id for spec in contribution.specs if spec.id.startswith("cursor-local-")
+    ] == ["cursor-local-plugin-example-local"]
 
 
 @pytest.mark.parametrize(

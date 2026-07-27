@@ -233,6 +233,40 @@ def test_codex_roots_detect_same_name_conflict_but_not_identical_content(
     assert all(item.id != "skill-collision.same" for item in findings)
 
 
+def test_four_native_skill_roots_allow_identical_content_and_flag_one_difference(
+    paths: RuntimePaths,
+) -> None:
+    """Compare every Cursor, Claude, and both Codex compatibility roots."""
+    roots = (
+        paths.home / ".cursor/skills/shared",
+        paths.home / ".claude/skills/shared",
+        paths.home / ".agents/skills/shared",
+        paths.home / ".codex/skills/shared",
+    )
+    for root in roots:
+        root.mkdir(parents=True)
+        (root / "SKILL.md").write_text("---\nname: shared\n---\nidentical\n")
+
+    findings = assistant_checks(
+        enabled=frozenset({"cursor", "claude-code", "codex"}),
+        paths=paths,
+        runner=StatefulAssistantFake(paths.home),
+    )
+    assert all(item.id != "skill-collision.shared" for item in findings)
+
+    (roots[-1] / "SKILL.md").write_text("---\nname: shared\n---\ndifferent\n")
+    findings = assistant_checks(
+        enabled=frozenset({"cursor", "claude-code", "codex"}),
+        paths=paths,
+        runner=StatefulAssistantFake(paths.home),
+    )
+
+    assert (
+        run_doctor(findings).finding("skill-collision.shared").status
+        is FindingStatus.DRIFT
+    )
+
+
 def test_no_enabled_agent_avoids_state_and_native_skill_lookups(
     paths: RuntimePaths, monkeypatch: pytest.MonkeyPatch
 ) -> None:

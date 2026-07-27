@@ -49,6 +49,15 @@ from ballen_config.assistants.cursor import (
 from ballen_config.assistants.cursor import (
     install_actions as cursor_install_actions,
 )
+from ballen_config.assistants.cursor_plugins import (
+    CursorPluginManifest,
+    ValidatedCursorLocalPlugin,
+    cursor_local_plugin_configuration,
+    cursor_marketplace_doctor_checks,
+    cursor_marketplace_plan_actions,
+    validate_cursor_local_plugin,
+    validate_cursor_local_plugins,
+)
 from ballen_config.assistants.desired_state import (
     AssistantDesiredState,
     AssistantDesiredStateError,
@@ -94,6 +103,7 @@ from ballen_config.assistants.orchestrator import AssistantOrchestrator
 from ballen_config.assistants.skills import (
     SkillCollisionError,
     SkillCopyAction,
+    declared_skill_name,
     hash_skill_tree,
     managed_tree_spec,
     plan_skill_copies,
@@ -116,6 +126,7 @@ __all__ = [
     "CodexStableSettings",
     "CursorExtensionInspectionError",
     "CursorExtensionPackage",
+    "CursorPluginManifest",
     "CursorRegistration",
     "ExtensionCatalog",
     "ExtensionSpec",
@@ -135,6 +146,7 @@ __all__ = [
     "SkillCollisionError",
     "SkillCopyAction",
     "SkillSpec",
+    "ValidatedCursorLocalPlugin",
     "claude_configuration",
     "claude_hook_fragment",
     "claude_install_actions",
@@ -147,9 +159,13 @@ __all__ = [
     "cursor_configuration",
     "cursor_hook_renderer",
     "cursor_install_actions",
+    "cursor_local_plugin_configuration",
+    "cursor_marketplace_doctor_checks",
+    "cursor_marketplace_plan_actions",
     "cursor_registration",
     "cursor_rules_renderer",
     "cursor_settings_renderer",
+    "declared_skill_name",
     "deep_merge",
     "hash_skill_tree",
     "hook_contribution",
@@ -169,5 +185,7 @@ __all__ = [
     "render_settings",
     "resolve_extensions",
     "resolve_inventory",
+    "validate_cursor_local_plugin",
+    "validate_cursor_local_plugins",
     "validate_hook_source",
 ]

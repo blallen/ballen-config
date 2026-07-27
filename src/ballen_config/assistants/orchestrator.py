@@ -32,6 +32,11 @@ from ballen_config.assistants.cursor import (
 from ballen_config.assistants.cursor import (
     install_actions as cursor_install_actions,
 )
+from ballen_config.assistants.cursor_plugins import (
+    cursor_local_plugin_configuration,
+    cursor_marketplace_doctor_checks,
+    cursor_marketplace_plan_actions,
+)
 from ballen_config.assistants.desired_state import (
     AssistantDesiredState,
     AssistantDesiredStateError,
@@ -195,9 +200,17 @@ class AssistantOrchestrator:
         """Compose target configuration from preloaded models."""
         desired = self._require(setup, paths)
         enabled = _enabled_agents(setup)
+        cursor_local = (
+            cursor_local_plugin_configuration(
+                desired.cursor_local_plugin_snapshots(),
+            )
+            if "cursor" in enabled
+            else ConfigurationContribution()
+        )
         contribution = merge_configuration_contributions(
             (
                 cursor_configuration(setup, paths),
+                cursor_local,
                 claude_configuration(
                     repo_root=paths.repo_root,
                     home=paths.home,
@@ -230,7 +243,7 @@ class AssistantOrchestrator:
         runner: Runner,
     ) -> tuple[DoctorCheck, ...]:
         """Diagnose enabled targets from preloaded models."""
-        self._require(setup, paths)
+        desired = self._require(setup, paths)
         pending_actions: list[InstallAction] = []
         unavailable: list[DoctorCheck] = []
         for agent, error, label in (
@@ -255,6 +268,15 @@ class AssistantOrchestrator:
                 )
         checks = (
             *unavailable,
+            *(
+                cursor_marketplace_doctor_checks(
+                    desired.plugin_projection(
+                        AgentName.CURSOR
+                    ).cursor_marketplace_plugins
+                )
+                if setup.is_enabled("cursor")
+                else ()
+            ),
             *assistant_checks(
                 enabled=_enabled_agents(setup),
                 paths=paths,
@@ -314,6 +336,14 @@ class AssistantOrchestrator:
                     action=action,
                     owner=resource.owner.value,
                     required=resource.required,
+                )
+            )
+        if setup.is_enabled("cursor"):
+            actions.extend(
+                cursor_marketplace_plan_actions(
+                    desired.plugin_projection(
+                        AgentName.CURSOR
+                    ).cursor_marketplace_plugins
                 )
             )
         identifiers = [action.component_id for action in actions]

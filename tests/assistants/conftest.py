@@ -3,12 +3,28 @@
 from __future__ import annotations
 
 import shutil
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
+import yaml
 
 from tests.assistants.fakes import StatefulAssistantFake
+
+
+@dataclass(frozen=True)
+class CursorLocalPluginFixture:
+    """One synthetic reviewed Cursor local-plugin source declaration."""
+
+    id: str
+    manifest_name: str | None = None
+    skill_name: str | None = "example-local-skill"
+
+
+type CursorLocalPluginRepoFactory = Callable[
+    [tuple[CursorLocalPluginFixture, ...]], Path
+]
 
 
 @pytest.fixture
@@ -51,3 +67,75 @@ def invalid_repo_root(tmp_path: Path, repo_root: Path) -> Path:
         "marketplaces: []\nplugins:\n  - kind: native-marketplace\n"
     )
     return destination
+
+
+@pytest.fixture
+def cursor_local_plugin_repo_factory(
+    repo_root: Path,
+    tmp_path: Path,
+) -> CursorLocalPluginRepoFactory:
+    """Return a factory for copied checkouts with reviewed local plugins."""
+    index = 0
+
+    def create(specifications: tuple[CursorLocalPluginFixture, ...]) -> Path:
+        """Copy the checkout and append declared local plugins.
+
+        Args:
+            specifications: Plugin trees and matching catalog declarations to
+                create beneath the copied checkout.
+
+        Returns:
+            A copied repository whose local plugin catalog matches its trees.
+        """
+        nonlocal index
+        index += 1
+        copied = tmp_path / f"cursor-local-plugin-repository-{index}"
+        shutil.copytree(
+            repo_root,
+            copied,
+            ignore=shutil.ignore_patterns(
+                ".git",
+                ".jj",
+                ".venv",
+                ".pytest_cache",
+                ".ruff_cache",
+                ".mypy_cache",
+                "__pycache__",
+            ),
+        )
+        catalog_path = copied / "assistants/shared/plugins/catalog.yaml"
+        payload = yaml.safe_load(catalog_path.read_text(encoding="utf-8"))
+        for specification in specifications:
+            source = copied / "assistants/shared/plugins/local" / specification.id
+            (source / ".cursor-plugin").mkdir(parents=True)
+            (source / ".cursor-plugin/plugin.json").write_text(
+                f'{{"name":"{specification.manifest_name or specification.id}"}}\n',
+                encoding="utf-8",
+            )
+            if specification.skill_name is not None:
+                skill = source / "skills" / specification.skill_name
+                skill.mkdir(parents=True)
+                (skill / "SKILL.md").write_text(
+                    "---\n"
+                    f"name: {specification.skill_name}\n"
+                    "description: Example.\n"
+                    "---\n",
+                    encoding="utf-8",
+                )
+            payload["plugins"].append(
+                {
+                    "kind": "cursor-local",
+                    "id": specification.id,
+                    "source": (f"assistants/shared/plugins/local/{specification.id}"),
+                    "targets": ["cursor"],
+                    "profiles": ["default"],
+                    "required": True,
+                }
+            )
+        catalog_path.write_text(
+            yaml.safe_dump(payload, sort_keys=False),
+            encoding="utf-8",
+        )
+        return copied
+
+    return create
