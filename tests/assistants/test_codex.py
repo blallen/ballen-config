@@ -42,78 +42,79 @@ def _setup(*, profiles: tuple[str, ...] = ("default",)) -> ResolvedSetup:
 @pytest.fixture
 def codex_projection() -> PluginCatalogProjection:
     """Build the focused Codex plugin projection used by adapter tests."""
-    return PluginCatalogProjection.model_validate(
-        {
-            "target": "codex",
-            "marketplaces": [
-                {
-                    "name": "bigspinai",
-                    "source": "bigspinai/toolkit",
-                    "targets": ["codex"],
-                },
-                {
-                    "name": "claude-plugins-official",
-                    "source": "anthropics/claude-plugins-official",
-                    "targets": ["codex"],
-                },
-                {
-                    "name": "context-mode",
-                    "source": "mksglu/claude-context-mode",
-                    "targets": ["codex"],
-                },
-                {
-                    "name": "superpowers-marketplace",
-                    "source": "obra/superpowers-marketplace",
-                    "targets": ["codex"],
-                },
-            ],
-            "native_plugins": [
-                {
-                    "kind": "native-marketplace",
-                    "id": "bigspin@bigspinai",
-                    "marketplace": "bigspinai",
-                    "targets": ["codex"],
-                },
-                {
-                    "kind": "native-marketplace",
-                    "id": "context-mode@context-mode",
-                    "marketplace": "context-mode",
-                    "targets": ["codex"],
-                },
-                {
-                    "kind": "native-marketplace",
-                    "id": "frontend-design@claude-plugins-official",
-                    "marketplace": "claude-plugins-official",
-                    "targets": ["codex"],
-                },
-                {
-                    "kind": "native-marketplace",
-                    "id": "github@claude-plugins-official",
-                    "marketplace": "claude-plugins-official",
-                    "targets": ["codex"],
-                },
-                {
-                    "kind": "native-marketplace",
-                    "id": "logfire@claude-plugins-official",
-                    "marketplace": "claude-plugins-official",
-                    "targets": ["codex"],
-                },
-                {
-                    "kind": "native-marketplace",
-                    "id": "superpowers@claude-plugins-official",
-                    "marketplace": "claude-plugins-official",
-                    "targets": ["codex"],
-                },
-                {
-                    "kind": "native-marketplace",
-                    "id": "superpowers-developing-for-claude-code@superpowers-marketplace",
-                    "marketplace": "superpowers-marketplace",
-                    "targets": ["codex"],
-                },
-            ],
-            "cursor_marketplace_plugins": [],
-            "cursor_local_plugins": [],
-        }
+    return project_plugin_catalog(
+        PluginCatalog.model_validate(
+            {
+                "marketplaces": [
+                    {
+                        "name": "bigspinai",
+                        "source": "bigspinai/toolkit",
+                        "targets": ["codex"],
+                    },
+                    {
+                        "name": "claude-plugins-official",
+                        "source": "anthropics/claude-plugins-official",
+                        "targets": ["codex"],
+                    },
+                    {
+                        "name": "context-mode",
+                        "source": "mksglu/claude-context-mode",
+                        "targets": ["codex"],
+                    },
+                    {
+                        "name": "superpowers-marketplace",
+                        "source": "obra/superpowers-marketplace",
+                        "targets": ["codex"],
+                    },
+                ],
+                "plugins": [
+                    {
+                        "kind": "native-marketplace",
+                        "id": "bigspin@bigspinai",
+                        "marketplace": "bigspinai",
+                        "targets": ["codex"],
+                    },
+                    {
+                        "kind": "native-marketplace",
+                        "id": "context-mode@context-mode",
+                        "marketplace": "context-mode",
+                        "targets": ["codex"],
+                    },
+                    {
+                        "kind": "native-marketplace",
+                        "id": "frontend-design@claude-plugins-official",
+                        "marketplace": "claude-plugins-official",
+                        "targets": ["codex"],
+                    },
+                    {
+                        "kind": "native-marketplace",
+                        "id": "github@claude-plugins-official",
+                        "marketplace": "claude-plugins-official",
+                        "targets": ["codex"],
+                    },
+                    {
+                        "kind": "native-marketplace",
+                        "id": "logfire@claude-plugins-official",
+                        "marketplace": "claude-plugins-official",
+                        "targets": ["codex"],
+                    },
+                    {
+                        "kind": "native-marketplace",
+                        "id": "superpowers@claude-plugins-official",
+                        "marketplace": "claude-plugins-official",
+                        "targets": ["codex"],
+                    },
+                    {
+                        "kind": "native-marketplace",
+                        "id": "superpowers-developing-for-claude-code@superpowers-marketplace",
+                        "marketplace": "superpowers-marketplace",
+                        "targets": ["codex"],
+                    },
+                ],
+            }
+        ),
+        target=AgentName.CODEX,
+        profiles=("default",),
     )
 
 
@@ -161,7 +162,13 @@ def test_renderer_preserves_native_toml_and_changes_only_overlay(
     assert "[mcp_servers.local]" in rendered
 
 
-@pytest.mark.parametrize("current", [b"[broken", b"[table]\nkey ="])
+@pytest.mark.parametrize(
+    "current",
+    [
+        pytest.param(b"[broken", id="truncated-table"),
+        pytest.param(b"[table]\nkey =", id="missing-value"),
+    ],
+)
 def test_renderer_fails_closed_for_invalid_native_toml(
     repo_root: Path, current: bytes
 ) -> None:
@@ -235,14 +242,12 @@ def test_plugin_planner_preserves_optional_preprojected_actions() -> None:
 
 def test_planner_rejects_a_projection_for_another_agent() -> None:
     """Keep native command ownership aligned with the concrete target."""
-    projection = PluginCatalogProjection.model_validate(
-        {
-            "target": "claude-code",
-            "marketplaces": [],
-            "native_plugins": [],
-            "cursor_marketplace_plugins": [],
-            "cursor_local_plugins": [],
-        }
+    projection = PluginCatalogProjection(
+        target=AgentName.CLAUDE,
+        marketplaces=(),
+        native_plugins=(),
+        cursor_marketplace_plugins=(),
+        cursor_local_plugins=(),
     )
     with pytest.raises(ValueError, match="target codex"):
         plan_codex_plugins(projection, installed=frozenset())

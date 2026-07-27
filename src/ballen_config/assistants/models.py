@@ -212,10 +212,17 @@ class Marketplace(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    name: str = Field(min_length=1)
-    source: str = Field(min_length=1)
-    targets: ConcreteTargets = Field(min_length=1)
-    profiles: tuple[str, ...] = Field(default=("default",), min_length=1)
+    name: str = Field(min_length=1, description="Stable marketplace alias.")
+    source: str = Field(min_length=1, description="Marketplace repository source.")
+    targets: ConcreteTargets = Field(
+        min_length=1,
+        description="Native agents that may use this marketplace.",
+    )
+    profiles: tuple[str, ...] = Field(
+        default=("default",),
+        min_length=1,
+        description="Profiles that enable this marketplace.",
+    )
 
 
 class NativeMarketplacePlugin(BaseModel):
@@ -223,12 +230,27 @@ class NativeMarketplacePlugin(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    kind: Literal["native-marketplace"]
-    id: str = Field(min_length=1)
-    marketplace: str = Field(min_length=1)
-    targets: ConcreteTargets = Field(min_length=1)
-    profiles: tuple[str, ...] = Field(default=("default",), min_length=1)
-    required: bool = True
+    kind: Literal["native-marketplace"] = Field(
+        description="Native marketplace plugin representation discriminator."
+    )
+    id: str = Field(min_length=1, description="Stable native plugin identifier.")
+    marketplace: str = Field(
+        min_length=1,
+        description="Marketplace alias that provides this plugin.",
+    )
+    targets: ConcreteTargets = Field(
+        min_length=1,
+        description="Native agents that may install this plugin.",
+    )
+    profiles: tuple[str, ...] = Field(
+        default=("default",),
+        min_length=1,
+        description="Profiles that enable this plugin.",
+    )
+    required: bool = Field(
+        default=True,
+        description="Whether the plugin is required for its enabled targets.",
+    )
 
 
 class CursorMarketplacePlugin(BaseModel):
@@ -236,13 +258,30 @@ class CursorMarketplacePlugin(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    kind: Literal["cursor-marketplace"]
-    id: str = Field(pattern=r"^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$")
-    targets: ConcreteTargets = Field(min_length=1)
-    profiles: tuple[str, ...] = Field(default=("default",), min_length=1)
-    required: bool = True
-    scope: Literal["user"]
-    verification: Literal["manual"]
+    kind: Literal["cursor-marketplace"] = Field(
+        description="Cursor marketplace plugin representation discriminator."
+    )
+    id: str = Field(
+        pattern=r"^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$",
+        description="Stable Cursor marketplace plugin identifier.",
+    )
+    targets: ConcreteTargets = Field(
+        min_length=1,
+        description="Cursor target selection for this plugin.",
+    )
+    profiles: tuple[str, ...] = Field(
+        default=("default",),
+        min_length=1,
+        description="Profiles that expose this manual selection.",
+    )
+    required: bool = Field(
+        default=True,
+        description="Whether the manual selection is required.",
+    )
+    scope: Literal["user"] = Field(description="Cursor marketplace installation scope.")
+    verification: Literal["manual"] = Field(
+        description="Verification mode for the user-managed selection."
+    )
 
 
 class CursorLocalPlugin(BaseModel):
@@ -250,12 +289,29 @@ class CursorLocalPlugin(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    kind: Literal["cursor-local"]
-    id: str = Field(pattern=r"^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$")
-    source: PurePosixPath
-    targets: ConcreteTargets = Field(min_length=1)
-    profiles: tuple[str, ...] = Field(default=("default",), min_length=1)
-    required: bool = True
+    kind: Literal["cursor-local"] = Field(
+        description="Reviewed local Cursor plugin representation discriminator."
+    )
+    id: str = Field(
+        pattern=r"^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$",
+        description="Stable local Cursor plugin identifier.",
+    )
+    source: PurePosixPath = Field(
+        description="Reviewed repository-relative local plugin source path."
+    )
+    targets: ConcreteTargets = Field(
+        min_length=1,
+        description="Cursor target selection for this local plugin.",
+    )
+    profiles: tuple[str, ...] = Field(
+        default=("default",),
+        min_length=1,
+        description="Profiles that enable this local plugin.",
+    )
+    required: bool = Field(
+        default=True,
+        description="Whether the local plugin is required.",
+    )
 
 
 PluginSpec = Annotated[
@@ -269,8 +325,12 @@ class PluginCatalog(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    marketplaces: tuple[Marketplace, ...]
-    plugins: tuple[PluginSpec, ...]
+    marketplaces: tuple[Marketplace, ...] = Field(
+        description="Target-aware native marketplace declarations."
+    )
+    plugins: tuple[PluginSpec, ...] = Field(
+        description="Target-aware native and Cursor plugin declarations."
+    )
 
     @model_validator(mode="after")
     def validate_marketplaces(self) -> Self:

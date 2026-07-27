@@ -90,9 +90,9 @@ def test_active_profiles_select_default_and_work_once(
 @pytest.mark.parametrize(
     ("component", "owner"),
     [
-        ("cursor", AgentName.CURSOR),
-        ("claude-code", AgentName.CLAUDE),
-        ("codex", AgentName.CODEX),
+        pytest.param("cursor", AgentName.CURSOR, id="cursor"),
+        pytest.param("claude-code", AgentName.CLAUDE, id="claude-code"),
+        pytest.param("codex", AgentName.CODEX, id="codex"),
     ],
 )
 def test_skip_removes_direct_owner_and_shared_target(
@@ -127,7 +127,13 @@ def test_shared_resource_disappears_when_all_targets_are_skipped(
     )
 
 
-@pytest.mark.parametrize("source", ["../outside.json", "/outside.json"])
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param("../outside.json", id="parent-traversal"),
+        pytest.param("/outside.json", id="absolute"),
+    ],
+)
 def test_source_escape_is_rejected_before_existence(
     tmp_path: Path,
     source: str,

@@ -49,100 +49,101 @@ def _setup(*, profiles: tuple[str, ...] = ("default",)) -> ResolvedSetup:
 @pytest.fixture
 def claude_projection() -> PluginCatalogProjection:
     """Build the focused Claude plugin projection used by adapter tests."""
-    return PluginCatalogProjection.model_validate(
-        {
-            "target": "claude-code",
-            "marketplaces": [
-                {
-                    "name": "bigspinai",
-                    "source": "bigspinai/toolkit",
-                    "targets": ["claude-code"],
-                },
-                {
-                    "name": "claude-context-mode",
-                    "source": "mksglu/claude-context-mode",
-                    "targets": ["claude-code"],
-                },
-                {
-                    "name": "claude-plugins-official",
-                    "source": "anthropics/claude-plugins-official",
-                    "targets": ["claude-code"],
-                },
-                {
-                    "name": "ponytail",
-                    "source": "DietrichGebert/ponytail",
-                    "targets": ["claude-code"],
-                },
-                {
-                    "name": "prime-radiant-marketplace",
-                    "source": "prime-radiant-inc/prime-radiant-marketplace",
-                    "targets": ["claude-code"],
-                },
-                {
-                    "name": "superpowers-marketplace",
-                    "source": "obra/superpowers-marketplace",
-                    "targets": ["claude-code"],
-                },
-            ],
-            "native_plugins": [
-                {
-                    "kind": "native-marketplace",
-                    "id": "bigspin@bigspinai",
-                    "marketplace": "bigspinai",
-                    "targets": ["claude-code"],
-                },
-                {
-                    "kind": "native-marketplace",
-                    "id": "context-mode@claude-context-mode",
-                    "marketplace": "claude-context-mode",
-                    "targets": ["claude-code"],
-                },
-                {
-                    "kind": "native-marketplace",
-                    "id": "frontend-design@claude-plugins-official",
-                    "marketplace": "claude-plugins-official",
-                    "targets": ["claude-code"],
-                },
-                {
-                    "kind": "native-marketplace",
-                    "id": "iterative-development@prime-radiant-marketplace",
-                    "marketplace": "prime-radiant-marketplace",
-                    "targets": ["claude-code"],
-                },
-                {
-                    "kind": "native-marketplace",
-                    "id": "logfire@claude-plugins-official",
-                    "marketplace": "claude-plugins-official",
-                    "targets": ["claude-code"],
-                },
-                {
-                    "kind": "native-marketplace",
-                    "id": "ponytail@ponytail",
-                    "marketplace": "ponytail",
-                    "targets": ["claude-code"],
-                },
-                {
-                    "kind": "native-marketplace",
-                    "id": "pydantic-ai@claude-plugins-official",
-                    "marketplace": "claude-plugins-official",
-                    "targets": ["claude-code"],
-                },
-                {
-                    "kind": "native-marketplace",
-                    "id": "superpowers@claude-plugins-official",
-                    "marketplace": "claude-plugins-official",
-                    "targets": ["claude-code"],
-                },
-                {
-                    "kind": "native-marketplace",
-                    "id": "superpowers-developing-for-claude-code@superpowers-marketplace",
-                    "marketplace": "superpowers-marketplace",
-                    "targets": ["claude-code"],
-                },
-            ],
-            "cursor_marketplace_plugins": [],
-            "cursor_local_plugins": [],
-        }
+    return project_plugin_catalog(
+        PluginCatalog.model_validate(
+            {
+                "marketplaces": [
+                    {
+                        "name": "bigspinai",
+                        "source": "bigspinai/toolkit",
+                        "targets": ["claude-code"],
+                    },
+                    {
+                        "name": "claude-context-mode",
+                        "source": "mksglu/claude-context-mode",
+                        "targets": ["claude-code"],
+                    },
+                    {
+                        "name": "claude-plugins-official",
+                        "source": "anthropics/claude-plugins-official",
+                        "targets": ["claude-code"],
+                    },
+                    {
+                        "name": "ponytail",
+                        "source": "DietrichGebert/ponytail",
+                        "targets": ["claude-code"],
+                    },
+                    {
+                        "name": "prime-radiant-marketplace",
+                        "source": "prime-radiant-inc/prime-radiant-marketplace",
+                        "targets": ["claude-code"],
+                    },
+                    {
+                        "name": "superpowers-marketplace",
+                        "source": "obra/superpowers-marketplace",
+                        "targets": ["claude-code"],
+                    },
+                ],
+                "plugins": [
+                    {
+                        "kind": "native-marketplace",
+                        "id": "bigspin@bigspinai",
+                        "marketplace": "bigspinai",
+                        "targets": ["claude-code"],
+                    },
+                    {
+                        "kind": "native-marketplace",
+                        "id": "context-mode@claude-context-mode",
+                        "marketplace": "claude-context-mode",
+                        "targets": ["claude-code"],
+                    },
+                    {
+                        "kind": "native-marketplace",
+                        "id": "frontend-design@claude-plugins-official",
+                        "marketplace": "claude-plugins-official",
+                        "targets": ["claude-code"],
+                    },
+                    {
+                        "kind": "native-marketplace",
+                        "id": "iterative-development@prime-radiant-marketplace",
+                        "marketplace": "prime-radiant-marketplace",
+                        "targets": ["claude-code"],
+                    },
+                    {
+                        "kind": "native-marketplace",
+                        "id": "logfire@claude-plugins-official",
+                        "marketplace": "claude-plugins-official",
+                        "targets": ["claude-code"],
+                    },
+                    {
+                        "kind": "native-marketplace",
+                        "id": "ponytail@ponytail",
+                        "marketplace": "ponytail",
+                        "targets": ["claude-code"],
+                    },
+                    {
+                        "kind": "native-marketplace",
+                        "id": "pydantic-ai@claude-plugins-official",
+                        "marketplace": "claude-plugins-official",
+                        "targets": ["claude-code"],
+                    },
+                    {
+                        "kind": "native-marketplace",
+                        "id": "superpowers@claude-plugins-official",
+                        "marketplace": "claude-plugins-official",
+                        "targets": ["claude-code"],
+                    },
+                    {
+                        "kind": "native-marketplace",
+                        "id": "superpowers-developing-for-claude-code@superpowers-marketplace",
+                        "marketplace": "superpowers-marketplace",
+                        "targets": ["claude-code"],
+                    },
+                ],
+            }
+        ),
+        target=AgentName.CLAUDE,
+        profiles=("default",),
     )
 
 
@@ -465,7 +466,14 @@ def test_renderer_replaces_an_exact_current_managed_hook(
     ]
 
 
-@pytest.mark.parametrize("current", [b"[1]", b"{", b'{"effortLevel": NaN}'])
+@pytest.mark.parametrize(
+    "current",
+    [
+        pytest.param(b"[1]", id="array"),
+        pytest.param(b"{", id="truncated-object"),
+        pytest.param(b'{"effortLevel": NaN}', id="non-finite"),
+    ],
+)
 def test_renderer_fails_closed_for_invalid_native_settings(
     repo_root: Path, temporary_home: Path, current: bytes
 ) -> None:
@@ -602,14 +610,12 @@ def test_plugin_catalog_rejects_plugin_profile_outside_marketplace_profile() -> 
 
 def test_planner_rejects_a_projection_for_another_agent() -> None:
     """Keep native command ownership aligned with the concrete target."""
-    projection = PluginCatalogProjection.model_validate(
-        {
-            "target": "codex",
-            "marketplaces": [],
-            "native_plugins": [],
-            "cursor_marketplace_plugins": [],
-            "cursor_local_plugins": [],
-        }
+    projection = PluginCatalogProjection(
+        target=AgentName.CODEX,
+        marketplaces=(),
+        native_plugins=(),
+        cursor_marketplace_plugins=(),
+        cursor_local_plugins=(),
     )
     with pytest.raises(ValueError, match="target claude-code"):
         plan_claude_plugins(projection, installed=frozenset())

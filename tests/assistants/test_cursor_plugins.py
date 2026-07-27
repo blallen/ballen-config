@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 
@@ -139,9 +140,13 @@ def test_cursor_local_plugin_requires_canonical_contained_source(
 @pytest.mark.parametrize(
     ("manifest", "message"),
     [
-        ('{"name":"different"}', "manifest name"),
-        ('{"name":"example-local", "name":"other"}', "plugin manifest"),
-        ("{", "plugin manifest"),
+        pytest.param('{"name":"different"}', "manifest name", id="name-mismatch"),
+        pytest.param(
+            '{"name":"example-local", "name":"other"}',
+            "plugin manifest",
+            id="duplicate-name",
+        ),
+        pytest.param("{", "plugin manifest", id="invalid-json"),
     ],
 )
 def test_cursor_local_plugin_requires_strict_matching_manifest(
@@ -163,7 +168,13 @@ def test_cursor_local_plugin_requires_strict_matching_manifest(
         )
 
 
-@pytest.mark.parametrize("kind", ["symlink", "special"])
+@pytest.mark.parametrize(
+    "kind",
+    [
+        pytest.param("symlink", id="symlink"),
+        pytest.param("special", id="special"),
+    ],
+)
 def test_cursor_local_plugin_rejects_symlink_and_special_descendants(
     cursor_local_plugin: CursorLocalPlugin,
     cursor_local_plugin_source: Path,
@@ -199,6 +210,62 @@ def test_cursor_local_plugin_rejects_declared_skill_path_escape(
             cursor_local_plugin,
             repo_root=cursor_local_plugin_source.parents[4],
             shared_skill_names=frozenset(),
+        )
+
+
+@pytest.mark.parametrize(
+    ("manifest_skills", "relative_path", "skill_name"),
+    [
+        pytest.param(
+            "explicit-string",
+            "explicit-string",
+            "string-skill",
+            id="string",
+        ),
+        pytest.param(
+            ("explicit-tuple",),
+            "explicit-tuple",
+            "tuple-skill",
+            id="tuple",
+        ),
+    ],
+)
+def test_cursor_local_plugin_resolves_and_collision_checks_explicit_skills(
+    cursor_local_plugin: CursorLocalPlugin,
+    cursor_local_plugin_source: Path,
+    manifest_skills: str | tuple[str, ...],
+    relative_path: str,
+    skill_name: str,
+) -> None:
+    """Resolve explicit skill entries before checking reserved Cursor names."""
+    skill_root = cursor_local_plugin_source / relative_path
+    skill_root.mkdir()
+    (skill_root / "SKILL.md").write_text(
+        f"---\nname: {skill_name}\ndescription: Example.\n---\n",
+        encoding="utf-8",
+    )
+    (cursor_local_plugin_source / ".cursor-plugin/plugin.json").write_text(
+        json.dumps(
+            {"name": "example-local", "skills": manifest_skills},
+        ),
+        encoding="utf-8",
+    )
+
+    assert (
+        validate_cursor_local_plugin(
+            cursor_local_plugin,
+            repo_root=cursor_local_plugin_source.parents[4],
+            shared_skill_names=frozenset(),
+        )
+        == cursor_local_plugin_source
+    )
+    with pytest.raises(
+        ValueError, match=f"cursor local plugin skill collision: {skill_name}"
+    ):
+        validate_cursor_local_plugin(
+            cursor_local_plugin,
+            repo_root=cursor_local_plugin_source.parents[4],
+            shared_skill_names=frozenset({skill_name}),
         )
 
 

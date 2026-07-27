@@ -425,7 +425,13 @@ def test_native_plugin_suffix_matches_marketplace_alias() -> None:
         )
 
 
-@pytest.mark.parametrize("kind", ["cursor-marketplace", "cursor-local"])
+@pytest.mark.parametrize(
+    "kind",
+    [
+        pytest.param("cursor-marketplace", id="marketplace"),
+        pytest.param("cursor-local", id="local"),
+    ],
+)
 def test_cursor_variants_reject_non_cursor_targets(kind: str) -> None:
     """Restrict Cursor-specific representations to Cursor alone."""
     plugin: dict[str, object] = {
@@ -538,7 +544,7 @@ def test_shared_skill_dependency_may_cover_more_targets_and_profiles() -> None:
 @pytest.mark.parametrize(
     ("collection", "item"),
     [
-        (
+        pytest.param(
             "resources",
             {
                 "id": "shared.settings",
@@ -548,8 +554,9 @@ def test_shared_skill_dependency_may_cover_more_targets_and_profiles() -> None:
                 "destination": ".cursor/settings.json",
                 "targets": ["shared"],
             },
+            id="file-resource",
         ),
-        (
+        pytest.param(
             "resources",
             {
                 "id": "shared.hook",
@@ -559,8 +566,9 @@ def test_shared_skill_dependency_may_cover_more_targets_and_profiles() -> None:
                 "event": "shell-command",
                 "targets": ["shared"],
             },
+            id="hook-resource",
         ),
-        (
+        pytest.param(
             "resources",
             {
                 "id": "shared.skills",
@@ -571,8 +579,9 @@ def test_shared_skill_dependency_may_cover_more_targets_and_profiles() -> None:
                 "targets": ["shared"],
                 "item_ids": [],
             },
+            id="catalog-resource",
         ),
-        (
+        pytest.param(
             "skills",
             {
                 "name": "example",
@@ -581,6 +590,7 @@ def test_shared_skill_dependency_may_cover_more_targets_and_profiles() -> None:
                 "provenance": "reviewed",
                 "portability_status": "reviewed-generic",
             },
+            id="skill",
         ),
     ],
 )
@@ -636,46 +646,71 @@ def test_file_resources_reject_managed_local_state_paths(
 
 
 @pytest.mark.parametrize(
-    "resource",
+    ("resource", "critical_field", "critical_value"),
     [
-        {
-            "id": "cursor.settings",
-            "kind": "file",
-            "owner": "cursor",
-            "source": "assistants/cursor/settings.base.json",
-            "destination": ".cursor/settings.json",
-        },
-        {
-            "id": "shared.instructions",
-            "kind": "file",
-            "owner": "shared",
-            "source": "assistants/shared/instructions/engineering.md",
-            "destination": ".claude/CLAUDE.md",
-            "targets": ["claude-code"],
-        },
-        {
-            "id": "shared.hook",
-            "kind": "hook",
-            "owner": "shared",
-            "source": "assistants/shared/hooks/rtk-hook",
-            "event": "shell-command",
-            "targets": ["codex"],
-        },
-        {
-            "id": "shared.skills",
-            "kind": "catalog",
-            "owner": "shared",
-            "source": "assistants/shared/skills/catalog.yaml",
-            "catalog_kind": "skill",
-            "targets": ["cursor"],
-        },
+        pytest.param(
+            {
+                "id": "cursor.settings",
+                "kind": "file",
+                "owner": "cursor",
+                "source": "assistants/cursor/settings.base.json",
+                "destination": ".cursor/settings.json",
+            },
+            "destination",
+            ".cursor/settings.json",
+            id="cursor-file",
+        ),
+        pytest.param(
+            {
+                "id": "shared.instructions",
+                "kind": "file",
+                "owner": "shared",
+                "source": "assistants/shared/instructions/engineering.md",
+                "destination": ".claude/CLAUDE.md",
+                "targets": ["claude-code"],
+            },
+            "destination",
+            ".claude/CLAUDE.md",
+            id="shared-file",
+        ),
+        pytest.param(
+            {
+                "id": "shared.hook",
+                "kind": "hook",
+                "owner": "shared",
+                "source": "assistants/shared/hooks/rtk-hook",
+                "event": "shell-command",
+                "targets": ["codex"],
+            },
+            "event",
+            "shell-command",
+            id="shared-hook",
+        ),
+        pytest.param(
+            {
+                "id": "shared.skills",
+                "kind": "catalog",
+                "owner": "shared",
+                "source": "assistants/shared/skills/catalog.yaml",
+                "catalog_kind": "skill",
+                "targets": ["cursor"],
+            },
+            "catalog_kind",
+            "skill",
+            id="shared-catalog",
+        ),
     ],
 )
 def test_reviewed_configuration_paths_remain_allowed(
     resource: dict[str, object],
+    critical_field: str,
+    critical_value: object,
 ) -> None:
     """Allow ordinary settings, instruction, hook, and catalog paths."""
-    AssistantInventory.model_validate({"resources": [resource]})
+    validated = AssistantInventory.model_validate({"resources": [resource]})
+
+    assert validated.resources[0].kind == resource["kind"]
+    assert str(getattr(validated.resources[0], critical_field)) == critical_value
 
 
 def test_manual_authentication_summary_remains_allowed() -> None:
@@ -699,7 +734,7 @@ def test_manual_authentication_summary_remains_allowed() -> None:
 @pytest.mark.parametrize(
     ("skills", "message"),
     [
-        (
+        pytest.param(
             [
                 {
                     "name": "example",
@@ -717,8 +752,9 @@ def test_manual_authentication_summary_remains_allowed() -> None:
                 },
             ],
             "duplicate skill name",
+            id="duplicate-name",
         ),
-        (
+        pytest.param(
             [
                 {
                     "name": "example",
@@ -730,8 +766,9 @@ def test_manual_authentication_summary_remains_allowed() -> None:
                 }
             ],
             "unknown skill dependencies",
+            id="unknown-dependency",
         ),
-        (
+        pytest.param(
             [
                 {
                     "name": "first",
@@ -751,6 +788,7 @@ def test_manual_authentication_summary_remains_allowed() -> None:
                 },
             ],
             "skill dependency cycle",
+            id="cycle",
         ),
     ],
 )

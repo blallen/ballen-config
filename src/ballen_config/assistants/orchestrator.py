@@ -1,7 +1,5 @@
 """Compose native coding-agent adapters from one desired-state preflight."""
 
-from __future__ import annotations
-
 from dataclasses import replace
 from typing import Literal
 

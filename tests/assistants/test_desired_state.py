@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -258,6 +259,20 @@ def test_load_desired_state_validates_raw_cursor_local_plugins_before_skips(
             ("default",),
             frozenset({"cursor", "claude-code", "codex"}),
         )
+
+
+def test_cursor_local_plugin_snapshots_rejects_missing_snapshot_without_details(
+    cursor_local_plugin_repo_factory: CursorLocalPluginRepoFactory,
+) -> None:
+    """Hide filesystem details when an active local plugin has no snapshot."""
+    copied = cursor_local_plugin_repo_factory(
+        (CursorLocalPluginFixture(id="example-local"),)
+    )
+    desired = load_desired_state(copied, ("default",), frozenset())
+    incomplete = replace(desired, validated_cursor_local_plugins=())
+
+    with pytest.raises(ValueError, match="missing validated Cursor local plugin"):
+        incomplete.cursor_local_plugin_snapshots()
 
 
 def test_orchestrator_configuration_reuses_preflight_local_plugin_snapshot(

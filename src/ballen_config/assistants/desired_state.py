@@ -1,11 +1,11 @@
 """Project shared assistant declarations into one native target's state."""
 
-from __future__ import annotations
-
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Final
 
 import yaml
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import ValidationError
 
 from ballen_config.assistants.cursor_plugins import (
     ValidatedCursorLocalPlugin,
@@ -30,7 +30,7 @@ from ballen_config.assistants.models import (
     SkillCatalog,
 )
 
-_CONCRETE_AGENTS: tuple[ConcreteAgentName, ...] = (
+_CONCRETE_AGENTS: Final[tuple[ConcreteAgentName, ...]] = (
     AgentName.CURSOR,
     AgentName.CLAUDE,
     AgentName.CODEX,
@@ -41,10 +41,9 @@ class AssistantDesiredStateError(ValueError):
     """A secret-free assistant desired-state preflight failure."""
 
 
-class PluginCatalogProjection(BaseModel):
+@dataclass(frozen=True)
+class PluginCatalogProjection:
     """One immutable profile-filtered catalog for one concrete target."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
 
     target: ConcreteAgentName
     marketplaces: tuple[Marketplace, ...]
@@ -53,10 +52,9 @@ class PluginCatalogProjection(BaseModel):
     cursor_local_plugins: tuple[CursorLocalPlugin, ...]
 
 
-class AssistantDesiredState(BaseModel):
+@dataclass(frozen=True)
+class AssistantDesiredState:
     """All validated assistant desired state for one resolved invocation."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
 
     inventory: AssistantInventory
     resolved_inventory: ResolvedInventory
@@ -111,11 +109,11 @@ class AssistantDesiredState(BaseModel):
             raise ValueError("missing validated Cursor local plugin") from error
 
 
-def _catalog(
+def _catalog[CatalogT: (ExtensionCatalog, SkillCatalog, PluginCatalog)](
     loaded: LoadedInventory,
     resource_id: str,
-    expected_type: type[ExtensionCatalog] | type[SkillCatalog] | type[PluginCatalog],
-) -> ExtensionCatalog | SkillCatalog | PluginCatalog:
+    expected_type: type[CatalogT],
+) -> CatalogT:
     """Return one exactly typed catalog from a loaded inventory.
 
     Args:
@@ -134,9 +132,12 @@ def _catalog(
         for catalog in loaded.catalogs
         if catalog.resource_id == resource_id
     )
-    if len(matches) != 1 or not isinstance(matches[0], expected_type):
+    if len(matches) != 1:
         raise ValueError(f"invalid assistant catalog: {resource_id}")
-    return matches[0]
+    catalog = matches[0]
+    if not isinstance(catalog, expected_type):
+        raise ValueError(f"invalid assistant catalog: {resource_id}")
+    return catalog
 
 
 def _cursor_shared_skill_names(catalog: SkillCatalog) -> frozenset[str]:
@@ -205,9 +206,6 @@ def load_desired_state(
         )
         skill_catalog = _catalog(loaded, "shared.skills.catalog", SkillCatalog)
         plugin_catalog = _catalog(loaded, "shared.plugins.catalog", PluginCatalog)
-        assert isinstance(extension_catalog, ExtensionCatalog)
-        assert isinstance(skill_catalog, SkillCatalog)
-        assert isinstance(plugin_catalog, PluginCatalog)
         validated_local_plugins = _validated_cursor_local_plugins(
             plugin_catalog,
             repo_root=repo_root,

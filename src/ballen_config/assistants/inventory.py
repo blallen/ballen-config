@@ -1,14 +1,12 @@
 """Load and resolve reviewed coding-agent inventory declarations."""
 
-from __future__ import annotations
-
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 from typing import Final
 
 import yaml
-from pydantic import BaseModel, ConfigDict
 
 from ballen_config.assistants.models import (
     AgentName,
@@ -26,28 +24,25 @@ from ballen_config.assistants.models import (
 type CatalogDocument = ExtensionCatalog | PluginCatalog | SkillCatalog
 
 
-class LoadedCatalog(BaseModel):
+@dataclass(frozen=True)
+class LoadedCatalog:
     """One inventory catalog parsed from one immutable file read."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
 
     resource_id: str
     document: ExtensionCatalog | PluginCatalog | SkillCatalog
 
 
-class LoadedInventory(BaseModel):
+@dataclass(frozen=True)
+class LoadedInventory:
     """Validated inventory plus every parsed catalog document."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
 
     inventory: AssistantInventory
     catalogs: tuple[LoadedCatalog, ...]
 
 
-class ResolvedInventory(BaseModel):
+@dataclass(frozen=True)
+class ResolvedInventory:
     """Resources selected for one bootstrap invocation."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
 
     resources: tuple[PortableResource, ...]
 
