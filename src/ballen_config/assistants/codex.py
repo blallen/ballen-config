@@ -8,12 +8,12 @@ from pathlib import Path
 from typing import TypedDict, cast
 
 import tomlkit
-import yaml
 from pydantic import BaseModel, ConfigDict, ValidationError
 
+from ballen_config.assistants.desired_state import PluginCatalogProjection
 from ballen_config.assistants.instructions import render_native_instructions
 from ballen_config.assistants.json import StrictJsonError, strict_json_loads
-from ballen_config.assistants.models import PluginCatalog
+from ballen_config.assistants.models import AgentName
 from ballen_config.assistants.sources import reviewed_regular_file as _reviewed_source
 from ballen_config.configure import (
     ApplyMethod,
@@ -43,25 +43,6 @@ class CodexStableSettings(BaseModel):
     model: str
     model_reasoning_effort: str
     service_tier: str
-
-
-class CodexPluginEntry(TypedDict):
-    """One plugin entry returned by Codex's native CLI."""
-
-    id: str
-
-
-class CodexMarketplaceEntry(TypedDict):
-    """One marketplace entry returned by Codex's native CLI."""
-
-    name: str
-
-
-class CodexPluginSnapshot(TypedDict):
-    """The strictly validated Codex plugin-list payload."""
-
-    plugins: list[CodexPluginEntry]
-    marketplaces: list[CodexMarketplaceEntry]
 
 
 class CodexNativePluginEntry(TypedDict):
@@ -122,35 +103,22 @@ def codex_settings_renderer() -> Renderer:
     return render
 
 
-def _catalog(path: Path) -> PluginCatalog:
-    """Load one reviewed Codex plugin catalog."""
-    return PluginCatalog.model_validate(
-        yaml.safe_load(path.read_text(encoding="utf-8"))
-    )
-
-
 def plan_codex_plugins(
-    catalog_path: Path,
+    catalog: PluginCatalogProjection,
     *,
-    profiles: tuple[str, ...],
     installed: frozenset[str],
     known_marketplaces: frozenset[str] = frozenset(),
 ) -> tuple[InstallAction, ...]:
     """Plan missing Codex marketplace actions followed by plugin actions."""
-    catalog = _catalog(catalog_path)
-    active_profiles = set(profiles)
-    selected_plugins = tuple(
-        plugin
-        for plugin in catalog.plugins
-        if active_profiles.intersection(plugin.profiles)
-    )
+    if catalog.target is not AgentName.CODEX:
+        raise ValueError("Codex plugin catalog must target codex")
+    selected_plugins = catalog.native_plugins
     selected_marketplaces = {plugin.marketplace for plugin in selected_plugins}
     actions: list[InstallAction] = []
     for marketplace in catalog.marketplaces:
         if (
             marketplace.name not in selected_marketplaces
             or marketplace.name in known_marketplaces
-            or not active_profiles.intersection(marketplace.profiles)
         ):
             continue
         required = any(
@@ -184,8 +152,8 @@ def plan_codex_plugins(
     return tuple(actions)
 
 
-def _plugin_snapshot(result: object) -> CodexPluginSnapshot:
-    """Validate the minimal native plugin-list payload used for planning."""
+def _installed_plugin_ids(result: object) -> frozenset[str]:
+    """Validate native plugin-list payload and return installed IDs."""
     if not isinstance(result, dict):
         raise CodexPluginInspectionError("Codex plugin inspection failed")
     installed = result.get("installed")
@@ -196,14 +164,13 @@ def _plugin_snapshot(result: object) -> CodexPluginSnapshot:
         for item in installed
     ):
         raise CodexPluginInspectionError("Codex plugin inspection failed")
-    plugins = [
-        {"id": cast(CodexNativePluginEntry, item)["pluginId"]} for item in installed
-    ]
-    return cast(CodexPluginSnapshot, {"plugins": plugins, "marketplaces": []})
+    return frozenset(
+        cast(CodexNativePluginEntry, item)["pluginId"] for item in installed
+    )
 
 
-def _marketplace_snapshot(result: object) -> list[CodexMarketplaceEntry]:
-    """Validate the marketplace-list fields used for planning."""
+def _marketplace_names(result: object) -> frozenset[str]:
+    """Validate native marketplace-list payload and return marketplace names."""
     if not isinstance(result, dict):
         raise CodexPluginInspectionError("Codex plugin inspection failed")
     marketplaces = result.get("marketplaces")
@@ -214,14 +181,13 @@ def _marketplace_snapshot(result: object) -> list[CodexMarketplaceEntry]:
         for item in marketplaces
     ):
         raise CodexPluginInspectionError("Codex plugin inspection failed")
-    return [
-        {"name": cast(CodexNativeMarketplaceEntry, item)["name"]}
-        for item in marketplaces
-    ]
+    return frozenset(
+        cast(CodexNativeMarketplaceEntry, item)["name"] for item in marketplaces
+    )
 
 
 def install_actions(
-    setup: ResolvedSetup, paths: RuntimePaths, runner: Runner
+    setup: ResolvedSetup, catalog: PluginCatalogProjection, runner: Runner
 ) -> tuple[InstallAction, ...]:
     """Inspect native Codex state and plan only missing plugin actions."""
     if "codex" in setup.skipped or not setup.is_enabled("codex"):
@@ -230,7 +196,7 @@ def install_actions(
     if listed["returncode"] != 0:
         raise CodexPluginInspectionError("Codex plugin inspection failed")
     try:
-        snapshot = _plugin_snapshot(strict_json_loads(listed["stdout"]))
+        installed = _installed_plugin_ids(strict_json_loads(listed["stdout"]))
     except (
         CodexPluginInspectionError,
         StrictJsonError,
@@ -242,7 +208,7 @@ def install_actions(
     if marketplaces["returncode"] != 0:
         raise CodexPluginInspectionError("Codex plugin inspection failed")
     try:
-        known_marketplaces = _marketplace_snapshot(
+        known_marketplaces = _marketplace_names(
             strict_json_loads(marketplaces["stdout"])
         )
     except (
@@ -252,14 +218,10 @@ def install_actions(
         UnicodeDecodeError,
     ) as error:
         raise CodexPluginInspectionError("Codex plugin inspection failed") from error
-    catalog_path = _reviewed_source(paths, Path("assistants/codex/plugins.yaml"))
     return plan_codex_plugins(
-        catalog_path,
-        profiles=setup.profiles,
-        installed=frozenset(plugin["id"] for plugin in snapshot["plugins"]),
-        known_marketplaces=frozenset(
-            marketplace["name"] for marketplace in known_marketplaces
-        ),
+        catalog,
+        installed=installed,
+        known_marketplaces=known_marketplaces,
     )
 
 

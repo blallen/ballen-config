@@ -73,10 +73,18 @@ class ManagedTreeSpec(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, arbitrary_types_allowed=True)
 
     kind: Literal["tree"] = "tree"
-    id: str = Field(pattern=r"^[a-z0-9][a-z0-9-]*$")
+    id: str = Field(pattern=r"^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$")
     source: Path
     destination: Path
     component: str
+    expected_source_digest: str | None = Field(
+        default=None,
+        pattern=r"^[0-9a-f]{64}$",
+        description=(
+            "Optional preflight snapshot digest. When supplied, read-only planning "
+            "and apply-time validation reject source changes before replacement."
+        ),
+    )
 
 
 type ManagedSpec = ManagedFileSpec | ManagedTreeSpec
@@ -282,7 +290,12 @@ class ConfigurationEngine:
         else:
             if not stat.S_ISDIR(metadata.st_mode):
                 raise ValueError(f"source is not a directory: {source}")
-            digest_tree(source)
+            source_digest = digest_tree(source)
+            if (
+                spec.expected_source_digest is not None
+                and source_digest != spec.expected_source_digest
+            ):
+                raise ValueError("managed tree source changed since preflight")
         self._destination(spec)
 
     def _file_bytes(self, spec: ManagedFileSpec, destination: Path) -> bytes:

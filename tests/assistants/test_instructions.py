@@ -67,7 +67,13 @@ def test_render_order_and_trailing_newline_are_exact() -> None:
     assert not rendered.endswith("\n\n")
 
 
-@pytest.mark.parametrize("suffix", ["# Cursor additions\n", "# Claude additions\n"])
+@pytest.mark.parametrize(
+    "suffix",
+    [
+        pytest.param("# Cursor additions\n", id="cursor-additions"),
+        pytest.param("# Claude additions\n", id="claude-additions"),
+    ],
+)
 def test_cursor_and_claude_embed_canonical_sections(
     repo_root: Path,
     suffix: str,
@@ -121,9 +127,9 @@ def test_relative_rtk_include_is_rejected() -> None:
 @pytest.mark.parametrize(
     ("field", "value"),
     [
-        ("engineering", "{{ generated }}"),
-        ("rtk", "plugins/cache/generated"),
-        ("agent_suffix", "{{ native-template }}"),
+        pytest.param("engineering", "{{ generated }}", id="engineering-template"),
+        pytest.param("rtk", "plugins/cache/generated", id="rtk-cache"),
+        pytest.param("agent_suffix", "{{ native-template }}", id="suffix-template"),
     ],
 )
 def test_rendered_instructions_reject_generated_state(
@@ -149,13 +155,16 @@ def test_inventory_loads_reviewed_shared_instruction_and_hook_resources(
     repo_root: Path,
 ) -> None:
     """Keep reviewed shared resources and the seeded skill catalog synchronized."""
-    inventory = load_inventory(repo_root / "assistants/inventory.yaml", repo_root)
+    inventory = load_inventory(
+        repo_root / "assistants/inventory.yaml", repo_root
+    ).inventory
     by_id = {resource.id: resource for resource in inventory.resources}
     assert {identifier for identifier in by_id if identifier.startswith("shared.")} == {
         "shared.engineering",
         "shared.rtk",
         "shared.rtk-hook",
         "shared.skills.catalog",
+        "shared.plugins.catalog",
     }
     engineering = by_id["shared.engineering"]
     rtk = by_id["shared.rtk"]
@@ -168,4 +177,3 @@ def test_inventory_loads_reviewed_shared_instruction_and_hook_resources(
     assert set(hook.targets) == {"cursor", "claude-code"}
     catalog = by_id["shared.skills.catalog"]
     assert isinstance(catalog, CatalogResource)
-    assert catalog.item_ids == ("jujutsu-workflow",)

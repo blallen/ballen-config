@@ -7,13 +7,13 @@ import shlex
 from pathlib import Path
 from typing import NotRequired, TypedDict, cast
 
-import yaml
 from pydantic import BaseModel, ConfigDict, ValidationError
 
+from ballen_config.assistants.desired_state import PluginCatalogProjection
 from ballen_config.assistants.hooks import claude_hook_fragment
 from ballen_config.assistants.instructions import render_native_instructions
 from ballen_config.assistants.json import StrictJsonError, strict_json_loads
-from ballen_config.assistants.models import PluginCatalog
+from ballen_config.assistants.models import AgentName
 from ballen_config.assistants.sources import reviewed_regular_file as _reviewed_source
 from ballen_config.configure import (
     ApplyMethod,
@@ -185,52 +185,31 @@ def load_stable_settings_bytes(source: bytes) -> ClaudeStableSettings:
         raise ClaudeSettingsError("invalid Claude settings") from error
 
 
-def _catalog(path: Path) -> PluginCatalog:
-    """Load one reviewed Claude plugin catalog.
-
-    Args:
-        path: Reviewed plugin catalog path.
-
-    Returns:
-        Validated plugin catalog.
-    """
-    return PluginCatalog.model_validate(
-        yaml.safe_load(path.read_text(encoding="utf-8"))
-    )
-
-
 def plan_claude_plugins(
-    catalog_path: Path,
+    catalog: PluginCatalogProjection,
     *,
-    profiles: tuple[str, ...],
     installed: frozenset[str],
     known_marketplaces: frozenset[str] = frozenset(),
 ) -> tuple[InstallAction, ...]:
     """Plan missing scoped Claude marketplace and plugin actions.
 
     Args:
-        catalog_path: Reviewed marketplace and plugin catalog.
-        profiles: Selected expanded profile names.
+        catalog: Preprojected Claude-only marketplace and plugin catalog.
         installed: Plugin IDs reported by the native CLI.
         known_marketplaces: Marketplace names reported by the native CLI.
 
     Returns:
         Deterministically ordered marketplace actions followed by plugins.
     """
-    catalog = _catalog(catalog_path)
-    active_profiles = set(profiles)
-    selected_plugins = tuple(
-        plugin
-        for plugin in catalog.plugins
-        if active_profiles.intersection(plugin.profiles)
-    )
+    if catalog.target is not AgentName.CLAUDE:
+        raise ValueError("Claude plugin catalog must target claude-code")
+    selected_plugins = catalog.native_plugins
     selected_marketplaces = {plugin.marketplace for plugin in selected_plugins}
     actions: list[InstallAction] = []
     for marketplace in catalog.marketplaces:
         if (
             marketplace.name not in selected_marketplaces
             or marketplace.name in known_marketplaces
-            or not active_profiles.intersection(marketplace.profiles)
         ):
             continue
         required = any(
@@ -304,14 +283,14 @@ def _plugin_snapshot(
 
 def install_actions(
     setup: ResolvedSetup,
-    paths: RuntimePaths,
+    catalog: PluginCatalogProjection,
     runner: Runner,
 ) -> tuple[InstallAction, ...]:
     """Inspect native Claude state and plan only missing plugin actions.
 
     Args:
         setup: Resolved components and profiles.
-        paths: Approved runtime roots.
+        catalog: Preprojected Claude-only marketplace and plugin catalog.
         runner: Native command boundary.
 
     Returns:
@@ -346,10 +325,8 @@ def install_actions(
         UnicodeDecodeError,
     ) as error:
         raise ClaudePluginInspectionError("Claude plugin inspection failed") from error
-    catalog_path = _reviewed_source(paths, Path("assistants/claude/plugins.yaml"))
     return plan_claude_plugins(
-        catalog_path,
-        profiles=setup.profiles,
+        catalog,
         installed=frozenset(
             plugin["id"] for plugin in snapshot["plugins"] if plugin["scope"] == "user"
         ),

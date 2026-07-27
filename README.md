@@ -70,21 +70,35 @@ required diagnostics while remaining agents still receive targeted shared
 resources. Canonical shared sources are translated by native adapters with
 explicit collision rejection; the agents do not share configuration formats.
 
+`ballen-config` is the only desired-state source for coding agents. A shared,
+target-aware catalog can declare a capability for several agents, while native
+Cursor, Claude Code, and Codex adapters independently install and inspect only
+their own destinations and native identifiers. The adapters do not synchronize
+live configuration between agents or use one agent's installed files as input.
+
 Cursor uses a base settings file plus a work-only Bedrock overlay. Curated
 feature extensions include Jupyter's transitive support, and the optional JJ
-Graph extension is a pinned VSIX. Claude and Codex use their native plugin
-catalogs. The abandoned experimental marketplace setup is not part of desired
-state. Use each agent's first-party browser capability rather than a global
-Playwright MCP, GitLab through `glab`, and official Notion integrations. Cursor
-User Rules and some first-party capabilities are deliberate manual steps.
+Graph extension is a pinned VSIX. Claude Code and Codex use their respective
+native marketplace commands. The production Cursor marketplace and local-plugin
+lists are intentionally empty; a later reviewed Cursor marketplace entry stays
+a visible manual Customize checklist item, and a reviewed local plugin is copied
+only to `~/.cursor/plugins/local/<name>/`. Cursor User Rules and some
+first-party capabilities are deliberate manual steps. Use each agent's
+first-party browser capability rather than a global Playwright MCP, GitLab
+through `glab`, and official Notion integrations.
 
 `jujutsu-workflow` is the first reviewed shared skill. It is stored once in
 this desired-state repository and independently copied into each selected
-agent's native skill root; this does not depend on Cursor third-party
-auto-import. Only generic skills are promoted into the shared catalog;
-repository-specific skills remain in add-ons. Sessions, history, memories,
-auth, trust, worktrees, caches, indexes, and generated plugin state are
-excluded. Memory migration is not an MVP capability.
+agent's native skill root. Cursor cross-tool import is neither configured nor
+required: disabling **Include Third-Party Plugins, Skills, and Other Configs**
+is recommended for a clearer independently managed view, but bootstrap
+correctness and idempotency are the same when that Cursor preference is enabled.
+Only generic skills are promoted into the shared catalog; repository-specific
+skills remain in add-ons. A reviewed Cursor local plugin is a separate,
+repository-owned tree, and its declared skills must not collide with any
+Cursor-targeted shared skill. Sessions, history, memories, auth, trust,
+worktrees, caches, indexes, and generated plugin state are excluded. Memory
+migration is not an MVP capability.
 
 ## Security and state boundary
 
@@ -113,4 +127,5 @@ IT-managed applications. Use the
 the repository never stores keys. The bootstrap installs portable GitHub and
 GitLab SSH defaults in `~/.ssh/config` and keeps machine-specific entries in
 the included `~/.ssh/config.local`. The approved design remains in the
-[laptop migration bootstrap design](docs/superpowers/specs/2026-07-25-laptop-migration-bootstrap-design.md).
+[laptop migration bootstrap design](docs/superpowers/specs/2026-07-25-laptop-migration-bootstrap-design.md)
+and its [coding-agent desired-state amendment](docs/superpowers/specs/2026-07-26-coding-agent-desired-state-consolidation-design.md).

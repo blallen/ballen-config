@@ -269,7 +269,7 @@ management.
 | Stable dotfiles | Zsh, Powerlevel10k, Git, global Git ignore, Jujutsu | Symlink to repository-owned source |
 | App-managed JSON | Cursor settings and keybindings, Wave settings | Validate, back up, then copy or render |
 | Assistant policy | Global instructions, rules, authored skills, hooks | Copy or symlink stable source |
-| Enumerated installs | Editor extensions and plugin identifiers | Reinstall from a declarative list |
+| Enumerated installs | Editor extensions and plugin identifiers | Reinstall from a declarative catalog |
 | Runtime state | Caches, indexes, plugin downloads, registries | Regenerate; never version |
 | Authentication | OAuth, tokens, Keychain entries, trust state | Reauthenticate; never version |
 
@@ -285,6 +285,11 @@ action and `configure` applies it after preserving the existing version.
 Planning output is structural: it reports paths, ownership, action types, and
 redacted field names, never raw destination values. This prevents a token in an
 unmanaged JSON file from appearing in terminal output or an agent transcript.
+
+The central inventory references each shared catalog once; it does not mirror
+catalog entries in flattened `item_ids` lists. The referenced catalog is the
+authoritative declaration of its entries, while the inventory records its
+owner, source, and target scope.
 
 Configuration and backup code runs with `umask 077`. State and backup
 directories are mode `0700`; newly created files are mode `0600` or retain a
@@ -466,16 +471,24 @@ set. `doctor` therefore treats a compatible bundled extension as satisfying a
 feature by inspecting Cursor's packaged manifest when necessary; it does not
 infer bundled state from the CLI list.
 
-Cursor marketplace plugin identifiers are a manual Customize checklist unless
-Cursor exposes a supported installer. The bootstrap never copies
-`~/.cursor/plugins/cache`.
+As amended by the approved [Coding-Agent Desired-State Consolidation
+Design](2026-07-26-coding-agent-desired-state-consolidation-design.md), a
+deliberately declared Cursor marketplace plugin is a visible manual Customize
+checklist action unless Cursor exposes a supported installer and inspection
+interface. The production Cursor marketplace and local-plugin lists are
+intentionally empty. A reviewed local plugin is copied only to
+`~/.cursor/plugins/local/<name>/` through the managed atomic tree engine; the
+bootstrap never copies
+`~/.cursor/plugins/cache` or infers desired state from imported Cursor content.
 
 The current token-bearing GitLab MCP configuration is removed.
 
 ### Claude Code
 
-The repository tracks global instructions, stable settings, plugin identifiers,
-authored general-purpose skills, and canonical hook references. It excludes:
+The repository tracks global instructions, stable settings, authored
+general-purpose skills, and canonical hook references. Claude Code marketplace
+identifiers are target-aware records in the shared plugin catalog and are
+installed through Claude Code's native adapter. It excludes:
 
 - `~/.claude.json` runtime and authentication state;
 - transcripts, sessions, and command history;
@@ -485,8 +498,10 @@ authored general-purpose skills, and canonical hook references. It excludes:
 ### Codex
 
 The repository tracks global instructions, `RTK.md`, a small portable
-configuration overlay, stable rules, authored skills, plugin identifiers, and
-canonical hook references. It excludes:
+configuration overlay, stable rules, authored skills, and canonical hook
+references. Codex marketplace identifiers are target-aware records in the
+shared plugin catalog and are installed through Codex's native adapter. It
+excludes:
 
 - session and history data;
 - authentication and trust state;

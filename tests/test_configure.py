@@ -111,7 +111,13 @@ def test_second_apply_is_unchanged_without_backup(config_paths: RuntimePaths) ->
     assert not (config_paths.backup_root / "two").exists()
 
 
-@pytest.mark.parametrize("method", [ApplyMethod.COPY, ApplyMethod.RENDER])
+@pytest.mark.parametrize(
+    "method",
+    [
+        pytest.param(ApplyMethod.COPY, id="copy"),
+        pytest.param(ApplyMethod.RENDER, id="render"),
+    ],
+)
 def test_matching_file_bytes_with_wrong_mode_are_updated(
     config_paths: RuntimePaths,
     method: ApplyMethod,
@@ -600,3 +606,34 @@ def test_configuration_plan_contributor_reports_redacted_brittle_path(
     assert "/Users/" not in str(diagnostic)
     assert spec.source.read_text() not in str(diagnostic)
     assert not (config_paths.home / spec.destination).exists()
+
+
+def test_managed_tree_allows_dotted_ids_and_guards_preflight_digest(
+    config_paths: RuntimePaths,
+) -> None:
+    """Preserve safe dotted resource IDs and reject changed reviewed sources."""
+    source = config_paths.repo_root / "tree"
+    source.mkdir()
+    (source / "item").write_text("before", encoding="utf-8")
+    spec = ManagedTreeSpec(
+        id="cursor-local-plugin-example.local",
+        source=source,
+        destination=Path(".tree"),
+        component="cursor",
+        expected_source_digest=digest_tree(source),
+    )
+    configuration = engine(config_paths)
+
+    assert configuration.plan((spec,))[0].outcome == "created"
+
+    (source / "item").write_text("after", encoding="utf-8")
+    with pytest.raises(ValueError, match="changed since preflight"):
+        configuration.plan((spec,))
+
+    with pytest.raises(ValidationError):
+        ManagedTreeSpec(
+            id="cursor-local-plugin-example.",
+            source=source,
+            destination=Path(".tree"),
+            component="cursor",
+        )

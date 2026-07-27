@@ -29,7 +29,36 @@ from ballen_config.state import BootstrapState, ManagedRecord, StateStore
 
 
 class SkillCollisionError(ValueError):
-    """Raised when one normalized skill name resolves to different content."""
+    """Raised when one normalized skill name resolves to different content.
+
+    The structured fields support a stable, redacted CLI outcome without
+    exposing arbitrary exception text or an absolute home path.
+
+    Args:
+        name: Normalized shared skill name.
+        relative_destination: Native destination relative to the approved home.
+    """
+
+    def __init__(self, name: str, relative_destination: Path) -> None:
+        """Initialize the collision with its normalized safe context."""
+        self.name = name
+        self.relative_destination = relative_destination
+        super().__init__(
+            f"skill collision: {name} at {relative_destination.as_posix()}"
+        )
+
+    def outcome(self) -> str:
+        """Return a safe, actionable outcome suitable for CLI reporting."""
+        relative = self.relative_destination
+        if (
+            _SKILL_NAME_PATTERN.fullmatch(self.name) is None
+            or relative.is_absolute()
+            or ".." in relative.parts
+            or relative.name != self.name
+            or relative.parent not in _CURSOR_SCANNED_ROOTS
+        ):
+            return "shared skill collision"
+        return f"shared skill collision: {self.name} at {relative.as_posix()}"
 
 
 @dataclass(frozen=True)
@@ -91,8 +120,8 @@ def hash_skill_tree(root: Path) -> str:
     return digest
 
 
-def _declared_name(root: Path) -> str:
-    """Parse the bounded initial YAML frontmatter name.
+def declared_skill_name(root: Path) -> str:
+    """Return a bounded, validated skill name from one regular tree.
 
     Args:
         root: Validated skill root containing ``SKILL.md``.
@@ -213,7 +242,7 @@ def plan_skill_copies(
     _validate_targets(targets)
     home = _validated_home(home)
     source_digest = hash_skill_tree(source)
-    if source.name != name or _declared_name(source) != name:
+    if source.name != name or declared_skill_name(source) != name:
         raise ValueError("skill name mismatch")
 
     desired: dict[
@@ -231,8 +260,13 @@ def plan_skill_copies(
         )
         desired[destination] = (target, resource_id, relative, record)
 
+    scanned_roots = (
+        _CURSOR_SCANNED_ROOTS
+        if AgentName.CURSOR in targets
+        else tuple(_SKILL_ROOTS[target] for target in targets)
+    )
     current_digests: dict[Path, str] = {}
-    for relative_root in _CURSOR_SCANNED_ROOTS:
+    for relative_root in scanned_roots:
         relative = relative_root / name
         candidate = _candidate(home, relative)
         metadata = _metadata(candidate)
@@ -249,7 +283,7 @@ def plan_skill_copies(
         desired_entry = desired.get(candidate)
         if desired_entry is not None and desired_entry[3] is not None:
             continue
-        raise SkillCollisionError(f"skill collision: {name} at {relative.as_posix()}")
+        raise SkillCollisionError(name, relative)
 
     actions: list[SkillCopyAction] = []
     for destination, (target, resource_id, relative, record) in desired.items():
@@ -260,9 +294,7 @@ def plan_skill_copies(
             action_state: Literal["create", "update", "repair"] = "create"
         else:
             if record is None:
-                raise SkillCollisionError(
-                    f"skill collision: {name} at {relative.as_posix()}"
-                )
+                raise SkillCollisionError(name, relative)
             action_state = (
                 "update"
                 if destination_digest == record.destination_digest
@@ -321,6 +353,7 @@ def _canonical_source(skill: SkillSpec, paths: RuntimePaths) -> Path:
 def configuration(
     setup: ResolvedSetup,
     paths: RuntimePaths,
+    catalog: SkillCatalog,
 ) -> ConfigurationContribution:
     """Resolve every eligible shared skill through core tree primitives.
 
@@ -341,10 +374,6 @@ def configuration(
     """
     if not any(setup.is_enabled(agent) for agent in ("cursor", "claude-code", "codex")):
         return ConfigurationContribution()
-    catalog_path = paths.repo_root / "assistants/shared/skills/catalog.yaml"
-    catalog = SkillCatalog.model_validate(
-        yaml.safe_load(catalog_path.read_text(encoding="utf-8"))
-    )
     selected = tuple(
         (skill, targets)
         for skill in sorted(catalog.skills, key=lambda item: item.name)

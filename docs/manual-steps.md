@@ -16,10 +16,20 @@
 7. Sign in to each enabled coding agent: Cursor, Claude Code, and Codex.
 8. Import the rendered Cursor User Rules in Cursor Customize > Rules when
    Cursor is enabled.
-9. Enable each enabled agent's first-party browser capability and authorize
-   the official Notion integration when needed.
-10. Do not manually install the abandoned experimental marketplace setup; it is
+9. In Cursor, open **Settings → Rules, Skills, Subagents** (or **Customize**)
+   and turn off **Include Third-Party Plugins, Skills, and Other Configs** so
+   each coding agent's desired state stays explicit. This is a recommendation,
+   not a prerequisite: the bootstrap remains correct and idempotent if the
+   setting stays enabled.
+10. The production Cursor marketplace and local-plugin lists are intentionally
+    empty. If a later reviewed catalog entry names a Cursor marketplace plugin,
+    complete its visible Customize checklist action; do not treat imported
+    capabilities or `~/.cursor/plugins/cache` as desired state. A reviewed
+    local plugin is managed only at `~/.cursor/plugins/local/<name>/`.
+11. Enable each enabled agent's first-party browser capability and authorize
+    the official Notion integration when needed.
+12. Do not manually install the abandoned experimental marketplace setup; it is
     not part of desired state.
-11. Finish with `./bootstrap doctor --profile work`, or use
-   `./bootstrap doctor --profile default` for the default profile. Resolve only
-   the normalized manual findings.
+13. Finish with `./bootstrap doctor --profile work`, or use
+    `./bootstrap doctor --profile default` for the default profile. Resolve only
+    the normalized manual findings.

@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import cast
 
 import pytest
+from pydantic import ValidationError
 
 from ballen_config.assistants.inventory import load_inventory, resolve_inventory
 from ballen_config.assistants.models import (
@@ -89,9 +90,9 @@ def test_active_profiles_select_default_and_work_once(
 @pytest.mark.parametrize(
     ("component", "owner"),
     [
-        ("cursor", AgentName.CURSOR),
-        ("claude-code", AgentName.CLAUDE),
-        ("codex", AgentName.CODEX),
+        pytest.param("cursor", AgentName.CURSOR, id="cursor"),
+        pytest.param("claude-code", AgentName.CLAUDE, id="claude-code"),
+        pytest.param("codex", AgentName.CODEX, id="codex"),
     ],
 )
 def test_skip_removes_direct_owner_and_shared_target(
@@ -126,7 +127,13 @@ def test_shared_resource_disappears_when_all_targets_are_skipped(
     )
 
 
-@pytest.mark.parametrize("source", ["../outside.json", "/outside.json"])
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param("../outside.json", id="parent-traversal"),
+        pytest.param("/outside.json", id="absolute"),
+    ],
+)
 def test_source_escape_is_rejected_before_existence(
     tmp_path: Path,
     source: str,
@@ -168,40 +175,51 @@ resources:
         load_inventory(inventory_path, repo_root)
 
 
-def test_catalog_item_ids_must_match_declared_order(tmp_path: Path) -> None:
-    """Reject flattened catalog IDs whose order differs from the source."""
-    repo_root = tmp_path / "repo"
-    catalog = repo_root / "assistants/extensions.yaml"
-    catalog.parent.mkdir(parents=True)
-    catalog.write_text(
-        """
-extensions:
-  - id: publisher.first
-  - id: publisher.second
-""".lstrip()
+def test_catalog_resource_rejects_flattened_item_ids() -> None:
+    """Keep catalog entries authoritative instead of duplicating their item IDs."""
+    with pytest.raises(ValidationError):
+        CatalogResource.model_validate(
+            {
+                "id": "shared.plugins.catalog",
+                "kind": "catalog",
+                "owner": "shared",
+                "source": "assistants/shared/plugins/catalog.yaml",
+                "catalog_kind": "plugin",
+                "targets": ["cursor", "claude-code", "codex"],
+                "item_ids": ["duplicate-state"],
+            }
+        )
+
+
+def test_inventory_loads_shared_plugin_catalog_without_mirrored_ids(
+    repo_root: Path,
+) -> None:
+    """Keep the parsed shared plugin document as the sole item declaration."""
+    loaded = load_inventory(repo_root / "assistants/inventory.yaml", repo_root)
+    resource = next(
+        item
+        for item in loaded.inventory.resources
+        if item.id == "shared.plugins.catalog"
     )
-    inventory_path = repo_root / "inventory.yaml"
-    inventory_path.write_text(
-        """
-resources:
-  - id: cursor.extensions
-    kind: catalog
-    owner: cursor
-    source: assistants/extensions.yaml
-    catalog_kind: extension
-    targets: [cursor]
-    item_ids: [publisher.second, publisher.first]
-""".lstrip()
+    catalog = next(
+        item.document
+        for item in loaded.catalogs
+        if item.resource_id == "shared.plugins.catalog"
     )
-    with pytest.raises(ValueError, match="catalog item_ids differ"):
-        load_inventory(inventory_path, repo_root)
+
+    assert isinstance(resource, CatalogResource)
+    assert not hasattr(resource, "item_ids")
+    assert catalog is not None
+    assert type(catalog).__name__ == "PluginCatalog"
 
 
 def test_inventory_declares_first_reviewed_shared_skill_catalog(
     repo_root: Path,
 ) -> None:
     """Expose the first reviewed shared skill to every supported agent."""
-    inventory = load_inventory(repo_root / "assistants/inventory.yaml", repo_root)
+    inventory = load_inventory(
+        repo_root / "assistants/inventory.yaml", repo_root
+    ).inventory
     resource = next(
         item for item in inventory.resources if item.id == "shared.skills.catalog"
     )
@@ -213,14 +231,15 @@ def test_inventory_declares_first_reviewed_shared_skill_catalog(
         AgentName.CLAUDE,
         AgentName.CODEX,
     )
-    assert resource.item_ids == ("jujutsu-workflow",)
 
 
 def test_initial_shared_catalog_disappears_when_all_agents_are_skipped(
     repo_root: Path,
 ) -> None:
     """Remove the reviewed shared catalog when every concrete target is skipped."""
-    inventory = load_inventory(repo_root / "assistants/inventory.yaml", repo_root)
+    inventory = load_inventory(
+        repo_root / "assistants/inventory.yaml", repo_root
+    ).inventory
     resolved = resolve_inventory(
         inventory,
         profiles=("default",),

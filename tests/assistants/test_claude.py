@@ -17,9 +17,13 @@ from ballen_config.assistants.claude import (
     load_stable_settings,
     plan_claude_plugins,
 )
+from ballen_config.assistants.desired_state import (
+    PluginCatalogProjection,
+    project_plugin_catalog,
+)
 from ballen_config.assistants.hooks import hook_contribution
 from ballen_config.assistants.inventory import load_inventory
-from ballen_config.assistants.models import FileResource, PluginCatalog
+from ballen_config.assistants.models import AgentName, FileResource, PluginCatalog
 from ballen_config.configure import ApplyMethod
 from ballen_config.install import Installer
 from ballen_config.models import Component, Manager, ResolvedSetup
@@ -80,12 +84,11 @@ def test_stable_settings_reject_ambiguous_json(tmp_path: Path, source: bytes) ->
 
 
 def test_plugin_actions_are_scoped_ordered_and_profile_independent(
-    repo_root: Path,
+    claude_projection: PluginCatalogProjection,
 ) -> None:
     """Plan the same ordered native actions for each supported profile."""
     default_actions = plan_claude_plugins(
-        repo_root / "assistants/claude/plugins.yaml",
-        profiles=("default",),
+        claude_projection,
         installed=frozenset(),
     )
     default_argv = [action.argv for action in default_actions]
@@ -96,7 +99,7 @@ def test_plugin_actions_are_scoped_ordered_and_profile_independent(
         "add",
         "--scope",
         "user",
-        "anthropics/claude-plugins-official",
+        "bigspinai/toolkit",
     )
     assert all(
         action.argv[0:3] == ("claude", "plugin", "install")
@@ -107,57 +110,55 @@ def test_plugin_actions_are_scoped_ordered_and_profile_independent(
         for action in default_actions[:6]
     )
     work_actions = plan_claude_plugins(
-        repo_root / "assistants/claude/plugins.yaml",
-        profiles=("default", "work"),
+        claude_projection,
         installed=frozenset(),
     )
     assert work_actions == default_actions
 
 
-def test_plugin_planner_filters_optional_work_catalog_entries(tmp_path: Path) -> None:
-    """Select optional work entries after required default native actions."""
-    catalog_path = tmp_path / "plugins.yaml"
-    catalog_path.write_text(
-        "marketplaces:\n"
-        "  - name: default-marketplace\n"
-        "    source: example/default\n"
-        "  - name: work-marketplace\n"
-        "    source: example/work\n"
-        "    profiles: [work]\n"
-        "plugins:\n"
-        "  - id: default-plugin@default-marketplace\n"
-        "    marketplace: default-marketplace\n"
-        "  - id: work-plugin@work-marketplace\n"
-        "    marketplace: work-marketplace\n"
-        "    profiles: [work]\n"
-        "    required: false\n"
+def test_plugin_planner_uses_the_preprojected_catalog() -> None:
+    """Preserve requiredness after projection selects active native entries."""
+    catalog = PluginCatalog.model_validate(
+        {
+            "marketplaces": [
+                {
+                    "name": "work-marketplace",
+                    "source": "example/work",
+                    "targets": ["claude-code"],
+                    "profiles": ["work"],
+                }
+            ],
+            "plugins": [
+                {
+                    "kind": "native-marketplace",
+                    "id": "work-plugin@work-marketplace",
+                    "marketplace": "work-marketplace",
+                    "targets": ["claude-code"],
+                    "profiles": ["work"],
+                    "required": False,
+                }
+            ],
+        }
+    )
+    projection = project_plugin_catalog(
+        catalog, target=AgentName.CLAUDE, profiles=("default", "work")
     )
 
-    default_actions = plan_claude_plugins(
-        catalog_path, profiles=("default",), installed=frozenset()
-    )
-    assert [action.component_id for action in default_actions] == [
-        "claude.marketplace.default-marketplace",
-        "claude.plugin.default-plugin@default-marketplace",
-    ]
+    actions = plan_claude_plugins(projection, installed=frozenset())
 
-    work_actions = plan_claude_plugins(
-        catalog_path, profiles=("default", "work"), installed=frozenset()
-    )
-    assert [action.component_id for action in work_actions] == [
-        "claude.marketplace.default-marketplace",
+    assert [action.component_id for action in actions] == [
         "claude.marketplace.work-marketplace",
-        "claude.plugin.default-plugin@default-marketplace",
         "claude.plugin.work-plugin@work-marketplace",
     ]
-    assert all(not action.required for action in work_actions[1::2])
+    assert all(not action.required for action in actions)
 
 
-def test_registered_native_entries_are_noops(repo_root: Path) -> None:
+def test_registered_native_entries_are_noops(
+    claude_projection: PluginCatalogProjection,
+) -> None:
     """Avoid installing already registered native marketplaces and plugins."""
     actions = plan_claude_plugins(
-        repo_root / "assistants/claude/plugins.yaml",
-        profiles=("default",),
+        claude_projection,
         installed=frozenset({"frontend-design@claude-plugins-official"}),
         known_marketplaces=frozenset({"claude-plugins-official"}),
     )
@@ -168,8 +169,8 @@ def test_registered_native_entries_are_noops(repo_root: Path) -> None:
 
 def test_native_array_inspection_uses_user_scoped_plugins_and_marketplaces(
     fake_runner: StatefulAssistantFake,
-    repo_root: Path,
     temporary_home: Path,
+    claude_projection: PluginCatalogProjection,
 ) -> None:
     """Read Claude's separate native plugin and marketplace array responses."""
     fake_runner.add(
@@ -202,7 +203,7 @@ def test_native_array_inspection_uses_user_scoped_plugins_and_marketplaces(
 
     actions = install_actions(
         _setup(),
-        RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home),
+        claude_projection,
         fake_runner,
     )
 
@@ -217,8 +218,8 @@ def test_native_array_inspection_uses_user_scoped_plugins_and_marketplaces(
 
 def test_project_scoped_native_plugin_does_not_satisfy_user_install(
     fake_runner: StatefulAssistantFake,
-    repo_root: Path,
     temporary_home: Path,
+    claude_projection: PluginCatalogProjection,
 ) -> None:
     """Plan a user install when the native plugin only has project scope."""
     fake_runner.add(
@@ -244,7 +245,7 @@ def test_project_scoped_native_plugin_does_not_satisfy_user_install(
 
     actions = install_actions(
         _setup(),
-        RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home),
+        claude_projection,
         fake_runner,
     )
 
@@ -262,8 +263,8 @@ def test_project_scoped_native_plugin_does_not_satisfy_user_install(
 )
 def test_native_marketplace_inspection_fails_closed(
     fake_runner: StatefulAssistantFake,
-    repo_root: Path,
     temporary_home: Path,
+    claude_projection: PluginCatalogProjection,
     returncode: int,
     stdout: str,
 ) -> None:
@@ -284,7 +285,7 @@ def test_native_marketplace_inspection_fails_closed(
     ):
         install_actions(
             _setup(),
-            RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home),
+            claude_projection,
             fake_runner,
         )
 
@@ -364,7 +365,14 @@ def test_renderer_replaces_an_exact_current_managed_hook(
     ]
 
 
-@pytest.mark.parametrize("current", [b"[1]", b"{", b'{"effortLevel": NaN}'])
+@pytest.mark.parametrize(
+    "current",
+    [
+        pytest.param(b"[1]", id="array"),
+        pytest.param(b"{", id="truncated-object"),
+        pytest.param(b'{"effortLevel": NaN}', id="non-finite"),
+    ],
+)
 def test_renderer_fails_closed_for_invalid_native_settings(
     repo_root: Path, temporary_home: Path, current: bytes
 ) -> None:
@@ -414,12 +422,14 @@ def test_instruction_renderer_uses_canonical_guidance_and_claude_suffix(
 
 
 def test_install_then_configure_preserves_plugin_native_state(
-    fake_runner: StatefulAssistantFake, repo_root: Path, temporary_home: Path
+    fake_runner: StatefulAssistantFake,
+    repo_root: Path,
+    temporary_home: Path,
+    claude_projection: PluginCatalogProjection,
 ) -> None:
     """Preserve plugin CLI state created by install before configure runs."""
     actions = plan_claude_plugins(
-        repo_root / "assistants/claude/plugins.yaml",
-        profiles=("default",),
+        claude_projection,
         installed=frozenset(),
     )
     installer = Installer(fake_runner, temporary_home)
@@ -436,12 +446,12 @@ def test_install_then_configure_preserves_plugin_native_state(
 
 
 def test_skip_prevents_claude_inspection(
-    fake_runner: StatefulAssistantFake, repo_root: Path, temporary_home: Path
+    fake_runner: StatefulAssistantFake,
+    claude_projection: PluginCatalogProjection,
 ) -> None:
     """Return before invoking Claude when its whole component is skipped."""
     setup = _setup().model_copy(update={"skipped": ("claude-code",)})
-    paths = RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home)
-    assert install_actions(setup, paths, fake_runner) == ()
+    assert install_actions(setup, claude_projection, fake_runner) == ()
     assert fake_runner.commands == []
 
 
@@ -456,19 +466,18 @@ def test_skip_prevents_claude_inspection(
 )
 def test_native_plugin_inspection_rejects_duplicate_json_keys(
     fake_runner: StatefulAssistantFake,
-    repo_root: Path,
     temporary_home: Path,
+    claude_projection: PluginCatalogProjection,
     payload: str,
 ) -> None:
     """Fail closed instead of collapsing ambiguous native JSON objects."""
     fake_runner.add(
         ("claude", "plugin", "list", "--json"), returncode=0, stdout=payload
     )
-    paths = RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home)
     with pytest.raises(
         ClaudePluginInspectionError, match="Claude plugin inspection failed"
     ):
-        install_actions(_setup(), paths, fake_runner)
+        install_actions(_setup(), claude_projection, fake_runner)
     assert fake_runner.commands == [("claude", "plugin", "list", "--json")]
 
 
@@ -482,38 +491,40 @@ def test_plugin_catalog_rejects_plugin_profile_outside_marketplace_profile() -> 
                         "name": "private",
                         "source": "git@example:private",
                         "profiles": ["work"],
+                        "targets": ["claude-code"],
                     }
                 ],
                 "plugins": [
                     {
+                        "kind": "native-marketplace",
                         "id": "plugin@private",
                         "marketplace": "private",
                         "profiles": ["default"],
+                        "targets": ["claude-code"],
                     }
                 ],
             }
         )
 
 
-def test_plan_selects_only_active_marketplaces(tmp_path: Path) -> None:
-    """Omit inactive marketplace sources even when no plugin is selected."""
-    catalog_path = tmp_path / "plugins.yaml"
-    catalog_path.write_text(
-        "marketplaces:\n"
-        "  - name: private\n"
-        "    source: git@example:private\n"
-        "    profiles: [work]\n"
-        "plugins: []\n"
+def test_planner_rejects_a_projection_for_another_agent() -> None:
+    """Keep native command ownership aligned with the concrete target."""
+    projection = PluginCatalogProjection(
+        target=AgentName.CODEX,
+        marketplaces=(),
+        native_plugins=(),
+        cursor_marketplace_plugins=(),
+        cursor_local_plugins=(),
     )
-    assert (
-        plan_claude_plugins(catalog_path, profiles=("default",), installed=frozenset())
-        == ()
-    )
+    with pytest.raises(ValueError, match="target claude-code"):
+        plan_claude_plugins(projection, installed=frozenset())
 
 
 def test_inventory_has_one_claude_owner_per_native_resource(repo_root: Path) -> None:
     """Synchronize inventory with the reviewed Claude adapter surface."""
-    inventory = load_inventory(repo_root / "assistants/inventory.yaml", repo_root)
+    inventory = load_inventory(
+        repo_root / "assistants/inventory.yaml", repo_root
+    ).inventory
     resources = [
         resource
         for resource in inventory.resources

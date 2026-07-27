@@ -1,0 +1,97 @@
+marketplaces:
+  - name: bigspinai
+    source: bigspinai/toolkit
+    targets: [claude-code, codex]
+    profiles: [default]
+  - name: claude-context-mode
+    source: mksglu/claude-context-mode
+    targets: [claude-code]
+    profiles: [default]
+  - name: claude-plugins-official
+    source: anthropics/claude-plugins-official
+    targets: [claude-code, codex]
+    profiles: [default]
+  - name: context-mode
+    source: mksglu/claude-context-mode
+    targets: [codex]
+    profiles: [default]
+  - name: ponytail
+    source: DietrichGebert/ponytail
+    targets: [claude-code]
+    profiles: [default]
+  - name: prime-radiant-marketplace
+    source: prime-radiant-inc/prime-radiant-marketplace
+    targets: [claude-code]
+    profiles: [default]
+  - name: superpowers-marketplace
+    source: obra/superpowers-marketplace
+    targets: [claude-code, codex]
+    profiles: [default]
+
+plugins:
+  - kind: native-marketplace
+    id: bigspin@bigspinai
+    marketplace: bigspinai
+    targets: [claude-code, codex]
+    profiles: [default]
+    required: true
+  - kind: native-marketplace
+    id: context-mode@claude-context-mode
+    marketplace: claude-context-mode
+    targets: [claude-code]
+    profiles: [default]
+    required: true
+  - kind: native-marketplace
+    id: context-mode@context-mode
+    marketplace: context-mode
+    targets: [codex]
+    profiles: [default]
+    required: true
+  - kind: native-marketplace
+    id: frontend-design@claude-plugins-official
+    marketplace: claude-plugins-official
+    targets: [claude-code, codex]
+    profiles: [default]
+    required: true
+  - kind: native-marketplace
+    id: github@claude-plugins-official
+    marketplace: claude-plugins-official
+    targets: [codex]
+    profiles: [default]
+    required: true
+  - kind: native-marketplace
+    id: iterative-development@prime-radiant-marketplace
+    marketplace: prime-radiant-marketplace
+    targets: [claude-code]
+    profiles: [default]
+    required: true
+  - kind: native-marketplace
+    id: logfire@claude-plugins-official
+    marketplace: claude-plugins-official
+    targets: [claude-code, codex]
+    profiles: [default]
+    required: true
+  - kind: native-marketplace
+    id: ponytail@ponytail
+    marketplace: ponytail
+    targets: [claude-code]
+    profiles: [default]
+    required: true
+  - kind: native-marketplace
+    id: pydantic-ai@claude-plugins-official
+    marketplace: claude-plugins-official
+    targets: [claude-code]
+    profiles: [default]
+    required: true
+  - kind: native-marketplace
+    id: superpowers@claude-plugins-official
+    marketplace: claude-plugins-official
+    targets: [claude-code, codex]
+    profiles: [default]
+    required: true
+  - kind: native-marketplace
+    id: superpowers-developing-for-claude-code@superpowers-marketplace
+    marketplace: superpowers-marketplace
+    targets: [claude-code, codex]
+    profiles: [default]
+    required: true

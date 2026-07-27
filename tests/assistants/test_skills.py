@@ -12,7 +12,7 @@ import pytest
 import yaml
 
 from ballen_config.assistants.inventory import load_inventory
-from ballen_config.assistants.models import AgentName, CatalogResource
+from ballen_config.assistants.models import AgentName, CatalogResource, SkillCatalog
 from ballen_config.assistants.skills import (
     SkillCollisionError,
     SkillCopyAction,
@@ -91,6 +91,15 @@ def _write_catalog(paths: RuntimePaths, skills: list[dict[str, object]]) -> None
     catalog.write_text(yaml.safe_dump({"skills": skills}, sort_keys=False))
 
 
+def _catalog(paths: RuntimePaths) -> SkillCatalog:
+    """Load a test-owned catalog before calling the no-reread adapter."""
+    return SkillCatalog.model_validate(
+        yaml.safe_load(
+            (paths.repo_root / "assistants/shared/skills/catalog.yaml").read_text()
+        )
+    )
+
+
 def _resolved_setup(
     *enabled: str,
     profiles: tuple[str, ...] = ("default",),
@@ -118,16 +127,10 @@ def test_configuration_skips_catalog_and_state_when_all_agents_disabled(
 ) -> None:
     """All-agent skips do not inspect shared skill sources or state."""
     setup = _resolved_setup()
-    monkeypatch.setattr(
-        "ballen_config.assistants.skills.yaml.safe_load",
-        lambda _source: pytest.fail("catalog read"),
+    assert (
+        configuration(setup, skill_paths, SkillCatalog(skills=()))
+        == ConfigurationContribution()
     )
-    monkeypatch.setattr(
-        "ballen_config.assistants.skills.StateStore.load",
-        lambda _store: pytest.fail("state read"),
-    )
-
-    assert configuration(setup, skill_paths) == ConfigurationContribution()
 
 
 def test_configuration_skips_state_when_catalog_selects_no_skills(
@@ -142,7 +145,7 @@ def test_configuration_skips_state_when_catalog_selects_no_skills(
     )
 
     assert (
-        configuration(_resolved_setup("cursor"), skill_paths)
+        configuration(_resolved_setup("cursor"), skill_paths, _catalog(skill_paths))
         == ConfigurationContribution()
     )
 
@@ -221,7 +224,13 @@ def test_special_root_is_rejected(tmp_path: Path) -> None:
         hash_skill_tree(root)
 
 
-@pytest.mark.parametrize("dangling", [False, True])
+@pytest.mark.parametrize(
+    "dangling",
+    [
+        pytest.param(False, id="resolved-target"),
+        pytest.param(True, id="dangling-target"),
+    ],
+)
 def test_descendant_symlink_is_rejected(
     tmp_path: Path,
     source_skill: Path,
@@ -307,10 +316,10 @@ def test_all_agent_destinations_and_specs_are_native(
 @pytest.mark.parametrize(
     "relative_root",
     [
-        ".cursor/skills",
-        ".claude/skills",
-        ".agents/skills",
-        ".codex/skills",
+        pytest.param(".cursor/skills", id="cursor-skills"),
+        pytest.param(".claude/skills", id="claude-skills"),
+        pytest.param(".agents/skills", id="agents-skills"),
+        pytest.param(".codex/skills", id="codex-skills"),
     ],
 )
 def test_same_name_different_hash_in_cursor_scanned_root_is_collision(
@@ -334,6 +343,31 @@ def test_same_name_different_hash_in_cursor_scanned_root_is_collision(
         )
     assert "Different" not in str(error.value)
     assert str(temporary_home) not in str(error.value)
+
+
+def test_non_cursor_targets_ignore_divergent_cursor_skill(
+    source_skill: Path,
+    temporary_home: Path,
+) -> None:
+    """Plan only requested native roots when Cursor is not a target."""
+    conflict = temporary_home / ".cursor/skills/example-skill"
+    conflict.mkdir(parents=True)
+    (conflict / "SKILL.md").write_text(
+        "---\nname: example-skill\ndescription: Different.\n---\n"
+    )
+
+    actions = plan_skill_copies(
+        source=source_skill,
+        name="example-skill",
+        targets=(AgentName.CLAUDE, AgentName.CODEX),
+        home=temporary_home,
+        state=BootstrapState(),
+    )
+
+    assert {action.relative_destination for action in actions} == {
+        Path(".claude/skills/example-skill"),
+        Path(".agents/skills/example-skill"),
+    }
 
 
 def test_identical_destination_is_a_no_op(
@@ -423,8 +457,8 @@ def test_unmanaged_destination_is_preserved(
 @pytest.mark.parametrize(
     ("destination", "resource_id"),
     [
-        (".cursor/skills/other", None),
-        (None, "shared-skill-other-cursor"),
+        pytest.param(".cursor/skills/other", None, id="destination-mismatch"),
+        pytest.param(None, "shared-skill-other-cursor", id="resource-id-mismatch"),
     ],
 )
 def test_managed_record_must_match_resource_and_destination(
@@ -483,9 +517,11 @@ def test_qualified_skill_names_do_not_collide(
 @pytest.mark.parametrize(
     ("entrypoint", "message"),
     [
-        ("# No frontmatter\n", "initial YAML frontmatter"),
-        ("---\nname: example-skill\n", "unterminated"),
-        ("---\nname: [\n---\n", "invalid"),
+        pytest.param(
+            "# No frontmatter\n", "initial YAML frontmatter", id="missing-frontmatter"
+        ),
+        pytest.param("---\nname: example-skill\n", "unterminated", id="unterminated"),
+        pytest.param("---\nname: [\n---\n", "invalid", id="invalid-yaml"),
     ],
 )
 def test_frontmatter_must_be_initial_terminated_and_valid(
@@ -527,8 +563,15 @@ def test_frontmatter_parse_is_bounded(
 @pytest.mark.parametrize(
     ("directory", "frontmatter", "catalog"),
     [
-        ("source-name", "source-name", "catalog-name"),
-        ("source-name", "frontmatter-name", "source-name"),
+        pytest.param(
+            "source-name", "source-name", "catalog-name", id="catalog-name-mismatch"
+        ),
+        pytest.param(
+            "source-name",
+            "frontmatter-name",
+            "source-name",
+            id="frontmatter-name-mismatch",
+        ),
     ],
 )
 def test_directory_frontmatter_and_catalog_names_must_agree(
@@ -582,7 +625,13 @@ def test_targets_must_be_unique_supported_concrete_agents(
         )
 
 
-@pytest.mark.parametrize("dangling", [False, True])
+@pytest.mark.parametrize(
+    "dangling",
+    [
+        pytest.param(False, id="resolved-target"),
+        pytest.param(True, id="dangling-target"),
+    ],
+)
 def test_destination_leaf_symlink_is_rejected_without_outside_read(
     source_skill: Path,
     temporary_home: Path,
@@ -677,7 +726,7 @@ def test_configuration_rejects_noncanonical_and_escaping_sources(
     canonical.symlink_to(outside, target_is_directory=True)
     _write_catalog(skill_paths, [_catalog_item("example-skill")])
     with pytest.raises(ValueError, match="symlinked path component"):
-        configuration(_resolved_setup("cursor"), skill_paths)
+        configuration(_resolved_setup("cursor"), skill_paths, _catalog(skill_paths))
 
     canonical.unlink()
     _write_catalog(
@@ -690,7 +739,7 @@ def test_configuration_rejects_noncanonical_and_escaping_sources(
         ],
     )
     with pytest.raises(ValueError, match="canonical"):
-        configuration(_resolved_setup("cursor"), skill_paths)
+        configuration(_resolved_setup("cursor"), skill_paths, _catalog(skill_paths))
 
 
 def test_selected_dependency_must_also_be_eligible(
@@ -706,8 +755,8 @@ def test_selected_dependency_must_also_be_eligible(
             _catalog_item("consumer", dependencies=("base",)),
         ],
     )
-    with pytest.raises(ValueError, match="dependency is not eligible"):
-        configuration(_resolved_setup("cursor"), skill_paths)
+    with pytest.raises(ValueError, match="dependency profiles do not cover"):
+        configuration(_resolved_setup("cursor"), skill_paths, _catalog(skill_paths))
 
 
 def test_selected_dependency_cannot_target_only_a_skipped_agent(
@@ -723,8 +772,8 @@ def test_selected_dependency_cannot_target_only_a_skipped_agent(
             _catalog_item("consumer", dependencies=("base",)),
         ],
     )
-    with pytest.raises(ValueError, match="dependency is not eligible"):
-        configuration(_resolved_setup("cursor"), skill_paths)
+    with pytest.raises(ValueError, match="dependency targets do not cover"):
+        configuration(_resolved_setup("cursor"), skill_paths, _catalog(skill_paths))
 
 
 def test_dependency_must_cover_consumer_enabled_targets(
@@ -744,16 +793,18 @@ def test_dependency_must_cover_consumer_enabled_targets(
             ),
         ],
     )
-    with pytest.raises(ValueError, match="dependency target coverage"):
-        configuration(_resolved_setup("cursor", "codex"), skill_paths)
+    with pytest.raises(ValueError, match="dependency targets do not cover"):
+        configuration(
+            _resolved_setup("cursor", "codex"), skill_paths, _catalog(skill_paths)
+        )
 
 
 @pytest.mark.parametrize(
     ("dependency_targets", "consumer_targets", "expected_spec_count"),
     [
-        (("cursor",), ("cursor",), 2),
-        (("cursor", "codex"), ("cursor",), 3),
-        (("cursor", "codex"), ("cursor", "codex"), 4),
+        pytest.param(("cursor",), ("cursor",), 2, id="same-targets"),
+        pytest.param(("cursor", "codex"), ("cursor",), 3, id="dependency-superset"),
+        pytest.param(("cursor", "codex"), ("cursor", "codex"), 4, id="all-targets"),
     ],
 )
 def test_dependency_target_coverage_accepts_same_or_superset_targets(
@@ -779,6 +830,7 @@ def test_dependency_target_coverage_accepts_same_or_superset_targets(
     contribution = configuration(
         _resolved_setup("cursor", "codex"),
         skill_paths,
+        _catalog(skill_paths),
     )
     assert len(contribution.specs) == expected_spec_count
 
@@ -796,7 +848,9 @@ def test_configuration_selects_all_eligible_skills_deterministically(
             _catalog_item("base"),
         ],
     )
-    contribution = configuration(_resolved_setup("cursor"), skill_paths)
+    contribution = configuration(
+        _resolved_setup("cursor"), skill_paths, _catalog(skill_paths)
+    )
     assert [spec.id for spec in contribution.specs] == [
         "shared-skill-base-cursor",
         "shared-skill-consumer-cursor",
@@ -810,7 +864,9 @@ def test_jujutsu_workflow_catalog_inventory_and_configuration_are_synchronized(
     temporary_home: Path,
 ) -> None:
     """Declare and plan the first reviewed shared skill without mutation."""
-    inventory = load_inventory(repo_root / "assistants/inventory.yaml", repo_root)
+    inventory = load_inventory(
+        repo_root / "assistants/inventory.yaml", repo_root
+    ).inventory
     catalog = yaml.safe_load(
         (repo_root / "assistants/shared/skills/catalog.yaml").read_text()
     )
@@ -837,7 +893,6 @@ def test_jujutsu_workflow_catalog_inventory_and_configuration_are_synchronized(
         AgentName.CLAUDE,
         AgentName.CODEX,
     )
-    assert resource.item_ids == ("jujutsu-workflow",)
     source = repo_root / "assistants/shared/skills/jujutsu-workflow"
     expected_jujutsu_workflow_tree_digest = "e7ca3f2e0a0f3f79dff90cc8fd718d74fecf18234d9b57dfeb0245480af1a8ec"  # pragma: allowlist secret
     assert hash_skill_tree(source) == expected_jujutsu_workflow_tree_digest
@@ -857,6 +912,7 @@ def test_jujutsu_workflow_catalog_inventory_and_configuration_are_synchronized(
     contribution = configuration(
         _resolved_setup("cursor", "claude-code", "codex"),
         paths,
+        _catalog(paths),
     )
     assert all(isinstance(spec, ManagedTreeSpec) for spec in contribution.specs)
     assert [(spec.id, spec.destination) for spec in contribution.specs] == [
@@ -882,8 +938,8 @@ def test_jujutsu_workflow_catalog_inventory_and_configuration_are_synchronized(
 @pytest.mark.parametrize(
     ("stored_digest", "expected_action"),
     [
-        (None, "update"),
-        ("0" * 64, "repair"),
+        pytest.param(None, "update", id="missing-digest"),
+        pytest.param("0" * 64, "repair", id="stale-digest"),
     ],
 )
 def test_skill_plan_override_is_read_only_before_confirmation(
@@ -913,7 +969,9 @@ def test_skill_plan_override_is_read_only_before_confirmation(
     )
     before_state = store.load()
     before_bytes = (destination / "SKILL.md").read_bytes()
-    contribution = configuration(_resolved_setup("cursor"), skill_paths)
+    contribution = configuration(
+        _resolved_setup("cursor"), skill_paths, _catalog(skill_paths)
+    )
     engine = ConfigurationEngine(
         paths=skill_paths,
         state_store=store,

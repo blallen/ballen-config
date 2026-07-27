@@ -3,21 +3,17 @@
 from __future__ import annotations
 
 import json
+import shutil
 import stat
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Literal, TypedDict
 
 import pytest
+import yaml
 
 import ballen_config.cli as cli
-from ballen_config.assistants import (
-    AssistantPlanContributor,
-    configuration,
-    doctor_checks,
-    install_action_candidates,
-    install_actions,
-)
+from ballen_config.assistants import AssistantOrchestrator
 from ballen_config.assistants.claude import ClaudePluginInspectionError
 from ballen_config.cli import RunResult, main, run
 from ballen_config.install import InstallAction, InstallStageReport
@@ -25,6 +21,10 @@ from ballen_config.manifests import ManifestRepository
 from ballen_config.models import Manager, ResolutionRequest
 from ballen_config.runtime import RuntimePaths
 from ballen_config.state import StateStore
+from tests.assistants.conftest import (
+    CursorLocalPluginFixture,
+    CursorLocalPluginRepoFactory,
+)
 from tests.assistants.fakes import StatefulAssistantFake
 
 
@@ -128,6 +128,8 @@ def run_with_assistants(
         }
     )
     messages = output if output is not None else []
+    paths = RuntimePaths.from_roots(repo_root=repo_root, home=home)
+    assistants = AssistantOrchestrator(paths)
     return run(
         arguments,
         repo_root=repo_root,
@@ -137,16 +139,312 @@ def run_with_assistants(
         confirm=lambda _prompt: True,
         output=messages.append,
         timestamp=lambda: "20260726T120000Z",
-        install_action_candidate_suppliers=(install_action_candidates,),
-        install_action_suppliers=(install_actions,),
-        configuration_suppliers=(configuration,),
-        doctor_check_suppliers=(doctor_checks,),
-        plan_contributors=(
-            AssistantPlanContributor(
-                RuntimePaths.from_roots(repo_root=repo_root, home=home)
-            ),
+        preflight_suppliers=(assistants.preflight,),
+        install_action_candidate_suppliers=(assistants.install_action_candidates,),
+        install_action_suppliers=(assistants.install_actions,),
+        configuration_suppliers=(assistants.configuration,),
+        doctor_check_suppliers=(assistants.doctor_checks,),
+        plan_contributors=(assistants,),
+    )
+
+
+def _copy_checkout(repo_root: Path, destination: Path) -> Path:
+    """Copy one checkout without runtime and source-control state."""
+    shutil.copytree(
+        repo_root,
+        destination,
+        ignore=shutil.ignore_patterns(
+            ".git",
+            ".jj",
+            ".venv",
+            ".pytest_cache",
+            ".ruff_cache",
+            ".mypy_cache",
+            "__pycache__",
         ),
     )
+    return destination
+
+
+@pytest.fixture
+def cursor_marketplace_repo(repo_root: Path, tmp_path: Path) -> Path:
+    """Copy the checkout with one explicit manual Cursor marketplace plugin."""
+    copied = _copy_checkout(repo_root, tmp_path / "cursor-marketplace")
+    catalog_path = copied / "assistants/shared/plugins/catalog.yaml"
+    payload = yaml.safe_load(catalog_path.read_text(encoding="utf-8"))
+    payload["plugins"].append(
+        {
+            "kind": "cursor-marketplace",
+            "id": "example-plugin",
+            "targets": ["cursor"],
+            "profiles": ["default"],
+            "required": True,
+            "scope": "user",
+            "verification": "manual",
+        }
+    )
+    catalog_path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+    return copied
+
+
+@pytest.fixture
+def cursor_local_plugin_repo(
+    cursor_local_plugin_repo_factory: CursorLocalPluginRepoFactory,
+) -> Path:
+    """Copy the checkout with one reviewed native Cursor local plugin."""
+    return cursor_local_plugin_repo_factory(
+        (CursorLocalPluginFixture(id="example-local"),)
+    )
+
+
+@pytest.fixture
+def invalid_cursor_local_plugin_repo(
+    cursor_local_plugin_repo_factory: CursorLocalPluginRepoFactory,
+) -> Path:
+    """Copy the checkout with a valid declaration and mismatched local tree."""
+    return cursor_local_plugin_repo_factory(
+        (
+            CursorLocalPluginFixture(
+                id="example-local",
+                manifest_name="different-name",
+            ),
+        )
+    )
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        pytest.param(("plan",), id="plan"),
+        pytest.param(("install",), id="install"),
+        pytest.param(("configure",), id="configure"),
+        pytest.param(("doctor",), id="doctor"),
+        pytest.param(("all",), id="all"),
+        pytest.param(
+            (
+                "all",
+                "--skip",
+                "cursor",
+                "--skip",
+                "claude-code",
+                "--skip",
+                "codex",
+            ),
+            id="all-agents-skipped",
+        ),
+    ],
+)
+def test_invalid_shared_catalog_stops_before_native_or_state_mutation(
+    arguments: tuple[str, ...],
+    invalid_repo_root: Path,
+    temporary_home: Path,
+    fake_runner: StatefulAssistantFake,
+) -> None:
+    """Reject malformed shared YAML before every stage's effects or confirmation."""
+    paths = RuntimePaths.from_roots(
+        repo_root=invalid_repo_root,
+        home=temporary_home,
+    )
+    assistants = AssistantOrchestrator(paths)
+    confirmations: list[str] = []
+
+    result = run(
+        arguments,
+        repo_root=invalid_repo_root,
+        home=temporary_home,
+        runner=fake_runner,
+        downloader=fake_runner,
+        confirm=lambda prompt: confirmations.append(prompt) or True,
+        output=lambda _message: pytest.fail("output after failed preflight"),
+        timestamp=lambda: "20260727T120000Z",
+        preflight_suppliers=(assistants.preflight,),
+        install_action_candidate_suppliers=(assistants.install_action_candidates,),
+        install_action_suppliers=(assistants.install_actions,),
+        configuration_suppliers=(assistants.configuration,),
+        doctor_check_suppliers=(assistants.doctor_checks,),
+        plan_contributors=(assistants,),
+    )
+
+    assert result == RunResult(
+        exit_code=2,
+        report=cli.StageReport(outcomes=("assistant desired-state preflight failed",)),
+    )
+    assert fake_runner.commands == []
+    assert fake_runner.downloads == []
+    assert confirmations == []
+    assert list(temporary_home.iterdir()) == []
+    assert not paths.state_root.exists()
+    assert not paths.backup_root.exists()
+    assert not StateStore(paths).path.exists()
+
+
+def test_cursor_marketplace_never_reads_private_state_or_runs_command(
+    cursor_marketplace_repo: Path,
+    temporary_home: Path,
+    fake_runner: StatefulAssistantFake,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Keep Cursor marketplace declarations manual and private-state-free."""
+    private_roots = (
+        temporary_home / ".cursor/plugins/cache",
+        temporary_home / "Library/Application Support/Cursor/User/globalStorage",
+    )
+    original_read_bytes = Path.read_bytes
+
+    def guarded_read_bytes(path: Path) -> bytes:
+        if any(path == root or path.is_relative_to(root) for root in private_roots):
+            pytest.fail(f"private Cursor state read: {path.name}")
+        return original_read_bytes(path)
+
+    monkeypatch.setattr(Path, "read_bytes", guarded_read_bytes)
+    plan_output: list[str] = []
+    doctor_output: list[str] = []
+    cursor_only = ("--skip", "claude-code", "--skip", "codex")
+    planned = run_with_assistants(
+        ("plan", *cursor_only),
+        repo_root=cursor_marketplace_repo,
+        home=temporary_home,
+        runner=fake_runner,
+        output=plan_output,
+    )
+    diagnosed = run_with_assistants(
+        ("doctor", *cursor_only),
+        repo_root=cursor_marketplace_repo,
+        home=temporary_home,
+        runner=fake_runner,
+        output=doctor_output,
+    )
+
+    assert planned.exit_code == diagnosed.exit_code == 0
+    assert "cursor.plugin.example-plugin" in "\n".join(plan_output)
+    assert "cursor.plugin.example-plugin" in "\n".join(doctor_output)
+    assert not any(
+        command[0].startswith("cursor") and "plugin" in command[1:]
+        for command in fake_runner.commands
+    )
+
+
+def test_cursor_local_plugin_converges_and_is_idempotent(
+    cursor_local_plugin_repo: Path,
+    temporary_home: Path,
+    fake_runner: StatefulAssistantFake,
+) -> None:
+    """Converge one reviewed local plugin through the core tree engine."""
+    first = run_with_assistants(
+        ("configure",),
+        repo_root=cursor_local_plugin_repo,
+        home=temporary_home,
+        runner=fake_runner,
+    )
+    destination = temporary_home / ".cursor/plugins/local/example-local"
+    first_snapshot = {
+        path.relative_to(destination): path.read_bytes()
+        for path in sorted(destination.rglob("*"))
+        if path.is_file()
+    }
+    second = run_with_assistants(
+        ("configure",),
+        repo_root=cursor_local_plugin_repo,
+        home=temporary_home,
+        runner=fake_runner,
+    )
+    second_snapshot = {
+        path.relative_to(destination): path.read_bytes()
+        for path in sorted(destination.rglob("*"))
+        if path.is_file()
+    }
+    paths = RuntimePaths.from_roots(
+        repo_root=cursor_local_plugin_repo,
+        home=temporary_home,
+    )
+    state = StateStore(paths).load()
+
+    assert first.exit_code == second.exit_code == 0
+    assert first.report.changed_count >= 1
+    assert second.report.changed_count == 0
+    assert second_snapshot == first_snapshot
+    assert "cursor-local-plugin-example-local" in state.managed
+    assert not paths.backup_root.exists()
+
+
+def test_dotted_cursor_local_plugin_ids_keep_distinct_state_and_destinations(
+    cursor_local_plugin_repo_factory: CursorLocalPluginRepoFactory,
+    temporary_home: Path,
+    fake_runner: StatefulAssistantFake,
+) -> None:
+    """Preserve dotted IDs without colliding with a similarly named plugin."""
+    repo_root = cursor_local_plugin_repo_factory(
+        (
+            CursorLocalPluginFixture(id="example.local", skill_name="dotted-skill"),
+            CursorLocalPluginFixture(id="example-local", skill_name="dash-skill"),
+        )
+    )
+
+    result = run_with_assistants(
+        ("configure",),
+        repo_root=repo_root,
+        home=temporary_home,
+        runner=fake_runner,
+    )
+    paths = RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home)
+    state = StateStore(paths).load()
+
+    assert result.exit_code == 0
+    assert (temporary_home / ".cursor/plugins/local/example.local").is_dir()
+    assert (temporary_home / ".cursor/plugins/local/example-local").is_dir()
+    assert {
+        "cursor-local-plugin-example.local",
+        "cursor-local-plugin-example-local",
+    }.issubset(state.managed)
+
+
+@pytest.mark.parametrize(
+    "stage",
+    [
+        pytest.param("plan", id="plan"),
+        pytest.param("install", id="install"),
+        pytest.param("configure", id="configure"),
+        pytest.param("doctor", id="doctor"),
+        pytest.param("all", id="all"),
+    ],
+)
+@pytest.mark.parametrize("skip_all", [False, True], ids=["enabled", "all-skipped"])
+def test_invalid_cursor_local_tree_fails_preflight_without_effects(
+    invalid_cursor_local_plugin_repo: Path,
+    temporary_home: Path,
+    fake_runner: StatefulAssistantFake,
+    stage: str,
+    skip_all: bool,
+) -> None:
+    """Validate raw local trees before skips, commands, or filesystem effects."""
+    arguments: tuple[str, ...] = (stage,)
+    if skip_all:
+        arguments += (
+            "--skip",
+            "cursor",
+            "--skip",
+            "claude-code",
+            "--skip",
+            "codex",
+        )
+
+    result = run_with_assistants(
+        arguments,
+        repo_root=invalid_cursor_local_plugin_repo,
+        home=temporary_home,
+        runner=fake_runner,
+    )
+    paths = RuntimePaths.from_roots(
+        repo_root=invalid_cursor_local_plugin_repo,
+        home=temporary_home,
+    )
+
+    assert result.exit_code == 2
+    assert result.report.outcomes == ("assistant desired-state preflight failed",)
+    assert fake_runner.commands == []
+    assert not paths.state_root.exists()
+    assert not paths.backup_root.exists()
+    assert not (temporary_home / ".cursor/plugins/local").exists()
 
 
 def test_aggregate_callbacks_omit_every_cursor_surface_when_skipped(
@@ -158,9 +456,11 @@ def test_aggregate_callbacks_omit_every_cursor_surface_when_skipped(
     )
     paths = RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home)
 
-    actions = install_actions(setup, paths, fake_runner)
-    contribution = configuration(setup, paths)
-    plan = AssistantPlanContributor(paths).actions(setup)
+    assistants = AssistantOrchestrator(paths)
+    assistants.preflight(setup, paths)
+    actions = assistants.install_actions(setup, paths, fake_runner)
+    contribution = assistants.configuration(setup, paths)
+    plan = assistants.actions(setup)
 
     assert not any(action.component_id.startswith("cursor.") for action in actions)
     assert not any(spec.component == "cursor" for spec in contribution.specs)
@@ -175,19 +475,21 @@ def test_main_registers_exported_callbacks_and_runs_real_aggregate_plan(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Main passes exported callbacks and the captured callbacks drive real output."""
+    """Main wires one orchestrator's bound callbacks into the real CLI path."""
     saved_run = cli.run
+    monkeypatch.setattr(Path, "home", staticmethod(lambda: temporary_home))
 
     def wrapped(arguments: Sequence[str], **kwargs: object) -> RunResult:
-        assert kwargs["install_action_suppliers"] == (install_actions,)
-        assert kwargs["install_action_candidate_suppliers"] == (
-            install_action_candidates,
+        assert all(callable(item) for item in kwargs["preflight_suppliers"])
+        assert all(callable(item) for item in kwargs["install_action_suppliers"])
+        assert all(
+            callable(item) for item in kwargs["install_action_candidate_suppliers"]
         )
-        assert kwargs["configuration_suppliers"] == (configuration,)
-        assert kwargs["doctor_check_suppliers"] == (doctor_checks,)
+        assert all(callable(item) for item in kwargs["configuration_suppliers"])
+        assert all(callable(item) for item in kwargs["doctor_check_suppliers"])
         contributors = kwargs["plan_contributors"]
         assert isinstance(contributors, tuple)
-        assert isinstance(contributors[1], AssistantPlanContributor)
+        assert isinstance(contributors[1], AssistantOrchestrator)
         fake_runner.satisfy_core_commands()
         return saved_run(
             arguments,
@@ -198,6 +500,7 @@ def test_main_registers_exported_callbacks_and_runs_real_aggregate_plan(
             confirm=lambda _prompt: True,
             output=print,
             timestamp=lambda: "20260726T120000Z",
+            preflight_suppliers=kwargs["preflight_suppliers"],
             install_action_candidate_suppliers=kwargs[
                 "install_action_candidate_suppliers"
             ],
@@ -224,11 +527,13 @@ def test_doctor_normalizes_claude_native_inspection_failure(
     )
     paths = RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home)
     monkeypatch.setattr(
-        "ballen_config.assistants.claude_install_actions",
+        "ballen_config.assistants.orchestrator.claude_install_actions",
         lambda *_args: (_ for _ in ()).throw(ClaudePluginInspectionError("secret")),
     )
 
-    findings = doctor_checks(setup, paths, fake_runner)
+    assistants = AssistantOrchestrator(paths)
+    assistants.preflight(setup, paths)
+    findings = assistants.doctor_checks(setup, paths, fake_runner)
 
     unavailable = next(
         finding for finding in findings if finding.id == "claude.unavailable"
@@ -267,7 +572,9 @@ def test_aggregate_install_and_doctor_normalize_bundled_cursor_read_failure(
         home=temporary_home,
         runner=fake_runner,
     )
-    findings = doctor_checks(setup, paths, fake_runner)
+    assistants = AssistantOrchestrator(paths)
+    assistants.preflight(setup, paths)
+    findings = assistants.doctor_checks(setup, paths, fake_runner)
 
     assert installed == RunResult(
         exit_code=1,
@@ -332,7 +639,14 @@ def test_work_all_converges_native_resources_and_skips_codex(
     )
 
 
-@pytest.mark.parametrize("skipped", ("cursor", "claude-code", "codex"))
+@pytest.mark.parametrize(
+    "skipped",
+    (
+        pytest.param("cursor", id="cursor"),
+        pytest.param("claude-code", id="claude-code"),
+        pytest.param("codex", id="codex"),
+    ),
+)
 def test_single_agent_skip_removes_its_production_surface(
     skipped: str,
     repo_root: Path,
@@ -485,6 +799,34 @@ def test_aggregate_configure_copies_and_tracks_shared_jujutsu_workflow_skill(
         assert (destination / "reference.md").read_bytes() == (
             source / "reference.md"
         ).read_bytes()
+
+
+def test_aggregate_plan_skips_divergent_cursor_shared_skill_when_cursor_skipped(
+    repo_root: Path,
+    temporary_home: Path,
+    fake_runner: StatefulAssistantFake,
+) -> None:
+    """Allow a Claude and Codex plan to ignore a skipped Cursor skill tree."""
+    conflict = temporary_home / ".cursor/skills/jujutsu-workflow"
+    conflict.mkdir(parents=True)
+    (conflict / "SKILL.md").write_text(
+        "---\nname: jujutsu-workflow\ndescription: Different.\n---\n"
+    )
+    output: list[str] = []
+
+    result = run_with_assistants(
+        ("plan", "--skip", "cursor"),
+        repo_root=repo_root,
+        home=temporary_home,
+        runner=fake_runner,
+        output=output,
+    )
+
+    assert result.exit_code == 0
+    rendered = "\n".join(output)
+    assert "shared-skill-jujutsu-workflow-claude-code" in rendered
+    assert "shared-skill-jujutsu-workflow-codex" in rendered
+    assert "shared-skill-jujutsu-workflow-cursor" not in rendered
 
 
 def test_all_agent_skips_leave_no_assistant_plan_or_native_commands(
@@ -669,7 +1011,13 @@ def test_work_all_preserves_excluded_agent_state_bytes_and_tree_identity(
     )
 
 
-@pytest.mark.parametrize("stage", ("install", "all"))
+@pytest.mark.parametrize(
+    "stage",
+    (
+        pytest.param("install", id="install"),
+        pytest.param("all", id="all"),
+    ),
+)
 def test_core_install_id_collision_stops_before_mutation(
     stage: str,
     repo_root: Path,
@@ -717,7 +1065,13 @@ def test_core_install_id_collision_stops_before_mutation(
     assert (state_path.read_bytes() if state_path.exists() else None) == state_before
 
 
-@pytest.mark.parametrize("profile", ("default", "work"))
+@pytest.mark.parametrize(
+    "profile",
+    (
+        pytest.param("default", id="default"),
+        pytest.param("work", id="work"),
+    ),
+)
 def test_candidate_actions_cover_every_possible_native_action(
     profile: str,
     repo_root: Path,
@@ -735,8 +1089,10 @@ def test_candidate_actions_cover_every_possible_native_action(
     )
     paths = RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home)
 
-    candidates = install_action_candidates(setup, paths)
-    dynamic = install_actions(setup, paths, fake_runner)
+    assistants = AssistantOrchestrator(paths)
+    assistants.preflight(setup, paths)
+    candidates = assistants.install_action_candidates(setup, paths)
+    dynamic = assistants.install_actions(setup, paths, fake_runner)
 
     assert {action.component_id for action in dynamic} <= {
         action.component_id for action in candidates

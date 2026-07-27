@@ -15,23 +15,13 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 from yaml import YAMLError
 
 from ballen_config.assistants import (
-    AssistantPlanContributor,
     ClaudePluginInspectionError,
     CodexPluginInspectionError,
     CursorExtensionInspectionError,
+    SkillCollisionError,
 )
-from ballen_config.assistants import (
-    configuration as assistant_configuration,
-)
-from ballen_config.assistants import (
-    doctor_checks as assistant_doctor_checks,
-)
-from ballen_config.assistants import (
-    install_action_candidates as assistant_install_action_candidates,
-)
-from ballen_config.assistants import (
-    install_actions as assistant_install_actions,
-)
+from ballen_config.assistants.desired_state import AssistantDesiredStateError
+from ballen_config.assistants.orchestrator import AssistantOrchestrator
 from ballen_config.configure import (
     ConfigurationContribution,
     ConfigurationEngine,
@@ -76,6 +66,8 @@ from ballen_config.runtime import RuntimePaths
 from ballen_config.state import StateStore
 
 STAGES = ("all", "prepare", "plan", "install", "configure", "doctor")
+
+type PreflightSupplier = Callable[[ResolvedSetup, RuntimePaths], None]
 
 
 @dataclass(frozen=True)
@@ -217,6 +209,7 @@ def run(
     confirm: Callable[[str], bool],
     output: Callable[[str], None],
     timestamp: Callable[[], str],
+    preflight_suppliers: Sequence[PreflightSupplier] = (),
     install_action_candidate_suppliers: Sequence[InstallActionCandidateSupplier] = (),
     install_action_suppliers: Sequence[InstallActionSupplier] = (),
     configuration_suppliers: Sequence[ConfigurationSupplier] = (),
@@ -234,6 +227,7 @@ def run(
         confirm: Interactive mutation confirmation boundary.
         output: Normalized output sink.
         timestamp: Private backup timestamp supplier.
+        preflight_suppliers: Desired-state validation before every other seam.
         install_action_candidate_suppliers: Static extension installation declarations.
         install_action_suppliers: Post-base native-state installation resolvers.
         configuration_suppliers: Extension configuration declarations.
@@ -255,6 +249,8 @@ def run(
         paths = RuntimePaths.from_roots(repo_root=repo_root, home=home)
         repository = ManifestRepository.load(repo_root / "manifests")
         resolved = repository.resolve(options.request)
+        for supplier in preflight_suppliers:
+            supplier(resolved, paths)
         candidate_actions: tuple[InstallAction, ...] = ()
         if options.stage in {"plan", "install", "all"}:
             candidate_actions = tuple(
@@ -318,6 +314,16 @@ def run(
         return RunResult(
             exit_code=2,
             report=StageReport(outcomes=("invalid configuration",)),
+        )
+    except AssistantDesiredStateError:
+        return RunResult(
+            exit_code=2,
+            report=StageReport(outcomes=("assistant desired-state preflight failed",)),
+        )
+    except SkillCollisionError as error:
+        return RunResult(
+            exit_code=2,
+            report=StageReport(outcomes=(error.outcome(),)),
         )
     except (OSError, ValidationError, ValueError, YAMLError):
         return RunResult(
@@ -476,29 +482,28 @@ def main(arguments: Sequence[str] | None = None) -> int:
     """
     previous_umask = os.umask(0o077)
     try:
+        repo_root = Path(__file__).resolve().parents[2]
+        paths = RuntimePaths.from_roots(repo_root=repo_root, home=Path.home())
+        assistants = AssistantOrchestrator(paths)
         result = run(
             tuple(sys.argv[1:] if arguments is None else arguments),
-            repo_root=Path(__file__).resolve().parents[2],
+            repo_root=repo_root,
             home=Path.home(),
             runner=SubprocessRunner(),
             downloader=HttpsDownloader(),
             confirm=lambda prompt: input(f"{prompt} [y/N] ").lower() == "y",
             output=print,
             timestamp=lambda: datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"),
-            install_action_candidate_suppliers=(assistant_install_action_candidates,),
-            install_action_suppliers=(assistant_install_actions,),
+            preflight_suppliers=(assistants.preflight,),
+            install_action_candidate_suppliers=(assistants.install_action_candidates,),
+            install_action_suppliers=(assistants.install_actions,),
             configuration_suppliers=(
-                cast(ConfigurationSupplier, assistant_configuration),
+                cast(ConfigurationSupplier, assistants.configuration),
             ),
-            doctor_check_suppliers=(assistant_doctor_checks,),
+            doctor_check_suppliers=(assistants.doctor_checks,),
             plan_contributors=(
                 CoreManualContributor(),
-                AssistantPlanContributor(
-                    RuntimePaths.from_roots(
-                        repo_root=Path(__file__).resolve().parents[2],
-                        home=Path.home(),
-                    )
-                ),
+                assistants,
             ),
         )
         for outcome in result.report.outcomes:

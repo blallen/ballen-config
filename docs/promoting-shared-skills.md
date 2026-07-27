@@ -7,7 +7,9 @@ safe for every declared target.
 `jujutsu-workflow` is the first reviewed shared skill. `ballen-config` stores
 its desired bytes once, then independently copies them to each selected
 agent's native skill root. This is desired-state configuration, not a Cursor
-third-party auto-import workflow.
+third-party auto-import workflow. The bootstrap remains correct whether Cursor
+cross-tool import is enabled or disabled; disabling it is recommended only to
+keep the native destinations easy to inspect.
 
 ## Catalog entry
 
@@ -36,6 +38,22 @@ skills:
 Review every file before promotion. The directory basename, catalog `name`, and
 bounded initial YAML frontmatter `name` in `SKILL.md` must agree. Reject
 symlinks, special files, generated output, and machine-specific assumptions.
+
+A portable shared skill and a reviewed Cursor local plugin are different
+sources with different destinations. Shared skills are generic, target-aware
+entries under `assistants/shared/skills/` that are copied into each selected
+agent's native skill root. A reviewed Cursor local plugin is a complete,
+repository-owned tree under `assistants/shared/plugins/local/<name>/`, with a
+valid `.cursor-plugin/plugin.json`, that is copied only to
+`~/.cursor/plugins/local/<name>/`. Its declared skills must not reuse the name
+of any Cursor-targeted shared skill, even when profiles or whole-agent skips
+would make the two entries inactive in the same invocation. The bootstrap
+rejects that collision rather than allowing Cursor to choose a winner.
+
+The production Cursor marketplace and local-plugin lists are intentionally
+empty. A later marketplace selection is a reviewed catalog declaration and a
+manual Cursor Customize action, never an inference from imported state or a
+plugin cache.
 
 Never promote credentials, API keys, OAuth material, login state, sessions,
 transcripts, command history, caches, indexes, trust state, worktrees, or agent

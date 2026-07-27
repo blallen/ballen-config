@@ -25,12 +25,20 @@ def _validate_concrete_targets(
     """Require target lists to name only installable coding agents."""
     if AgentName.SHARED in targets:
         raise ValueError("shared is not a concrete target")
+    if len(targets) != len(set(targets)):
+        raise ValueError("duplicate concrete target")
     return targets
 
 
 ConcreteTargets = Annotated[
     tuple[AgentName, ...],
     AfterValidator(_validate_concrete_targets),
+]
+
+ConcreteAgentName = Literal[
+    AgentName.CURSOR,
+    AgentName.CLAUDE,
+    AgentName.CODEX,
 ]
 
 _MANAGED_STATE_PATH_WORDS = frozenset(
@@ -123,13 +131,12 @@ class HookResource(ResourceBase):
 
 
 class CatalogResource(ResourceBase):
-    """A typed subcatalog whose ordered item IDs are flattened for audit."""
+    """A typed subcatalog referenced once by the central inventory."""
 
     kind: Literal["catalog"]
     source: PurePosixPath
     catalog_kind: CatalogKind
     targets: ConcreteTargets = ()
-    item_ids: tuple[str, ...]
 
 
 class ManualResource(ResourceBase):
@@ -201,79 +208,174 @@ class ExtensionCatalog(BaseModel):
 
 
 class Marketplace(BaseModel):
-    """A named plugin marketplace source."""
+    """A marketplace available to one or more native agents."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    name: str = Field(min_length=1)
-    source: str = Field(min_length=1)
-    profiles: tuple[str, ...] = ("default",)
+    name: str = Field(min_length=1, description="Stable marketplace alias.")
+    source: str = Field(min_length=1, description="Marketplace repository source.")
+    targets: ConcreteTargets = Field(
+        min_length=1,
+        description="Native agents that may use this marketplace.",
+    )
+    profiles: tuple[str, ...] = Field(
+        default=("default",),
+        min_length=1,
+        description="Profiles that enable this marketplace.",
+    )
 
 
-class PluginSpec(BaseModel):
-    """A plugin installed through an agent-native CLI."""
+class NativeMarketplacePlugin(BaseModel):
+    """A Claude Code or Codex marketplace plugin."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    id: str = Field(min_length=1)
-    marketplace: str = Field(min_length=1)
-    profiles: tuple[str, ...] = ("default",)
-    required: bool = True
+    kind: Literal["native-marketplace"] = Field(
+        description="Native marketplace plugin representation discriminator."
+    )
+    id: str = Field(min_length=1, description="Stable native plugin identifier.")
+    marketplace: str = Field(
+        min_length=1,
+        description="Marketplace alias that provides this plugin.",
+    )
+    targets: ConcreteTargets = Field(
+        min_length=1,
+        description="Native agents that may install this plugin.",
+    )
+    profiles: tuple[str, ...] = Field(
+        default=("default",),
+        min_length=1,
+        description="Profiles that enable this plugin.",
+    )
+    required: bool = Field(
+        default=True,
+        description="Whether the plugin is required for its enabled targets.",
+    )
+
+
+class CursorMarketplacePlugin(BaseModel):
+    """A manual user-scoped Cursor marketplace selection."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    kind: Literal["cursor-marketplace"] = Field(
+        description="Cursor marketplace plugin representation discriminator."
+    )
+    id: str = Field(
+        pattern=r"^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$",
+        description="Stable Cursor marketplace plugin identifier.",
+    )
+    targets: ConcreteTargets = Field(
+        min_length=1,
+        description="Cursor target selection for this plugin.",
+    )
+    profiles: tuple[str, ...] = Field(
+        default=("default",),
+        min_length=1,
+        description="Profiles that expose this manual selection.",
+    )
+    required: bool = Field(
+        default=True,
+        description="Whether the manual selection is required.",
+    )
+    scope: Literal["user"] = Field(description="Cursor marketplace installation scope.")
+    verification: Literal["manual"] = Field(
+        description="Verification mode for the user-managed selection."
+    )
+
+
+class CursorLocalPlugin(BaseModel):
+    """A reviewed Cursor plugin tree managed below the native local root."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    kind: Literal["cursor-local"] = Field(
+        description="Reviewed local Cursor plugin representation discriminator."
+    )
+    id: str = Field(
+        pattern=r"^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$",
+        description="Stable local Cursor plugin identifier.",
+    )
+    source: PurePosixPath = Field(
+        description="Reviewed repository-relative local plugin source path."
+    )
+    targets: ConcreteTargets = Field(
+        min_length=1,
+        description="Cursor target selection for this local plugin.",
+    )
+    profiles: tuple[str, ...] = Field(
+        default=("default",),
+        min_length=1,
+        description="Profiles that enable this local plugin.",
+    )
+    required: bool = Field(
+        default=True,
+        description="Whether the local plugin is required.",
+    )
+
+
+PluginSpec = Annotated[
+    NativeMarketplacePlugin | CursorMarketplacePlugin | CursorLocalPlugin,
+    Field(discriminator="kind"),
+]
 
 
 class PluginCatalog(BaseModel):
-    """Validated marketplace and plugin declarations for one agent."""
+    """Validated target-aware plugin declarations for every agent."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    marketplaces: tuple[Marketplace, ...]
-    plugins: tuple[PluginSpec, ...]
+    marketplaces: tuple[Marketplace, ...] = Field(
+        description="Target-aware native marketplace declarations."
+    )
+    plugins: tuple[PluginSpec, ...] = Field(
+        description="Target-aware native and Cursor plugin declarations."
+    )
 
     @model_validator(mode="after")
     def validate_marketplaces(self) -> Self:
-        """Reject ambiguous or inconsistent plugin catalog declarations."""
-        marketplace_names = [marketplace.name for marketplace in self.marketplaces]
-        if len(marketplace_names) != len(set(marketplace_names)):
-            raise ValueError("duplicate marketplace name")
+        """Reject ambiguous or inconsistent target-aware declarations."""
+        marketplace_by_target: dict[tuple[AgentName, str], Marketplace] = {}
+        for marketplace in self.marketplaces:
+            if AgentName.CURSOR in marketplace.targets:
+                raise ValueError("native marketplaces cannot target cursor")
+            for target in marketplace.targets:
+                identity = (target, marketplace.name)
+                if identity in marketplace_by_target:
+                    raise ValueError(
+                        f"duplicate marketplace identity: {target}:{marketplace.name}"
+                    )
+                marketplace_by_target[identity] = marketplace
 
-        plugin_ids = [plugin.id for plugin in self.plugins]
-        if len(plugin_ids) != len(set(plugin_ids)):
-            raise ValueError("duplicate plugin id")
+        plugin_identities: set[tuple[AgentName, str]] = set()
+        for plugin in self.plugins:
+            if isinstance(plugin, NativeMarketplacePlugin):
+                if AgentName.CURSOR in plugin.targets:
+                    raise ValueError("native marketplace plugins cannot target cursor")
+                if plugin.id.rpartition("@")[1:] != ("@", plugin.marketplace):
+                    raise ValueError(f"plugin marketplace suffix mismatch: {plugin.id}")
+                for target in plugin.targets:
+                    matched_marketplace = marketplace_by_target.get(
+                        (target, plugin.marketplace)
+                    )
+                    if matched_marketplace is None:
+                        raise ValueError(
+                            "plugin target is not covered by marketplace: "
+                            f"{target}:{plugin.id}"
+                        )
+                    if not set(plugin.profiles).issubset(matched_marketplace.profiles):
+                        raise ValueError(
+                            "plugin profiles must be a subset of marketplace "
+                            f"profiles: {plugin.id}"
+                        )
+            elif plugin.targets != (AgentName.CURSOR,):
+                raise ValueError("Cursor plugin variants must target only cursor")
 
-        marketplace_by_name = {
-            marketplace.name: marketplace for marketplace in self.marketplaces
-        }
-        names = set(marketplace_by_name)
-        unknown = {
-            plugin.marketplace
-            for plugin in self.plugins
-            if plugin.marketplace not in names
-        }
-        if unknown:
-            raise ValueError(f"unknown marketplaces: {sorted(unknown)}")
-
-        profile_mismatches = [
-            plugin.id
-            for plugin in self.plugins
-            if not set(plugin.profiles).issubset(
-                marketplace_by_name[plugin.marketplace].profiles
-            )
-        ]
-        if profile_mismatches:
-            raise ValueError(
-                "plugin profiles must be a subset of marketplace profiles: "
-                f"{sorted(profile_mismatches)}"
-            )
-
-        mismatched = [
-            plugin.id
-            for plugin in self.plugins
-            if plugin.id.rpartition("@")[1:] != ("@", plugin.marketplace)
-        ]
-        if mismatched:
-            raise ValueError(
-                f"plugin marketplace suffix mismatch: {sorted(mismatched)}"
-            )
+            for target in plugin.targets:
+                identity = (target, plugin.id)
+                if identity in plugin_identities:
+                    raise ValueError(f"duplicate plugin identity: {target}:{plugin.id}")
+                plugin_identities.add(identity)
         return self
 
 
@@ -310,6 +412,19 @@ class SkillCatalog(BaseModel):
                 raise ValueError(
                     f"unknown skill dependencies for {skill.name}: {sorted(unknown)}"
                 )
+        for skill in self.skills:
+            for dependency_name in skill.dependencies:
+                dependency = by_name[dependency_name]
+                if not set(skill.targets).issubset(dependency.targets):
+                    raise ValueError(
+                        f"dependency targets do not cover {skill.name}: "
+                        f"{dependency_name}"
+                    )
+                if not set(skill.profiles).issubset(dependency.profiles):
+                    raise ValueError(
+                        f"dependency profiles do not cover {skill.name}: "
+                        f"{dependency_name}"
+                    )
 
         visiting: set[str] = set()
         visited: set[str] = set()
