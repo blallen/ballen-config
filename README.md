@@ -32,8 +32,10 @@ exceptions without weakening the safety boundary.
 
 ## Profiles
 
-`default` installs the portable development baseline. `work` extends that
-baseline with AWS tooling and work-specific prerequisites.
+`default` installs the broad portable development baseline. `work` extends it
+with AWS tooling, work-specific prerequisites, and reviewed coding-agent
+overlays. Repository-specific behavior belongs in add-ons, not the base
+profile.
 
 Repeated `--include` flags opt into personal applications such as Obsidian,
 Signal, and full MacTeX. Repeated `--skip` flags are global selections: they
@@ -61,11 +63,28 @@ ad hoc API scripts.
 
 ## Coding-agent portability
 
-Coding-agent integrations and memory migration are deferred to the dependent
-coding-agent plan. That phase will restore reviewed Cursor, Claude Code, and
-Codex settings, extensions or plugins, hooks, and general skills. Portable
-components will have one canonical source with agent-native adapters rather
-than pretending the three tools share configuration formats.
+Cursor, Claude Code, and Codex are optional whole components. Skipping one
+with `--skip cursor|claude-code|codex` removes its application, native
+configuration, extensions or plugins, hooks, skills, sign-in reminders, and
+required diagnostics while remaining agents still receive targeted shared
+resources. Canonical shared sources are translated by native adapters with
+explicit collision rejection; the agents do not share configuration formats.
+
+Cursor uses a base settings file plus a work-only Bedrock overlay. Curated
+feature extensions include Jupyter's transitive support, and the optional JJ
+Graph extension is a pinned VSIX. Claude and Codex use their native plugin
+catalogs. The abandoned experimental marketplace setup is not part of desired
+state. Use each agent's first-party browser capability rather than a global
+Playwright MCP, GitLab through `glab`, and official Notion integrations. Cursor
+User Rules and some first-party capabilities are deliberate manual steps.
+
+`jujutsu-workflow` is the first reviewed shared skill. It is stored once in
+this desired-state repository and independently copied into each selected
+agent's native skill root; this does not depend on Cursor third-party
+auto-import. Only generic skills are promoted into the shared catalog;
+repository-specific skills remain in add-ons. Sessions, history, memories,
+auth, trust, worktrees, caches, indexes, and generated plugin state are
+excluded. Memory migration is not an MVP capability.
 
 ## Security and state boundary
 

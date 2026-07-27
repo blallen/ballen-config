@@ -24,6 +24,10 @@ _GENERATED_SUFFIXES = frozenset({".age", ".sqlite", ".sqlite3"})
 _OPERATIONAL_DIRECTORIES = frozenset(
     {
         "assistants",
+        ".agents",
+        ".claude",
+        ".codex",
+        ".cursor",
         "claude-code",
         "cursor",
         "dotfiles",
@@ -32,7 +36,7 @@ _OPERATIONAL_DIRECTORIES = frozenset(
         "terminal",
     }
 )
-_OPERATIONAL_ROOT_FILES = frozenset({"CLAUDE.md", "README.md", "bootstrap"})
+_OPERATIONAL_ROOT_FILES = frozenset({"CLAUDE.md", "bootstrap"})
 _OPERATIONAL_DOCS = frozenset(
     {
         PurePath("docs/manual-steps.md"),
@@ -45,8 +49,14 @@ _PRIVATE_KEY_PATTERN = re.compile(
     rb"|-----BEGIN PGP "
     rb"PRIVATE KEY BLOCK-----"
 )
+_CREDENTIAL_COPY_PATTERN = re.compile(
+    rb"(?:copy(?:ing)?\s+credentials\s+from\s+(?:an\s+)?old\s+laptop)",
+    re.IGNORECASE,
+)
 _CREDENTIAL_PATTERN = re.compile(
     rb"(?:"
+    rb"<YOUR_GITLAB_TOKEN>"
+    rb"|"
     rb"<[^>\r\n]*(?:credential|password|secret|token)[^>\r\n]*>"
     rb"|glpat-[A-Za-z0-9_-]{20,}"
     rb"|MR_MCP_GITLAB_TOKEN"
@@ -58,8 +68,22 @@ _FORBIDDEN_MCP_PATTERN = re.compile(
     rb"(?:"
     rb"gitlab-mr-mcp"
     rb"|@playwright/mcp"
+    rb"|notion-mcp"
+    rb"|mcpServers"
     rb"|MR_MCP_GITLAB_TOKEN"
     rb")",
+    re.IGNORECASE,
+)
+_CREDENTIAL_FIELD_PATTERN = re.compile(
+    rb"(?:auth_token|access_token|api_key|password)\s*[:=]",
+    re.IGNORECASE,
+)
+_REPOSITORY_IMPORT_PATTERN = re.compile(
+    rb"(?:\b(?:from|import)\s+plato\b|Projects/plato|plato:skill)",
+    re.IGNORECASE,
+)
+_LOCAL_MARKETPLACE_PATTERN = re.compile(
+    rb"(?:trust_level\s*=\s*['\"]trusted['\"]|local_marketplace\s*[:=]|source\s*[:=]\s*['\"]?(?:file://|/|~/|\./|\.\./))",
     re.IGNORECASE,
 )
 
@@ -147,6 +171,18 @@ def _checkout_root(root: Path) -> Path:
         PolicyError: If the root is unavailable, a symlink, or not a directory.
     """
     checkout = Path(os.path.abspath(root))
+    current = Path(checkout.anchor)
+    for part in checkout.parts[1:]:
+        current /= part
+        if current == Path("/private"):
+            continue
+        try:
+            if stat.S_ISLNK(current.lstat().st_mode):
+                raise PolicyError
+        except FileNotFoundError:
+            break
+        except OSError:
+            raise PolicyError from None
     try:
         root_mode = checkout.lstat().st_mode
     except OSError:
@@ -231,16 +267,26 @@ def _content_rules(path: Path, content: bytes) -> set[str]:
     rules: set[str] = set()
     if _PRIVATE_KEY_PATTERN.search(content):
         rules.add("private-key")
+    if _CREDENTIAL_COPY_PATTERN.search(content):
+        rules.add("credential-copy-instruction")
 
     if not _is_operational(path):
         return rules
 
     if _CREDENTIAL_PATTERN.search(content):
         rules.add("credential-placeholder")
+    if _CREDENTIAL_FIELD_PATTERN.search(content):
+        rules.add("credential-placeholder")
     if _MACHINE_PATH_PATTERN.search(content):
         rules.add("machine-path")
     if _FORBIDDEN_MCP_PATTERN.search(content):
         rules.add("forbidden-mcp")
+    if path.name == "mcp.json":
+        rules.add("forbidden-mcp")
+    if _REPOSITORY_IMPORT_PATTERN.search(content):
+        rules.add("repo-specific-import")
+    if _LOCAL_MARKETPLACE_PATTERN.search(content):
+        rules.add("local-marketplace")
     return rules
 
 

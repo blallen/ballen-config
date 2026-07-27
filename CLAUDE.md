@@ -1,6 +1,7 @@
 # CLAUDE.md
 
-[README.md](README.md) is the canonical operating guide for this repository.
+[README.md](README.md) and `./bootstrap` are the portable operating guides for
+this repository.
 
 - Run `./bootstrap plan` before any mutation.
 - Honor the selected profiles and skips across every stage.

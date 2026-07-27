@@ -1,7 +1,0 @@
-{
-  "model": "opus",
-  "enabledPlugins": {
-    "superpowers@superpowers-marketplace": true,
-    "superpowers-developing-for-claude-code@superpowers-marketplace": true
-  }
-}

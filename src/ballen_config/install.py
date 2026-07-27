@@ -373,6 +373,9 @@ class InstallStageReport(BaseModel):
 type InstallActionSupplier = Callable[
     [ResolvedSetup, RuntimePaths, Runner], Sequence[InstallAction]
 ]
+type InstallActionCandidateSupplier = Callable[
+    [ResolvedSetup, RuntimePaths], Sequence[InstallAction]
+]
 
 
 def run_install(

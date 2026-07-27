@@ -90,7 +90,10 @@ def test_portability_rules_apply_only_to_operational_surfaces(
 ) -> None:
     """Narrative plans may document exclusions that operational files forbid."""
     readme = tmp_path / "README.md"
-    readme.write_text("legacy /Users/example/local path")
+    readme.write_text(
+        "Playwright, GitLab, and Notion MCP servers are intentionally excluded "
+        "in favor of first-party integrations."
+    )
     plan = tmp_path / "docs/superpowers/plans/example.md"
     plan.parent.mkdir(parents=True)
     plan.write_text("legacy /Users/example/local path and @playwright/mcp")
@@ -98,32 +101,35 @@ def test_portability_rules_apply_only_to_operational_surfaces(
         tmp_path,
         (Path("README.md"), Path("docs/superpowers/plans/example.md")),
     )
-    assert violations == (Violation(rule="machine-path", path="README.md"),)
+    assert violations == ()
 
 
 @pytest.mark.parametrize(
-    ("relative", "content"),
+    ("relative", "content", "rule"),
     [
-        ("cursor/mcp.json", "{}"),
-        ("assistants/config.json", '{"mcpServers": {}}'),
-        ("assistants/config.json", '{"command": "https://mcp.notion.com"}'),
-        ("assistants/instructions.md", "import plato"),
-        ("assistants/instructions.md", "from avogadro import model"),
-        ("assistants/instructions.md", "use this repo-specific helper"),
-        ("assistants/config.json", '{"knownMarketplaces": {}}'),
-        ("assistants/config.json", '{"trustedFolders": ["/tmp/project"]}'),
+        (".cursor/mcp.json", "{}", "forbidden-mcp"),
+        ("assistants/config.json", '{"mcpServers": {}}', "forbidden-mcp"),
+        ("assistants/config.json", '{"command": "notion-mcp"}', "forbidden-mcp"),
+        ("assistants/instructions.md", "import plato", "repo-specific-import"),
+        ("assistants/instructions.md", "Projects/plato", "repo-specific-import"),
+        ("assistants/instructions.md", "plato:skill", "repo-specific-import"),
+        ("assistants/plugins/cache/item.json", "generated", "generated-state"),
+        ("assistants/config.json", "trust_level='trusted'", "local-marketplace"),
     ],
 )
-def test_core_policy_defers_agent_specific_operational_rules(
+def test_policy_rejects_agent_specific_operational_rules(
     tmp_path: Path,
     relative: str,
     content: str,
+    rule: str,
 ) -> None:
-    """Leave coding-agent MCP, repository, and trust rules to Agent Task 7."""
+    """Reject unsafe agent configuration while leaving prose alone."""
     path = tmp_path / relative
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content)
-    assert scan_paths(tmp_path, (Path(relative),)) == ()
+    assert Violation(rule=rule, path=relative) in scan_paths(
+        tmp_path, (Path(relative),)
+    )
 
 
 @pytest.mark.parametrize(
@@ -146,6 +152,31 @@ def test_core_policy_rejects_legacy_mcp_strings(
         violation.rule
         for violation in scan_paths(tmp_path, (Path("assistants/config.yaml"),))
     }
+
+
+@pytest.mark.parametrize(
+    "content", ["local_marketplace: /tmp/x", "local_marketplace = '/opt/local'"]
+)
+def test_policy_rejects_absolute_local_marketplace_values(
+    tmp_path: Path, content: str
+) -> None:
+    """Reject local marketplace paths without treating documentation as config."""
+    path = tmp_path / "assistants/config.yaml"
+    path.parent.mkdir()
+    path.write_text(content)
+    assert Violation(
+        rule="local-marketplace", path="assistants/config.yaml"
+    ) in scan_paths(tmp_path, (Path("assistants/config.yaml"),))
+
+
+def test_policy_rejects_root_with_a_symlinked_ancestor(tmp_path: Path) -> None:
+    """Fail closed when the requested checkout root traverses a symlink."""
+    real = tmp_path / "real"
+    real.mkdir()
+    linked = tmp_path / "linked"
+    linked.symlink_to(real, target_is_directory=True)
+    with pytest.raises(PolicyError):
+        scan_paths(linked / "nested", ())
 
 
 def test_violations_are_deterministically_sorted(tmp_path: Path) -> None:

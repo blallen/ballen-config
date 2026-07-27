@@ -1,0 +1,16 @@
+#!/bin/zsh
+set -eu
+
+case "${1:-}" in
+  cursor|claude)
+    if (( $# != 1 )); then
+      print -u2 "usage: rtk-hook cursor|claude"
+      exit 64
+    fi
+    exec rtk hook "$1"
+    ;;
+  *)
+    print -u2 "usage: rtk-hook cursor|claude"
+    exit 64
+    ;;
+esac

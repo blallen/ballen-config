@@ -1,0 +1,35 @@
+extensions:
+  - id: adamviola.parquet-explorer
+  - id: anthropic.claude-code
+    condition: claude-code
+  - id: anysphere.remote-containers
+  - id: anysphere.remote-ssh
+  - id: bierner.markdown-mermaid
+  - id: bierner.markdown-preview-github-styles
+  - id: charliermarsh.ruff
+  - id: davidanson.vscode-markdownlint
+  - id: esbenp.prettier-vscode
+  - id: humao.rest-client
+  - id: jjk.jjk
+  - id: matangover.mypy
+  - id: mhutchie.git-graph
+  - id: ms-azuretools.vscode-docker
+  - id: ms-python.python
+  - id: ms-toolsai.jupyter
+  - id: ms-vscode.atom-keybindings
+  - id: ms-vscode.makefile-tools
+  - id: openai.chatgpt
+    condition: codex
+  - id: redhat.vscode-yaml
+  - id: samuelcolvin.jinjahtml
+  - id: shd101wyy.markdown-preview-enhanced
+  - id: tamasfe.even-better-toml
+  - id: tomoki1207.pdf
+  - id: visualjj.visualjj
+  - id: velociraptor115.vscode-jj-graph
+    install_mode: vsix
+    required: false
+    version: 0.0.9
+    size_bytes: 10291769
+    url: https://Velociraptor115.gallery.vsassets.io/_apis/public/gallery/publisher/Velociraptor115/extension/vscode-jj-graph/0.0.9/assetbyname/Microsoft.VisualStudio.Services.VSIXPackage
+    sha256: a822f2e2afd644aa22c64e1caec5e62dd8fb896ada30028f831ce28068570ace  # pragma: allowlist secret

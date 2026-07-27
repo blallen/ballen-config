@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "hooks": {
+    "preToolUse": [
+      {
+        "command": "~/.local/share/ballen-config/hooks/rtk-hook cursor",
+        "matcher": "Shell"
+      }
+    ]
+  }
+}

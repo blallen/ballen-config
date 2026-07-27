@@ -85,8 +85,8 @@ def test_agent_guardrail_is_short_and_operational(repo_root: Path) -> None:
     assert len(text.splitlines()) <= 20
 
 
-def test_manual_steps_cover_only_core_handoffs(repo_root: Path) -> None:
-    """Manual guidance covers authentication and ends with doctor."""
+def test_manual_steps_cover_core_and_agent_handoffs(repo_root: Path) -> None:
+    """Manual guidance covers authentication, agents, and ends with doctor."""
     text = (repo_root / "docs/manual-steps.md").read_text(encoding="utf-8")
     for phrase in (
         "./bootstrap prepare",
@@ -100,8 +100,8 @@ def test_manual_steps_cover_only_core_handoffs(repo_root: Path) -> None:
     ):
         assert phrase in text
     lowered = text.lower()
-    for excluded in ("browser", "notion", "atlassian"):
-        assert excluded not in lowered
+    for phrase in ("cursor", "claude code", "codex", "browser", "notion"):
+        assert phrase in lowered
 
 
 def test_ssh_guide_enforces_secure_transfer_and_modes(repo_root: Path) -> None:

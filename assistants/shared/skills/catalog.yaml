@@ -1,0 +1,8 @@
+skills:
+  - name: jujutsu-workflow
+    source: assistants/shared/skills/jujutsu-workflow
+    targets: [cursor, claude-code, codex]
+    profiles: [default]
+    dependencies: []
+    provenance: Byte-for-byte promotion from the reviewed plato/skills/jujutsu-workflow source; commit history records the origin.
+    portability_status: reviewed-generic

@@ -20,13 +20,14 @@ from ballen_config.configure import (
     Renderer,
     SourceValidator,
     core_validators,
+    digest_tree,
     merge_configuration_contributions,
 )
 from ballen_config.models import ResolvedSetup
 from ballen_config.planning import PlanAction
 from ballen_config.runner import CommandResult
 from ballen_config.runtime import RuntimePaths
-from ballen_config.state import StateStore
+from ballen_config.state import ManagedRecord, StateStore
 
 
 @pytest.fixture
@@ -304,6 +305,21 @@ def test_tree_with_symlinked_source_is_rejected(config_paths: RuntimePaths) -> N
         engine(config_paths).plan((spec,))
 
 
+def test_public_tree_digest_preserves_stored_digest_compatibility(
+    config_paths: RuntimePaths,
+) -> None:
+    """Keep existing managed-tree state valid after making the digest public."""
+    source = config_paths.repo_root / "tree"
+    source.mkdir()
+    (source / "SKILL.md").write_text(
+        "---\nname: example-skill\ndescription: Example.\n---\n\n# Example\n"
+    )
+    (source / "reference.md").write_text("# Reference\n")
+    (source / "empty").mkdir()
+    expected_digest = "426c50bb5755776ac2290e8f5ffdee12270e0bcfdb6a94c3dca93e06cb270608"  # pragma: allowlist secret
+    assert digest_tree(source) == expected_digest
+
+
 def test_replace_failure_leaves_existing_file_in_place(
     config_paths: RuntimePaths,
 ) -> None:
@@ -331,6 +347,154 @@ def test_duplicate_contribution_fields_are_rejected(config_paths: RuntimePaths) 
     )
     with pytest.raises(ValueError, match="duplicate managed destination"):
         merge_configuration_contributions((contribution, duplicate_destination))
+
+
+def test_plan_action_overrides_are_strict_and_merge_by_spec_id(
+    config_paths: RuntimePaths,
+) -> None:
+    """Merge typed plan labels while rejecting duplicates and unknown keys."""
+    spec = file_spec(config_paths)
+    contribution = ConfigurationContribution(
+        specs=(spec,),
+        plan_action_overrides={"example": "repair"},
+    )
+    merged = merge_configuration_contributions((contribution,))
+    assert merged.plan_action_overrides == {"example": "repair"}
+
+    with pytest.raises(ValidationError):
+        ConfigurationContribution.model_validate(
+            {
+                "specs": (spec,),
+                "plan_action_overrides": {"example": "invalid"},
+            }
+        )
+    with pytest.raises(ValueError, match="unknown plan-action override"):
+        merge_configuration_contributions(
+            (
+                ConfigurationContribution(
+                    specs=(spec,),
+                    plan_action_overrides={"other": "update"},
+                ),
+            )
+        )
+    with pytest.raises(ValueError, match="duplicate plan-action override"):
+        merge_configuration_contributions(
+            (
+                ConfigurationContribution(
+                    specs=(spec,),
+                    plan_action_overrides={"example": "update"},
+                ),
+                ConfigurationContribution(
+                    plan_action_overrides={"example": "repair"},
+                ),
+            )
+        )
+
+
+def test_plan_action_override_is_ignored_for_unchanged_spec(
+    config_paths: RuntimePaths,
+) -> None:
+    """Preserve the core unchanged outcome even when an override is supplied."""
+    spec = file_spec(config_paths)
+    destination = config_paths.home / spec.destination
+    destination.parent.mkdir(parents=True)
+    destination.write_bytes(spec.source.read_bytes())
+    destination.chmod(0o600)
+    contributor = ConfigurationPlanContributor(
+        engine(config_paths),
+        lambda _resolved, _paths: ConfigurationContribution(
+            specs=(spec,),
+            plan_action_overrides={"example": "repair"},
+        ),
+    )
+    actions = contributor.actions(
+        ResolvedSetup(profiles=("default",), components=(), skipped=())
+    )
+    assert actions[0].action == "unchanged"
+
+
+def test_tree_state_write_failure_restores_tree_and_state(
+    config_paths: RuntimePaths,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Roll back a published tree when managed-state persistence fails."""
+    source = config_paths.repo_root / "tree"
+    source.mkdir()
+    (source / "item").write_text("new")
+    destination = config_paths.home / ".tree"
+    destination.mkdir()
+    original = destination / "item"
+    original.write_text("original")
+    resource_id = "tree"
+    old_digest = digest_tree(destination)
+    store = StateStore(config_paths)
+    store.record_managed(
+        ManagedRecord(
+            resource_id=resource_id,
+            source_digest=old_digest,
+            destination_digest=old_digest,
+            destination=".tree",
+        )
+    )
+    before_state = store.load()
+    spec = ManagedTreeSpec(
+        id=resource_id,
+        source=source,
+        destination=Path(".tree"),
+        component="example",
+    )
+
+    def fail_record(_record: ManagedRecord) -> None:
+        """Inject failure after the replacement tree has been published."""
+        raise OSError("state write failed")
+
+    monkeypatch.setattr(store, "record_managed", fail_record)
+    subject = ConfigurationEngine(
+        paths=config_paths,
+        state_store=store,
+        timestamp="state-failure",
+    )
+
+    with pytest.raises(OSError, match="state write failed"):
+        subject.apply(spec)
+
+    assert original.read_text() == "original"
+    assert store.load() == before_state
+    assert not any(destination.parent.glob(".tree.stage.*"))
+
+
+def test_tree_state_write_failure_removes_newly_created_tree(
+    config_paths: RuntimePaths,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Leave a create destination absent when ownership persistence fails."""
+    source = config_paths.repo_root / "tree"
+    source.mkdir()
+    (source / "item").write_text("new")
+    store = StateStore(config_paths)
+    before_state = store.load()
+    spec = ManagedTreeSpec(
+        id="tree",
+        source=source,
+        destination=Path(".tree"),
+        component="example",
+    )
+
+    def fail_record(_record: ManagedRecord) -> None:
+        """Inject failure after publishing a newly created tree."""
+        raise OSError("state write failed")
+
+    monkeypatch.setattr(store, "record_managed", fail_record)
+    subject = ConfigurationEngine(
+        paths=config_paths,
+        state_store=store,
+        timestamp="state-failure-create",
+    )
+    with pytest.raises(OSError, match="state write failed"):
+        subject.apply(spec)
+
+    assert not (config_paths.home / ".tree").exists()
+    assert store.load() == before_state
 
 
 def test_core_validators_redact_native_command_output(

@@ -17,7 +17,7 @@ from ballen_config.cli import (
 )
 from ballen_config.configure import ConfigAction, ConfigureStageReport
 from ballen_config.doctor import CheckSeverity, DoctorFinding, FindingStatus
-from ballen_config.install import InstallStageReport
+from ballen_config.install import InstallAction, InstallStageReport
 from ballen_config.runner import CommandResult
 
 
@@ -375,6 +375,257 @@ def test_plan_is_read_only_and_never_confirms(
     assert result == RunResult(exit_code=0, report=StageReport())
     assert output and output[0].startswith("profile: default")
     assert tuple(fake_home.rglob("*")) == before
+
+
+def test_plan_uses_static_candidates_without_dynamic_native_inspection(
+    repo_root: Path,
+    fake_home: Path,
+) -> None:
+    """Plan renders static candidate IDs without invoking dynamic suppliers."""
+    output: list[str] = []
+
+    def candidates(*_args: object) -> tuple[InstallAction, ...]:
+        """Return one redacted install candidate."""
+        return (InstallAction(component_id="agent.plugin", argv=("agent", "add")),)
+
+    def dynamic(*_args: object) -> tuple[InstallAction, ...]:
+        """Fail if plan reaches the native inspection boundary."""
+        pytest.fail("plan must not inspect native agent state")
+
+    result = run(
+        ("plan",),
+        repo_root=repo_root,
+        home=fake_home,
+        runner=FakeRunner(),
+        downloader=FakeDownloader(),
+        confirm=lambda _prompt: pytest.fail("plan must not confirm"),
+        output=output.append,
+        timestamp=lambda: "fixed",
+        install_action_candidate_suppliers=(candidates,),
+        install_action_suppliers=(dynamic,),
+    )
+
+    assert result.exit_code == 0
+    assert "install agent.plugin (owner=bootstrap): install" in output[0]
+
+
+def test_all_orders_static_base_native_actions_and_configuration(
+    repo_root: Path,
+    fake_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """All resolves native actions only after its base component phase succeeds."""
+    events: list[str] = []
+
+    def candidates(*_args: object) -> tuple[InstallAction, ...]:
+        """Record static preflight candidate resolution."""
+        events.append("candidate")
+        return (InstallAction(component_id="agent.plugin", argv=("agent", "add")),)
+
+    def dynamic(*_args: object) -> tuple[InstallAction, ...]:
+        """Record post-base native inspection and resolve one missing action."""
+        events.append("native-inspection")
+        return (InstallAction(component_id="agent.plugin", argv=("agent", "add")),)
+
+    def recorded_install(**kwargs: object) -> InstallStageReport:
+        """Record the base and action install phases independently."""
+        events.append("base" if kwargs["components"] else "assistant-actions")
+        return InstallStageReport(exit_code=0, outcomes=())
+
+    monkeypatch.setattr("ballen_config.cli.run_install", recorded_install)
+    monkeypatch.setattr(
+        "ballen_config.cli.run_configure",
+        lambda *_args, **_kwargs: (
+            events.append("configure")
+            or ConfigureStageReport(actions=(), changed_count=0)
+        ),
+    )
+    monkeypatch.setattr(
+        "ballen_config.cli.core_doctor_checks", lambda *_args, **_kwargs: ()
+    )
+
+    result = run(
+        ("all",),
+        repo_root=repo_root,
+        home=fake_home,
+        runner=FakeRunner(),
+        downloader=FakeDownloader(),
+        confirm=lambda _prompt: True,
+        output=lambda _message: None,
+        timestamp=lambda: "fixed",
+        install_action_candidate_suppliers=(candidates,),
+        install_action_suppliers=(dynamic,),
+    )
+
+    assert result.exit_code == 0
+    assert tuple(events) == (
+        "candidate",
+        "base",
+        "native-inspection",
+        "assistant-actions",
+        "configure",
+    )
+
+
+def test_base_install_failure_prevents_native_inspection_and_configuration(
+    repo_root: Path,
+    fake_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed base phase stops before native resolution and configure."""
+    events: list[str] = []
+
+    def candidates(*_args: object) -> tuple[InstallAction, ...]:
+        """Return one static action candidate."""
+        return (InstallAction(component_id="agent.plugin", argv=("agent", "add")),)
+
+    def dynamic(*_args: object) -> tuple[InstallAction, ...]:
+        """Record an invalid post-failure native inspection."""
+        events.append("native-inspection")
+        return ()
+
+    monkeypatch.setattr(
+        "ballen_config.cli.run_install",
+        lambda **_kwargs: InstallStageReport(
+            exit_code=1, outcomes=("core: required-failure",)
+        ),
+    )
+    monkeypatch.setattr(
+        "ballen_config.cli.run_configure",
+        lambda *_args, **_kwargs: events.append("configure"),
+    )
+
+    result = run(
+        ("all",),
+        repo_root=repo_root,
+        home=fake_home,
+        runner=FakeRunner(),
+        downloader=FakeDownloader(),
+        confirm=lambda _prompt: True,
+        output=lambda _message: None,
+        timestamp=lambda: "fixed",
+        install_action_candidate_suppliers=(candidates,),
+        install_action_suppliers=(dynamic,),
+    )
+
+    assert result.exit_code == 1
+    assert events == []
+
+
+@pytest.mark.parametrize(
+    "candidate,dynamic",
+    [
+        (
+            InstallAction(component_id="agent.plugin", argv=("agent", "add")),
+            InstallAction(component_id="agent.plugin", argv=("agent", "other")),
+        ),
+        (
+            InstallAction(component_id="agent.plugin", argv=("agent", "add")),
+            InstallAction(
+                component_id="agent.plugin", argv=("agent", "add"), required=False
+            ),
+        ),
+        (
+            InstallAction(
+                component_id="agent.plugin",
+                kind="verified-download",
+                argv=("agent", "add", "{artifact}"),
+                url="https://example.test/one",
+                artifact_name="one.vsix",
+                size_bytes=1,
+                sha256="0" * 64,
+            ),
+            InstallAction(
+                component_id="agent.plugin",
+                kind="verified-download",
+                argv=("agent", "add", "{artifact}"),
+                url="https://example.test/two",
+                artifact_name="two.vsix",
+                size_bytes=2,
+                sha256="1" * 64,
+            ),
+        ),
+    ],
+)
+def test_dynamic_action_must_exactly_match_static_candidate(
+    candidate: InstallAction,
+    dynamic: InstallAction,
+    repo_root: Path,
+    fake_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Same-ID dynamic action drift is rejected before the action phase runs."""
+    install_calls: list[tuple[InstallAction, ...]] = []
+
+    def candidates(*_args: object) -> tuple[InstallAction, ...]:
+        """Return the reviewed static authorization action."""
+        return (candidate,)
+
+    def dynamic_actions(*_args: object) -> tuple[InstallAction, ...]:
+        """Return one post-base action that differs from the authorization."""
+        return (dynamic,)
+
+    def recorded_install(**kwargs: object) -> InstallStageReport:
+        """Record each install invocation without executing a command."""
+        install_calls.append(tuple(kwargs["actions"]))
+        return InstallStageReport(exit_code=0, outcomes=())
+
+    monkeypatch.setattr("ballen_config.cli.run_install", recorded_install)
+
+    result = run(
+        ("install",),
+        repo_root=repo_root,
+        home=fake_home,
+        runner=FakeRunner(),
+        downloader=FakeDownloader(),
+        confirm=lambda _prompt: True,
+        output=lambda _message: None,
+        timestamp=lambda: "fixed",
+        install_action_candidate_suppliers=(candidates,),
+        install_action_suppliers=(dynamic_actions,),
+    )
+
+    assert result == RunResult(
+        exit_code=2, report=StageReport(outcomes=("invalid configuration",))
+    )
+    assert install_calls == [()]
+
+
+@pytest.mark.parametrize("stage", ("plan", "configure", "doctor"))
+@pytest.mark.parametrize(
+    "candidate_suppliers,dynamic_suppliers",
+    [
+        ((), (lambda *_args: (),)),
+        ((lambda *_args: (),), ()),
+    ],
+)
+def test_unpaired_install_suppliers_fail_closed_for_every_stage(
+    stage: str,
+    candidate_suppliers: tuple[object, ...],
+    dynamic_suppliers: tuple[object, ...],
+    repo_root: Path,
+    fake_home: Path,
+) -> None:
+    """Candidate and dynamic supplier declarations always have equal arity."""
+    runner = FakeRunner()
+
+    result = run(
+        (stage,),
+        repo_root=repo_root,
+        home=fake_home,
+        runner=runner,
+        downloader=FakeDownloader(),
+        confirm=lambda _prompt: pytest.fail("invalid wiring must not confirm"),
+        output=lambda _message: None,
+        timestamp=lambda: "fixed",
+        install_action_candidate_suppliers=candidate_suppliers,  # type: ignore[arg-type]
+        install_action_suppliers=dynamic_suppliers,  # type: ignore[arg-type]
+    )
+
+    assert result == RunResult(
+        exit_code=2, report=StageReport(outcomes=("invalid configuration",))
+    )
+    assert runner.commands == []
 
 
 def test_prepare_returns_two_without_confirmation(
