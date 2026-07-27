@@ -29,7 +29,36 @@ from ballen_config.state import BootstrapState, ManagedRecord, StateStore
 
 
 class SkillCollisionError(ValueError):
-    """Raised when one normalized skill name resolves to different content."""
+    """Raised when one normalized skill name resolves to different content.
+
+    The structured fields support a stable, redacted CLI outcome without
+    exposing arbitrary exception text or an absolute home path.
+
+    Args:
+        name: Normalized shared skill name.
+        relative_destination: Native destination relative to the approved home.
+    """
+
+    def __init__(self, name: str, relative_destination: Path) -> None:
+        """Initialize the collision with its normalized safe context."""
+        self.name = name
+        self.relative_destination = relative_destination
+        super().__init__(
+            f"skill collision: {name} at {relative_destination.as_posix()}"
+        )
+
+    def outcome(self) -> str:
+        """Return a safe, actionable outcome suitable for CLI reporting."""
+        relative = self.relative_destination
+        if (
+            _SKILL_NAME_PATTERN.fullmatch(self.name) is None
+            or relative.is_absolute()
+            or ".." in relative.parts
+            or relative.name != self.name
+            or relative.parent not in _CURSOR_SCANNED_ROOTS
+        ):
+            return "shared skill collision"
+        return f"shared skill collision: {self.name} at {relative.as_posix()}"
 
 
 @dataclass(frozen=True)
@@ -249,7 +278,7 @@ def plan_skill_copies(
         desired_entry = desired.get(candidate)
         if desired_entry is not None and desired_entry[3] is not None:
             continue
-        raise SkillCollisionError(f"skill collision: {name} at {relative.as_posix()}")
+        raise SkillCollisionError(name, relative)
 
     actions: list[SkillCopyAction] = []
     for destination, (target, resource_id, relative, record) in desired.items():
@@ -260,9 +289,7 @@ def plan_skill_copies(
             action_state: Literal["create", "update", "repair"] = "create"
         else:
             if record is None:
-                raise SkillCollisionError(
-                    f"skill collision: {name} at {relative.as_posix()}"
-                )
+                raise SkillCollisionError(name, relative)
             action_state = (
                 "update"
                 if destination_digest == record.destination_digest

@@ -18,6 +18,7 @@ from ballen_config.assistants import (
     ClaudePluginInspectionError,
     CodexPluginInspectionError,
     CursorExtensionInspectionError,
+    SkillCollisionError,
 )
 from ballen_config.assistants.desired_state import AssistantDesiredStateError
 from ballen_config.assistants.orchestrator import AssistantOrchestrator
@@ -318,6 +319,11 @@ def run(
         return RunResult(
             exit_code=2,
             report=StageReport(outcomes=("assistant desired-state preflight failed",)),
+        )
+    except SkillCollisionError as error:
+        return RunResult(
+            exit_code=2,
+            report=StageReport(outcomes=(error.outcome(),)),
         )
     except (OSError, ValidationError, ValueError, YAMLError):
         return RunResult(
