@@ -5,6 +5,8 @@
 **Commits:** 6
 **Diff size:** 3,795 insertions, 908 deletions
 **Standards source:** `/Users/ballen/Projects/plato`
+**Remediation:** completed in `vqnlwvqs`, `mrxtqlpt`, and `kpsqsprp`
+**Retained by decision:** Cursor marketplace and local-plugin capability
 
 The diff exceeded the self-review single-pass threshold, so it was reviewed in
 complete source, test, standards/documentation, and Ponytail batches. No files
@@ -51,7 +53,9 @@ project instructions and Cursor rules above.
 
 No critical or blocking standards violation was found. Documentation,
 declarative catalogs, target separation, secret/state exclusions, and removal
-of the former per-agent plugin files are internally consistent.
+of the former per-agent plugin files are internally consistent. The findings
+below record the initial review state; each was resolved by the remediation
+changes summarized later in this report.
 
 | Severity | Location | Rule | Detail |
 | --- | --- | --- | --- |
@@ -72,7 +76,7 @@ Fourteen changed test/fixture files containing 241 test functions were read in
 full. No theatre tests, missing test docstrings, untyped test functions,
 snapshot artifacts, or blocking coverage gaps were found. The tests generally
 exercise behavior and failure boundaries rather than Pydantic or framework
-mechanics.
+mechanics. The findings below record the initial review state and are resolved.
 
 | Severity | Location | Rule | Detail |
 | --- | --- | --- | --- |
@@ -129,9 +133,32 @@ Ponytail's theoretical result is `net: -1,050 lines possible.` Approximately
 remaining fixture, decoder, and docstring reductions preserve the current
 scope.
 
+### Remediation Completed
+
+- Replaced five internal Pydantic carriers with frozen dataclasses.
+- Made `_catalog()` return its exact constrained generic type and removed the
+  three production assertions.
+- Added Pydantic field descriptions to every new plugin-ingestion field,
+  removed the unnecessary Python 3.12 future imports, and marked
+  `_CONCRETE_AGENTS` as `Final`.
+- Added behavior coverage for explicit Cursor manifest skill paths in both
+  string and tuple forms, plus the normalized missing-snapshot error path.
+- Strengthened the allowed-configuration-path assertion.
+- Gave all 57 parametrization decorators in the reviewed test surface explicit,
+  stable IDs; the final audit found no missing or duplicate per-decorator IDs.
+- Simplified Codex native inspection to validated `frozenset[str]` identifiers.
+- Replaced the duplicated Claude/Codex projection declarations with shared
+  projections loaded from the checked-in catalog.
+- Reduced the checkout-factory helper docstring to one line.
+- Retained the complete Cursor marketplace/local-plugin implementation and its
+  planning, validation, collision, rollback, and no-effects coverage.
+
+The final Ponytail pass excluded the explicitly retained Cursor capability and
+reported: `Lean already. Ship.`
+
 ### Code Quality (linting)
 
-All checks passed at `qupmtxup`:
+All checks passed after remediation:
 
 - `uv run --frozen pre-commit run --all-files`
   - whitespace, EOF, YAML, TOML, large-file, private-key, and secret checks
@@ -139,16 +166,13 @@ All checks passed at `qupmtxup`:
   - `ballen-config` policy
   - bootstrap Zsh syntax
 - `uv run --frozen mypy`: 29 source files, no issues
-- `uv run --frozen pytest -q`: 542 tests passed
+- `uv run --frozen pytest -q`: 545 tests passed
 - `./bootstrap plan --profile default`: passed
 - `./bootstrap doctor --profile default`: passed
 
-### Verdict: NEEDS_ATTENTION
+### Verdict: CLEAN
 
-There are no blockers, failed checks, theatre tests, or discovered correctness
-defects. The production assertions, internal Pydantic containers, duplicated
-adapter fixtures, and focused test gaps are worthwhile cleanup before merging
-the stack. The large Cursor deletion is an explicit product-scope choice, not
-a required remediation.
-
-No fixes were applied during this report-first review.
+All actionable cleanup findings were resolved. There are no blockers, failed
+checks, theatre tests, discovered correctness defects, or remaining Ponytail
+cuts within the approved scope. The Cursor deletion remains intentionally
+declined as a product-scope choice.
