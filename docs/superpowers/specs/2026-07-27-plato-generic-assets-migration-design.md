@@ -108,7 +108,11 @@ assistants/
 │   │   ├── api-design.md
 │   │   ├── testing.md
 │   │   ├── documentation.md
-│   │   └── source-control.md
+│   │   ├── source-control.md
+│   │   ├── dependency-management.md
+│   │   └── templates/
+│   │       ├── python/
+│   │       └── repository-rules/
 │   ├── skills/
 │   │   ├── catalog.yaml
 │   │   └── <skill-name>/
@@ -167,9 +171,10 @@ Only the concise core is rendered into every agent's global instructions in
 this workstream. The fuller library is canonical reference material and is not
 automatically loaded into every prompt.
 
-Workstream 1 also defines stable document identifiers, an index, provenance,
-and an adapter-independent lookup contract. Later workstreams may choose how to
-package those documents, but may not redefine their semantic identity.
+Workstream 1 also defines canonical relative paths, an index, concise
+provenance, copyable Python tooling configuration, and snapshot-owned
+repository-rule templates. Later workstreams may package the standards for
+native progressive loading without creating independently edited sources.
 
 If a later skill packages these standards, the canonical documents remain
 under `assistants/shared/standards/`. Skill-local references are deterministic
@@ -190,9 +195,10 @@ detailed standards design establishes a concrete need to change it.
 
 - Packaging the fuller standards as one or more progressively loaded skills.
 - Deciding whether a standards skill is a dependency of review/test skills.
-- Parameterized Ruff, mypy, pytest, pre-commit, Markdownlint, or coverage
-  templates.
-- Per-repository scaffolding of `AGENTS.md`, `CLAUDE.md`, or Cursor rule files.
+- Generating, synchronizing, or upgrading templates after a repository copies
+  them.
+- A parameterized template engine, repository initializer, or arbitrary
+  file-selector API.
 
 Those are follow-up decisions, not prerequisites for the initial standards
 migration.
@@ -388,6 +394,8 @@ separate ownership and conflict design before adoption.
 |---|---|
 | Global coding-assistant defaults | Standards |
 | Detailed Python/Pydantic/testing guidance | Standards |
+| Generic Python tooling starter configuration | Standards |
+| Copy-once repository-native rule baselines | Standards |
 | Standard discovery and application workflows | Skills |
 | Source-control selection and safety policy | Standards |
 | Jujutsu and Git commands and procedures | Skills |
@@ -402,7 +410,7 @@ separate ownership and conflict design before adoption.
 | Repository-local lesson promotion | Current repository |
 | Shared standards promotion | Explicit `ballen-config` review workflow |
 | Plato package, domain, CI, auth, and infrastructure rules | Plato |
-| Native rendering, copying, collision, and drift behavior | `ballen-config` adapters |
+| Managed native rendering, collision, and drift behavior | `ballen-config` adapters |
 
 ## Sequence and Change Management
 
@@ -478,7 +486,7 @@ designs:
 - standards-as-skills packaging and dependency behavior;
 - the precise first set and naming of promoted skills;
 - GitLab connector versus CLI adaptations for each agent;
-- whether executable configuration templates belong in `ballen-config`;
+- how copied standards or tooling should be synchronized across repositories;
 - which reviewed Plato contracts become portable requirements versus
   PydanticAI reference examples;
 - the canonical storage and projection model for application-agent
