@@ -14,10 +14,16 @@ Name or document intentionally excluded cases, and explain non-obvious
 performance choices where a future simplification could change behavior.
 
 For Python classes, document non-obvious attributes in the class docstring,
-generated API documentation configuration, or supported field metadata. Do not
-assume that a string placed after an assignment is displayed by standard
-interactive help. For validated fields, keep domain meaning and constraints
-close to the field through field descriptions.
+generated API documentation configuration, or supported field metadata. For
+validated fields, keep domain meaning and constraints close to the field through
+field descriptions, and keep the class docstring to the type's role rather than
+enumerating fields that already carry their own descriptions.
+
+When a module-level constant or class attribute needs explanation, prefer a
+docstring placed immediately after the assignment over a comment above it.
+Documentation generators and editor tooling read that string, and it stays
+attached to the symbol as the file changes. Standard interactive help does not
+display it, so do not rely on it for runtime introspection.
 
 ## Repository documentation
 

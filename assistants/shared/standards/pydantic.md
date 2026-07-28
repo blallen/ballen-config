@@ -30,7 +30,9 @@ model.
 
 - Use field validators for one field and model validators for cross-field
   invariants. Prefer after-validation for rules that operate on typed values;
-  use before-validation only for intentional raw-input normalization.
+  use before-validation only for intentional raw-input normalization. Reserve
+  wrap validators for the rare case that must control the inner validation call
+  itself.
 - Keep validators deterministic and free of network or filesystem effects.
   Business workflows belong outside the model.
 - `model_post_init` is supported as an instance lifecycle hook.

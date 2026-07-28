@@ -32,8 +32,13 @@ formatter, linter, and type-checker behavior.
 - Keep imports explicit and organized. Avoid import-time side effects and
   circular dependencies; move shared contracts to the smallest stable module
   that owns them.
-- Use immutable values for constants when practical. A name marked `Final`
-  prevents rebinding but does not make a mutable value immutable.
+- Annotate a module-level binding that is set once at import and never
+  reassigned with `Final[T]`, whether it is a value constant, a compiled
+  pattern, a sentinel, or a configured singleton. `Final` prevents rebinding but
+  does not make the bound object immutable, so pair a value constant with an
+  immutable container such as a read-only mapping proxy, a `frozenset`, or a
+  tuple. A singleton whose internals legitimately mutate still takes `Final[T]`,
+  because the handle is what must not be replaced.
 - Use named constants or enums for repeated state strings. Check `None`
   explicitly when zero, `False`, or an empty collection is a valid falsy value.
 - Prefer readable control flow. Extract dense conditionals into named helpers,
@@ -48,12 +53,31 @@ formatter, linter, and type-checker behavior.
 - Raise explicit exceptions that describe the failed contract. Preserve the
   original cause when translating lower-level failures, and do not catch broad
   exceptions unless the boundary can recover or add meaningful context.
+- Provide a domain exception hierarchy when callers need to catch failures at
+  different granularity, rather than reusing one broad built-in type everywhere.
+- Do not use `assert` to enforce a production contract. Assertions can be
+  disabled at runtime, so raise the exception the caller should handle.
 - When an exception contract changes, update downstream handlers, tests, and
   user-facing error translation in the same change.
 - Acquire files, network responses, locks, and similar resource handles with
   context managers or an equivalent lifecycle abstraction.
 - Keep cleanup reliable on success, failure, and cancellation. Never depend on
   garbage collection for externally visible cleanup.
+
+## Logging
+
+Use the logging library the repository has selected and keep its setup in one
+place rather than configuring handlers per module.
+
+Preserve the stack trace when logging a caught exception. Pass exception
+information through the logging call's own mechanism instead of interpolating the
+exception into the message, which records the text and discards the traceback.
+Log at warning level when the failure is recoverable and at error level with
+exception information when it is not. When the handler re-raises, let the
+propagated exception carry the traceback rather than logging it twice.
+
+Keep an exception bound to a name only when something outside the logging call
+references it.
 
 ## Serialization
 

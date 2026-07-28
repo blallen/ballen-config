@@ -14,7 +14,11 @@ Keep the default suite deterministic and fast enough for its intended feedback
 loop. Expensive, networked, or nondeterministic tests must be explicit opt-in
 checks with a clear purpose.
 
-## Regression-first changes
+## Tests accompany behavior
+
+Add or update tests in the same change as the behavior they cover. A behavior
+change with no corresponding test movement is incomplete unless the reason is
+documented.
 
 For a defect, use a regression-first sequence: reproduce the failure with a
 focused test, implement the smallest sufficient fix, then run broader checks
@@ -29,6 +33,21 @@ Put reusable test-data factories in shared fixtures or helpers without
 prescribing a repository layout. Test deterministic control flow separately
 from model or service behavior so failures identify the boundary at fault.
 Unit tests for core behavior must not import unused heavy optional dependencies.
+
+## Readable tests
+
+Give each test a descriptive name and a short docstring stating the behavior it
+verifies. Annotate test signatures as you would any other code so the fixtures
+and parameters a test receives stay clear.
+
+Prefer plain test functions over test classes unless shared setup genuinely
+belongs to a class. Consolidate near-duplicate tests that assert one object from
+identical setup, and parametrize repeated patterns with explicit case
+identifiers so a failure names the case that broke.
+
+When a change is scoped to tests, leave production code alone unless changing it
+was requested. A failing test that is quieted by editing its subject hides the
+defect it found.
 
 ## Doubles and patching
 
