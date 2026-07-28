@@ -40,7 +40,7 @@ TEMPLATE_FILES = {
     ".pre-commit-config.yaml",
     ".markdownlint.json",
 }
-GENERATED_CACHE_DIRECTORIES = {
+CACHE_DIRECTORIES = {
     ".mypy_cache",
     ".pytest_cache",
     ".ruff_cache",
@@ -102,27 +102,27 @@ def read_ini(path: Path) -> ConfigParser:
 
 
 def read_pre_commit(path: Path) -> PreCommitDocument:
-    """Parse pre-commit YAML and narrow its repository list for typed assertions."""
+    """Parse the starter pre-commit file as a trusted, repository-owned asset."""
     document = yaml.safe_load(path.read_text(encoding="utf-8"))
     assert isinstance(document, dict)
-    assert isinstance(document.get("repos"), list)
     return cast(PreCommitDocument, document)
 
 
 def test_python_tooling_bundle_has_expected_files(repo_root: Path) -> None:
-    """Enforce the reviewed files while ignoring caches and generator state."""
+    """Enforce the reviewed files and reject any unexpected bundled directory.
+
+    Ruff and mypy treat a directory holding their configuration as a project
+    root, so an ad-hoc local run can leave an ignored cache here even though the
+    repository excludes this path from its own lint scope.
+    """
     root = template_root(repo_root)
     assert root.is_dir()
-    generated = tuple(
-        path for path in root.iterdir() if path.name in GENERATED_CACHE_DIRECTORIES
-    )
-    entries = tuple(
-        path for path in root.iterdir() if path.name not in GENERATED_CACHE_DIRECTORIES
-    )
-    assert {path.name for path in entries} == TEMPLATE_FILES
-    assert all(path.is_file() and not path.is_symlink() for path in entries)
-    assert all(path.is_dir() and not path.is_symlink() for path in generated)
-    assert all("{{" not in path.read_text(encoding="utf-8") for path in entries)
+    files = tuple(path for path in root.iterdir() if path.is_file())
+    directories = {path.name for path in root.iterdir() if path.is_dir()}
+    assert {path.name for path in files} == TEMPLATE_FILES
+    assert not any(path.is_symlink() for path in files)
+    assert directories <= CACHE_DIRECTORIES
+    assert all("{{" not in path.read_text(encoding="utf-8") for path in files)
 
 
 def _assert_ruff_template(path: Path) -> None:
