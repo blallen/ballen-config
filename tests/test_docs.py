@@ -72,25 +72,18 @@ def test_portable_ssh_config_keeps_public_git_hosts(repo_root: Path) -> None:
 
 
 def test_repository_agents_use_native_instruction_files(repo_root: Path) -> None:
-    """Keep repository guidance in each agent's native discovery location."""
+    """Share one native baseline without triple-loading it in Cursor."""
     paths = (
         repo_root / "AGENTS.md",
         repo_root / "CLAUDE.md",
-        repo_root / ".cursor/rules/engineering.mdc",
     )
-    agents, claude, cursor = (path.read_text(encoding="utf-8") for path in paths)
-    opening, frontmatter, cursor_body = cursor.split("---", 2)
-    normalized_cursor = (
-        cursor_body.lstrip()
-        .replace("(../../assistants/", "(assistants/")
-        .replace("(../../README.md)", "(README.md)")
-    )
+    agents, claude = (path.read_text(encoding="utf-8") for path in paths)
 
-    assert opening == ""
-    assert "alwaysApply: true" in frontmatter
-    assert agents == claude == normalized_cursor
+    assert agents.startswith("# Repository instructions\n")
+    assert claude == "# Claude Code repository entry\n\n@AGENTS.md\n"
+    assert not (repo_root / ".cursor/rules/engineering.mdc").exists()
 
-    for path, text in zip(paths, (agents, claude, cursor_body), strict=True):
+    for path, text in zip(paths, (agents, claude), strict=True):
         for target in re.findall(r"\[[^]]+\]\(([^)]+)\)", text):
             resolved = (path.parent / target).resolve()
             assert resolved.is_relative_to(repo_root.resolve())

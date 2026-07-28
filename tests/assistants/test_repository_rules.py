@@ -7,7 +7,6 @@ ENTRY_FILES = {
     "README.md",
     "AGENTS.md",
     "CLAUDE.md",
-    ".cursor/rules/engineering.mdc",
 }
 ROUTE = (
     "If `docs/engineering-standards/` exists, read the applicable topic "
@@ -41,7 +40,7 @@ def repository_rules_root(repo_root: Path) -> Path:
 def test_repository_rule_templates_share_the_canonical_baseline(
     repo_root: Path,
 ) -> None:
-    """Keep all native repository entries aligned with the shared core."""
+    """Keep one canonical baseline and a concise Claude Code delegation."""
     root = repository_rules_root(repo_root)
     assert {
         path.relative_to(root).as_posix() for path in root.rglob("*") if path.is_file()
@@ -53,13 +52,9 @@ def test_repository_rule_templates_share_the_canonical_baseline(
     expected = f"{core.rstrip()}\n\n{ROUTE}\n"
     agents = (root / "AGENTS.md").read_text(encoding="utf-8")
     claude = (root / "CLAUDE.md").read_text(encoding="utf-8")
-    cursor = (root / ".cursor/rules/engineering.mdc").read_text(encoding="utf-8")
-    opening, frontmatter, cursor_body = cursor.split("---", 2)
 
-    assert opening == ""
-    assert "alwaysApply: true" in frontmatter
-    assert "globs:" in frontmatter
-    assert agents == claude == cursor_body.lstrip() == expected
+    assert agents == expected
+    assert claude == "# Claude Code repository entry\n\n@AGENTS.md\n"
 
 
 def test_repository_rule_readme_separates_default_and_all_paths(
@@ -71,7 +66,7 @@ def test_repository_rule_readme_separates_default_and_all_paths(
     default = text.partition("## Default")[2].partition("## All")[0]
     all_mode = text.partition("## All")[2].partition("## Narrower migrations")[0]
 
-    for path in ("AGENTS.md", "CLAUDE.md", ".cursor/rules/engineering.mdc"):
+    for path in ("AGENTS.md", "CLAUDE.md"):
         assert path in default
     for topic in TOPICS:
         destination = f"docs/engineering-standards/{topic}"

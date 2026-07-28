@@ -23,10 +23,11 @@ choice.
 ## Repository snapshots
 
 The repository-rule template supports two passive copy modes. Default copies
-only the concise native entries. All adds this index and every canonical topic;
-tooling remains a separate opt-in bundle. Copied files become repository-owned
-snapshots. Maintainers inspect and merge future upstream changes rather than
-assuming automatic synchronization.
+one concise `AGENTS.md` baseline for Codex and Cursor, plus a delegating
+`CLAUDE.md` entry when Claude Code is used. All adds this index and every
+canonical topic; tooling remains a separate opt-in bundle. Copied files become
+repository-owned snapshots. Maintainers inspect and merge future upstream
+changes rather than assuming automatic synchronization.
 
 ## Future progressive loading
 

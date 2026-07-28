@@ -21,9 +21,9 @@ focused test, implement the smallest sufficient fix, then run broader checks
 proportional to the risk. A defect fix without a meaningful reproducer needs a
 documented reason.
 
-Use pytest fixtures for reusable setup, teardown, and domain examples. Prefer
-small fixtures with visible ownership over global mutable state or fixture
-graphs whose behavior is difficult to follow.
+In pytest-based suites, use fixtures for reusable setup, teardown, and domain
+examples. Prefer small fixtures with visible ownership over global mutable
+state or fixture graphs whose behavior is difficult to follow.
 
 Put reusable test-data factories in shared fixtures or helpers without
 prescribing a repository layout. Test deterministic control flow separately

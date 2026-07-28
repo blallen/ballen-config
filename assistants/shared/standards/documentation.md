@@ -2,21 +2,22 @@
 
 ## Code documentation
 
-Use Google-style docstrings for every public module, class, function, and
-method. Include a concise purpose even when the signature is obvious so missing
-documentation remains mechanically detectable. Expand the docstring with
-parameters, returns, raised exceptions, side effects, and important invariants
-when those details add useful context. Spell out specialized terms and use
-specific type or class names instead of vague references.
+For Python code, use Google-style docstrings for every public module, class,
+function, and method. Include a concise purpose even when the signature is
+obvious so missing documentation remains mechanically detectable. Expand the
+docstring with parameters, returns, raised exceptions, side effects, and
+important invariants when those details add useful context. Spell out
+specialized terms and use specific type or class names instead of vague
+references.
 
 Name or document intentionally excluded cases, and explain non-obvious
 performance choices where a future simplification could change behavior.
 
-Document non-obvious class attributes in the class docstring, generated API
-documentation configuration, or supported field metadata. Do not assume that a
-string placed after an assignment is displayed by standard interactive help.
-For validated fields, keep domain meaning and constraints close to the field
-through field descriptions.
+For Python classes, document non-obvious attributes in the class docstring,
+generated API documentation configuration, or supported field metadata. Do not
+assume that a string placed after an assignment is displayed by standard
+interactive help. For validated fields, keep domain meaning and constraints
+close to the field through field descriptions.
 
 ## Repository documentation
 

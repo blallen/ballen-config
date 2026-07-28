@@ -8,13 +8,17 @@ baseline deliberately; never overwrite repository instructions silently.
 
 ## Default
 
-The Default copy includes only the concise native entry for each agent:
+The Default copy uses `AGENTS.md` as the single concise baseline:
 
-- `AGENTS.md` to `AGENTS.md`
-- `CLAUDE.md` to `CLAUDE.md`
-- `.cursor/rules/engineering.mdc` to `.cursor/rules/engineering.mdc`
+- Copy `AGENTS.md` for Codex, Cursor, or a multi-agent repository. Both Codex
+  and Cursor discover it natively.
+- Also copy `CLAUDE.md` when using Claude Code. Its native `@AGENTS.md` import
+  delegates to the canonical baseline instead of storing another copy.
 
-Copy only the entries used by the target repository.
+Use `.cursor/rules/` only for genuinely Cursor-specific or scoped additions.
+Cursor CLI loads root `AGENTS.md` and `CLAUDE.md` alongside project rules, so
+duplicating the baseline there wastes context and creates another copy that can
+drift.
 
 ## All
 
