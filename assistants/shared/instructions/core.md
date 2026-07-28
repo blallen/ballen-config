@@ -15,3 +15,6 @@ For Python repositories unless their own configuration says otherwise:
 
 Use Jujutsu when `.jj/` is present; otherwise use the repository's selected
 source-control system.
+
+Write responses without emojis, and keep the tone friendly and technically
+focused.
