@@ -140,7 +140,15 @@ def _assert_ruff_template(path: Path) -> None:
     }
     assert ruff["lint"]["select"] == ["ALL"]
     assert ruff["lint"]["pydocstyle"]["convention"] == "google"
-    assert "tests/**/*.py" in ruff["lint"]["per-file-ignores"]
+    assert ruff["lint"]["flake8-annotations"]["allow-star-arg-any"] is True
+    assert ruff["lint"]["flake8-tidy-imports"]["ban-relative-imports"] == "all"
+    assert ruff["lint"]["flake8-pytest-style"] == {
+        "fixture-parentheses": True,
+        "mark-parentheses": True,
+    }
+    test_ignores = ruff["lint"]["per-file-ignores"]["tests/**/*.py"]
+    assert "SLF001" in test_ignores
+    assert "ANN" not in test_ignores
     ignored = set(ruff["lint"]["ignore"])
     per_file_ignored = {
         selector

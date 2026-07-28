@@ -29,5 +29,15 @@ ignore = [
 [lint.pydocstyle]
 convention = "google"
 
+[lint.flake8-annotations]
+allow-star-arg-any = true
+
+[lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[lint.flake8-pytest-style]
+fixture-parentheses = true
+mark-parentheses = true
+
 [lint.per-file-ignores]
-"tests/**/*.py" = ["ANN", "ARG", "PLR2004", "S101"]
+"tests/**/*.py" = ["ARG", "FBT001", "PLR2004", "S101", "SLF001"]
