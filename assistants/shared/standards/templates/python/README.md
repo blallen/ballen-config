@@ -8,9 +8,14 @@ configuration. In an established repository, inspect the existing file and
 merge applicable settings instead of overwriting local decisions.
 
 The files contain no generator tokens or parameter substitution. Copy the
-whole bundle for a new Python repository, or copy and adapt an individual file
-by path. Copy `.pre-commit-config.yaml` with `ruff.toml` and
+applicable bundle for a new Python repository, or copy and adapt an individual
+file by path. Copy `.pre-commit-config.yaml` with `ruff.toml` and
 `.markdownlint.json`, because its hooks reference both companion files.
+
+Pre-commit requires Git repository metadata. In a pure-Jujutsu repository
+without a colocated `.git/`, omit `.pre-commit-config.yaml` and run Ruff, mypy,
+pytest, and Markdownlint through the repository's own task or CI entry. The
+individual tool configurations do not depend on Git.
 
 ## Required tools
 

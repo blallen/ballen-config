@@ -1,6 +1,6 @@
 # Migration audit metadata; not normative guidance or part of repository snapshots.
 source_repository: plato
-source_revision: 6bb59d00ac01fd3238c091d90f2aea43872934c9
+source_revision: 6bb59d00ac01fd3238c091d90f2aea43872934c9  # pragma: allowlist secret
 approved_decision: docs/superpowers/specs/2026-07-27-plato-engineering-standards-migration-design.md
 portability_result: portable-after-adaptation
 review_date: "2026-07-27"

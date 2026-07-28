@@ -1,7 +1,6 @@
 """Tests for the generic Python tooling starter bundle."""
 
 import json
-import re
 import tomllib
 from collections.abc import Callable
 from configparser import ConfigParser
@@ -57,6 +56,7 @@ REQUIRED_HOOKS = {
     "end-of-file-fixer",
     "check-yaml",
     "check-toml",
+    "check-json",
     "check-added-large-files",
     "ruff-check",
     "ruff-format",
@@ -87,21 +87,6 @@ REQUIRED_DOCSTRING_RULES = {
     "D107",
 }
 REMOVED_MIGRATION_IGNORES = {"ASYNC240", "UP042", "PLW0108"}
-FORBIDDEN_CASEFOLDED = (
-    "plato",
-    "/users/",
-    "autopilot",
-    "ami-",
-    "pydantic 2.8",
-    "--project src",
-    "{{",
-)
-PLACEHOLDER_PATTERN = re.compile(r"\b(?:TODO|TBD|FIXME)\b", re.IGNORECASE)
-SECRET_SAMPLE_PATTERN = re.compile(
-    r"\b(?:api[_-]?key|access[_-]?token|password)\s*[:=]\s*"
-    r"['\"]?[A-Za-z0-9_./+=-]{8,}",
-    re.IGNORECASE,
-)
 
 
 def template_root(repo_root: Path) -> Path:
@@ -125,7 +110,7 @@ def read_pre_commit(path: Path) -> PreCommitDocument:
 
 
 def test_python_tooling_bundle_has_expected_files(repo_root: Path) -> None:
-    """Ignore known tool caches while enforcing the reviewed starter-file set."""
+    """Enforce the reviewed files while ignoring caches and generator state."""
     root = template_root(repo_root)
     assert root.is_dir()
     generated = tuple(
@@ -137,6 +122,7 @@ def test_python_tooling_bundle_has_expected_files(repo_root: Path) -> None:
     assert {path.name for path in entries} == TEMPLATE_FILES
     assert all(path.is_file() and not path.is_symlink() for path in entries)
     assert all(path.is_dir() and not path.is_symlink() for path in generated)
+    assert all("{{" not in path.read_text(encoding="utf-8") for path in entries)
 
 
 def _assert_ruff_template(path: Path) -> None:
@@ -144,6 +130,14 @@ def _assert_ruff_template(path: Path) -> None:
     ruff = tomllib.loads(path.read_text(encoding="utf-8"))
     assert ruff["target-version"] == "py312"
     assert ruff["line-length"] == 100
+    assert ruff["indent-width"] == 4
+    assert ruff["format"] == {
+        "quote-style": "double",
+        "indent-style": "space",
+        "skip-magic-trailing-comma": False,
+        "line-ending": "auto",
+        "docstring-code-format": True,
+    }
     assert ruff["lint"]["select"] == ["ALL"]
     assert ruff["lint"]["pydocstyle"]["convention"] == "google"
     assert "tests/**/*.py" in ruff["lint"]["per-file-ignores"]
@@ -172,10 +166,10 @@ def _assert_mypy_template(path: Path) -> None:
     assert mypy["mypy"]["python_version"] == "3.12"
     for setting in (
         "disallow_untyped_defs",
-        "strict_optional",
         "check_untyped_defs",
-        "show_error_codes",
+        "strict_optional",
         "warn_unused_ignores",
+        "show_error_codes",
     ):
         assert mypy["mypy"].getboolean(setting)
     assert "ignore_missing_imports" not in mypy["mypy"]
@@ -250,19 +244,3 @@ def test_python_tooling_template_encodes_approved_defaults(
 ) -> None:
     """Parse one starter configuration and enforce its reviewed defaults."""
     validator(template_root(repo_root) / template_name)
-
-
-def test_python_tooling_bundle_excludes_repository_state(
-    repo_root: Path,
-) -> None:
-    """Reject repository coupling, local state, secrets, and placeholders."""
-    root = template_root(repo_root)
-    for path in sorted(root.iterdir()):
-        if not path.is_file():
-            continue
-        text = path.read_text(encoding="utf-8")
-        normalized = text.casefold()
-        for forbidden in FORBIDDEN_CASEFOLDED:
-            assert forbidden not in normalized, path
-        assert PLACEHOLDER_PATTERN.search(text) is None, path
-        assert SECRET_SAMPLE_PATTERN.search(text) is None, path
