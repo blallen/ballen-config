@@ -1,7 +1,5 @@
 """Non-mutating diagnostics for portable coding-agent configuration."""
 
-from __future__ import annotations
-
 import hashlib
 import os
 import stat

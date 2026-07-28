@@ -1,7 +1,5 @@
 """Public typed API for portable coding-agent inventory declarations."""
 
-from __future__ import annotations
-
 from ballen_config.assistants.claude import (
     ClaudePluginInspectionError,
     ClaudeSettingsError,

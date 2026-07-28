@@ -1,7 +1,5 @@
 """Manage reviewed Cursor settings and curated extensions."""
 
-from __future__ import annotations
-
 import json
 from pathlib import Path
 from typing import TypedDict, cast

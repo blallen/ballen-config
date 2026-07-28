@@ -1,7 +1,5 @@
 """Tests for the canonical, portable engineering standards library."""
 
-from __future__ import annotations
-
 import re
 from pathlib import Path
 from typing import NotRequired, TypedDict, cast

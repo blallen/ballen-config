@@ -1,7 +1,5 @@
 """Integration tests for the aggregate coding-agent extension seams."""
 
-from __future__ import annotations
-
 import json
 import shutil
 import stat

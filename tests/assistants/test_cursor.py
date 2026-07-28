@@ -1,7 +1,5 @@
 """Tests for portable Cursor settings and extension management."""
 
-from __future__ import annotations
-
 import json
 from hashlib import sha256
 from pathlib import Path

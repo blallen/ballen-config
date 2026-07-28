@@ -13,7 +13,9 @@ provenance:
   disposition: corrected
   portability_result: portable-after-adaptation
   review_date: "2026-07-27"
-  correction_note: "Removed repository-specific mandates and corrected class-attribute documentation claims."
+  correction_note: >-
+    Removed repository-specific mandates, corrected class-attribute
+    documentation claims, and made Python 3.12 annotation evaluation explicit.
 ---
 
 # Python
@@ -34,6 +36,9 @@ formatter, linter, and type-checker behavior.
 - Distinguish omitted mapping keys from keys whose value may be `None`; use
   `NotRequired` when callers may omit a key.
 - Use named return types when multiple returned values need semantic names.
+- On Python 3.12, do not use `from __future__ import annotations`. Prefer
+  `Self` for methods that return the current class, and quote only unavoidable
+  forward references caused by definition order or circular imports.
 - Preserve object identity when callers may depend on a supplied instance.
   Derive duplicated identity fields instead of storing values that can diverge.
 - Disable generated equality when a value contains arrays or other objects

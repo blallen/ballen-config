@@ -1,7 +1,5 @@
 """Configure reviewed Claude Code preferences and native plugins."""
 
-from __future__ import annotations
-
 import json
 import shlex
 from pathlib import Path

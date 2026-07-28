@@ -1,7 +1,5 @@
 """Tests for portable RTK hook adapters."""
 
-from __future__ import annotations
-
 import json
 import os
 import shlex

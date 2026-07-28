@@ -1,7 +1,5 @@
 """Tests for assistant inventory loading, resolution, and core seams."""
 
-from __future__ import annotations
-
 from collections import Counter
 from pathlib import Path
 from typing import cast

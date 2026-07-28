@@ -1,7 +1,5 @@
 """Tests for passive repository-rule starter templates."""
 
-from __future__ import annotations
-
 from pathlib import Path
 
 ENTRY_FILES = {

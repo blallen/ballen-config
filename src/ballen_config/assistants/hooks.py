@@ -1,7 +1,5 @@
 """Translate one reviewed RTK hook into agent-native registrations."""
 
-from __future__ import annotations
-
 import json
 import shlex
 from pathlib import Path

@@ -1,7 +1,5 @@
 """Fixtures for coding-agent portability tests."""
 
-from __future__ import annotations
-
 import shutil
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass

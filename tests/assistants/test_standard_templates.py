@@ -1,7 +1,5 @@
 """Tests for the generic Python tooling starter bundle."""
 
-from __future__ import annotations
-
 import json
 import re
 import tomllib

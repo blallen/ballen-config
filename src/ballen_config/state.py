@@ -1,7 +1,5 @@
 """Private, versioned state for bootstrap ownership and outcomes."""
 
-from __future__ import annotations
-
 import os
 import stat
 import tempfile

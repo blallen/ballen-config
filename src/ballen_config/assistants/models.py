@@ -1,7 +1,5 @@
 """Strict models for portable coding-agent inventory declarations."""
 
-from __future__ import annotations
-
 import re
 from enum import StrEnum
 from pathlib import PurePosixPath

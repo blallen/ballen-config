@@ -1,7 +1,5 @@
 """Shared assertions for coding-agent adapter tests."""
 
-from __future__ import annotations
-
 
 def assert_canonical_instruction_contract(
     *,

@@ -1,7 +1,5 @@
 """Tests for portable Codex settings, instructions, and plugins."""
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

@@ -1,7 +1,5 @@
 """Tests for non-mutating coding-agent readiness diagnostics."""
 
-from __future__ import annotations
-
 import json
 import os
 from collections.abc import Callable, Iterator

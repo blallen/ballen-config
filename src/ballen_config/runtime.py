@@ -1,6 +1,5 @@
-from __future__ import annotations
-
 from pathlib import Path
+from typing import Self
 
 from pydantic import BaseModel, ConfigDict
 
@@ -21,7 +20,7 @@ class RuntimePaths(BaseModel):
         *,
         repo_root: Path,
         home: Path,
-    ) -> RuntimePaths:
+    ) -> Self:
         """Construct normalized repository and private state roots."""
         normalized_home = home.resolve()
         state_root = normalized_home / ".local/state/ballen-config"

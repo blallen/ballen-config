@@ -1,7 +1,5 @@
 """Tests for canonical shared coding-agent instructions."""
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest
