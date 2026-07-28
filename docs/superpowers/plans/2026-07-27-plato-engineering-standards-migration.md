@@ -75,7 +75,6 @@ assistants/shared/standards/
 ├── api-design.md
 ├── dependency-management.md
 ├── documentation.md
-├── provenance.yaml
 ├── pydantic.md
 ├── python.md
 ├── source-control.md
@@ -93,6 +92,8 @@ assistants/shared/standards/
         ├── AGENTS.md
         ├── CLAUDE.md
         └── README.md
+docs/superpowers/specs/
+└── 2026-07-27-plato-engineering-standards-provenance.yaml
 tests/assistants/
 ├── test_repository_rules.py
 ├── test_standard_templates.py
@@ -114,8 +115,8 @@ tests/assistants/test_codex.py
 
 Two file-map decisions changed during implementation and are recorded in
 [Implemented deviations](#implemented-deviations): provenance moved into one
-`provenance.yaml` manifest, and the repository-rule bundle ships no Cursor
-`.mdc` entry.
+manifest beside the approved decision, and the repository-rule bundle ships no
+Cursor `.mdc` entry.
 
 Deliberately leave unchanged:
 
@@ -645,7 +646,7 @@ authoritative for what shipped.
 | Planned | Delivered | Reason |
 |---|---|---|
 | `assistants/shared/instructions/engineering.md` | `assistants/shared/instructions/core.md` | The file is the shared core for every agent, not an engineering-only section |
-| Per-topic YAML frontmatter | One `assistants/shared/standards/provenance.yaml` | Keeps migration audit metadata out of documents that repositories copy as normative guidance |
+| Per-topic YAML frontmatter | One manifest at `docs/superpowers/specs/2026-07-27-plato-engineering-standards-provenance.yaml` | Keeps migration audit metadata out of documents repositories copy as normative guidance, and beside the decision it records |
 | Default copies three native entries including `.cursor/rules/engineering.mdc` | Default copies `AGENTS.md` plus a delegating `CLAUDE.md` | Cursor discovers root `AGENTS.md` natively, so a third copy only adds drift |
 | Prose-assertion tests for topic bodies and index sections | Structural tests for file sets, links, provenance, and tooling parsing | Prose assertions restated the documents instead of protecting a contract |
 
@@ -664,6 +665,18 @@ starter omitted. Both were closed after the original three commits:
 - Ruff `allow-star-arg-any`, `ban-relative-imports`, and the
   flake8-pytest-style parenthesis settings, plus `SLF001` restored and `ANN`
   removed from the test per-file ignores.
+
+A self-review and over-engineering pass then simplified the audit tests. Task 3
+asked for exact repository-relative source paths in tests and runtime
+`isinstance` narrowing of the parsed manifest. Both restated an asset this
+repository owns, so the tests now assert invariants instead: source paths are
+relative and unique, declared roles describe declared sources, dispositions
+carry the matching correction note, and only the Pydantic topic records a
+version review. The exact source revision, approved decision, and reviewed
+Pydantic version remain pinned, because those are deliberate re-review gates.
+The same pass removed a generated-cache tolerance that no tool can trigger, as
+Ruff and mypy write caches to the repository root rather than beside a
+configuration file.
 
 Six files that discovery surfaces remain deliberately unmigrated as
 Plato-specific: the agent charter summary, prompt decomposition, agent

@@ -29,8 +29,5 @@ canonical topic; tooling remains a separate opt-in bundle. Copied files become
 repository-owned snapshots. Maintainers inspect and merge future upstream
 changes rather than assuming automatic synchronization.
 
-## Future progressive loading
-
-Future skills may load the canonical topics progressively for the work at hand.
-No resolver exists in this migration, and the presence of these files does not
-imply an installer, selector, or runtime loading mechanism.
+These files are plain Markdown. Their presence implies no installer, selector,
+or runtime loading mechanism.
