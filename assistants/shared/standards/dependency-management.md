@@ -1,20 +1,3 @@
----
-provenance:
-  source_repository: plato
-  source_revision: 6bb59d00ac01fd3238c091d90f2aea43872934c9
-  source_paths:
-    - AGENTS.md
-    - .cursor/rules/uv.mdc
-    - docs/tooling/uv_workspace_guide.md
-  source_roles:
-    docs/tooling/uv_workspace_guide.md: evidence-after-correction
-  approved_decision: docs/superpowers/specs/2026-07-27-plato-engineering-standards-migration-design.md
-  disposition: corrected
-  portability_result: portable-after-adaptation
-  review_date: "2026-07-27"
-  correction_note: "Removed workspace layout and command recipes and corrected stale membership evidence."
----
-
 # Dependency management
 
 ## Repository authority

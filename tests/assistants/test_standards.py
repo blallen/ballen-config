@@ -18,7 +18,7 @@ TOPIC_FILES = (
     "dependency-management.md",
 )
 TOPIC_IDS = tuple(Path(topic).stem for topic in TOPIC_FILES)
-CANONICAL_DOCUMENTS = {"README.md", *TOPIC_FILES}
+REVIEWED_STANDARD_FILES = {"README.md", "provenance.yaml", *TOPIC_FILES}
 SOURCE_REVISION = "6bb59d00ac01fd3238c091d90f2aea43872934c9"  # pragma: allowlist secret
 APPROVED_DECISION = (
     "docs/superpowers/specs/2026-07-27-plato-engineering-standards-migration-design.md"
@@ -85,22 +85,18 @@ EXPECTED_SOURCE_ROLES["dependency-management.md"] = {
 ADAPTED_TOPICS = {"validation.md"}
 
 
-class Provenance(TypedDict):
-    """Expected provenance mapping parsed from one standards topic."""
+class TopicProvenance(TypedDict):
+    """Expected migration provenance for one standards topic."""
 
-    source_repository: str
-    source_revision: str
     source_paths: list[str]
-    approved_decision: str
     disposition: str
-    portability_result: str
-    review_date: str
     source_roles: NotRequired[dict[str, str]]
     correction_note: NotRequired[str]
+    version_review: NotRequired["VersionReview"]
 
 
 class VersionReview(TypedDict):
-    """Expected external-version review mapping in topic frontmatter."""
+    """Expected external-version review mapping in the provenance manifest."""
 
     product: str
     version: str
@@ -108,11 +104,15 @@ class VersionReview(TypedDict):
     release_history: str
 
 
-class TopicMetadata(TypedDict):
-    """Expected frontmatter mapping for one standards topic."""
+class ProvenanceManifest(TypedDict):
+    """Expected shared provenance and per-topic migration decisions."""
 
-    provenance: Provenance
-    version_review: NotRequired[VersionReview]
+    source_repository: str
+    source_revision: str
+    approved_decision: str
+    portability_result: str
+    review_date: str
+    topics: dict[str, TopicProvenance]
 
 
 PROHIBITED_BODY_PATTERNS = (
@@ -161,39 +161,44 @@ def standards_root(repo_root: Path) -> Path:
     return repo_root / "assistants/shared/standards"
 
 
-def read_topic(path: Path) -> tuple[TopicMetadata, str]:
-    """Parse and minimally narrow a topic's frontmatter and body."""
-    text = path.read_text(encoding="utf-8")
-    assert text.startswith("---\n")
-    _, raw_metadata, body = text.split("---", 2)
-    loaded = yaml.safe_load(raw_metadata)
+def read_provenance(path: Path) -> ProvenanceManifest:
+    """Parse and minimally narrow the standards provenance manifest."""
+    loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
     assert isinstance(loaded, dict)
 
-    provenance = loaded.get("provenance")
-    assert isinstance(provenance, dict)
-    source_paths = provenance.get("source_paths")
-    assert isinstance(source_paths, list)
-    assert all(isinstance(source_path, str) for source_path in source_paths)
-    source_roles = provenance.get("source_roles")
-    assert source_roles is None or (
-        isinstance(source_roles, dict)
-        and all(
-            isinstance(key, str) and isinstance(value, str)
-            for key, value in source_roles.items()
+    topics = loaded.get("topics")
+    assert isinstance(topics, dict)
+    for topic, provenance in topics.items():
+        assert isinstance(topic, str)
+        assert isinstance(provenance, dict)
+        source_paths = provenance.get("source_paths")
+        assert isinstance(source_paths, list)
+        assert all(isinstance(source_path, str) for source_path in source_paths)
+        source_roles = provenance.get("source_roles")
+        assert source_roles is None or (
+            isinstance(source_roles, dict)
+            and all(
+                isinstance(key, str) and isinstance(value, str)
+                for key, value in source_roles.items()
+            )
         )
-    )
-    version_review = loaded.get("version_review")
-    assert version_review is None or isinstance(version_review, dict)
-    return cast(TopicMetadata, loaded), body.lstrip()
+        version_review = provenance.get("version_review")
+        assert version_review is None or isinstance(version_review, dict)
+    return cast(ProvenanceManifest, loaded)
 
 
-def test_standards_directory_contains_only_canonical_documents(
+def read_topic(path: Path) -> str:
+    """Read one canonical topic as normative Markdown."""
+    return path.read_text(encoding="utf-8")
+
+
+def test_standards_directory_contains_only_reviewed_files(
     repo_root: Path,
 ) -> None:
-    """Keep the direct standards surface small and explicit."""
+    """Keep normative standards and their audit record small and explicit."""
     root = standards_root(repo_root)
     assert {path.name for path in root.iterdir() if path.is_file()} == (
-        CANONICAL_DOCUMENTS
+        REVIEWED_STANDARD_FILES
     )
     assert {path.name for path in root.iterdir() if path.is_dir()} == {"templates"}
 
@@ -209,39 +214,52 @@ def test_standards_index_links_every_canonical_topic_once(
 
 
 @pytest.mark.parametrize("topic", TOPIC_FILES, ids=TOPIC_IDS)
-def test_topic_standard_has_structured_provenance(
+def test_topic_standard_starts_without_migration_frontmatter(
+    repo_root: Path,
+    topic: str,
+) -> None:
+    """Present normative guidance before migration audit metadata."""
+    text = read_topic(standards_root(repo_root) / topic)
+    assert text.startswith("# ")
+
+
+@pytest.mark.parametrize("topic", TOPIC_FILES, ids=TOPIC_IDS)
+def test_provenance_manifest_records_reviewed_topic_sources(
     repo_root: Path,
     topic: str,
 ) -> None:
     """Freeze exact reviewed inputs and adaptation decisions per topic."""
     root = standards_root(repo_root)
-    base_keys = {
+    manifest = read_provenance(root / "provenance.yaml")
+    assert set(manifest) == {
         "source_repository",
         "source_revision",
-        "source_paths",
         "approved_decision",
-        "disposition",
         "portability_result",
         "review_date",
+        "topics",
     }
-    metadata, _ = read_topic(root / topic)
-    provenance = metadata["provenance"]
+    assert manifest["source_repository"] == "plato"
+    assert manifest["source_revision"] == SOURCE_REVISION
+    assert manifest["approved_decision"] == APPROVED_DECISION
+    assert manifest["portability_result"] == "portable-after-adaptation"
+    assert manifest["review_date"] == "2026-07-27"
+    assert set(manifest["topics"]) == set(TOPIC_FILES)
+
+    provenance = manifest["topics"][topic]
     expected_roles = EXPECTED_SOURCE_ROLES.get(topic)
     disposition = "adapted" if topic in ADAPTED_TOPICS else "corrected"
-    expected_keys = set(base_keys)
+    expected_keys = {"source_paths", "disposition"}
     if expected_roles is not None:
         expected_keys.add("source_roles")
     if disposition == "corrected":
         expected_keys.add("correction_note")
+    if topic == "pydantic.md":
+        expected_keys.add("version_review")
 
     assert set(provenance) == expected_keys
-    assert provenance["source_repository"] == "plato"
-    assert provenance["source_revision"] == SOURCE_REVISION
     assert tuple(provenance["source_paths"]) == EXPECTED_SOURCE_PATHS[topic]
-    assert provenance["approved_decision"] == APPROVED_DECISION
     assert provenance["disposition"] == disposition
-    assert provenance["portability_result"] == "portable-after-adaptation"
-    assert provenance["review_date"] == "2026-07-27"
     assert provenance.get("source_roles") == expected_roles
     if disposition == "corrected":
         assert provenance["correction_note"].strip()
@@ -252,7 +270,7 @@ def test_topic_standard_has_structured_provenance(
 @pytest.mark.parametrize("topic", TOPIC_FILES, ids=TOPIC_IDS)
 def test_topic_standard_body_is_portable(repo_root: Path, topic: str) -> None:
     """Reject stale pins, internal coupling, state, tokens, and placeholders."""
-    _, body = read_topic(standards_root(repo_root) / topic)
+    body = read_topic(standards_root(repo_root) / topic)
     for label, pattern in PROHIBITED_BODY_PATTERNS:
         assert pattern.search(body) is None, f"{topic}: {label}"
 
@@ -261,8 +279,8 @@ def test_pydantic_standard_records_supported_version_review(
     repo_root: Path,
 ) -> None:
     """Record the reviewed stable baseline without making it normative."""
-    metadata, _ = read_topic(standards_root(repo_root) / "pydantic.md")
-    review = metadata.get("version_review")
+    manifest = read_provenance(standards_root(repo_root) / "provenance.yaml")
+    review = manifest["topics"]["pydantic.md"].get("version_review")
     assert review == {
         "product": "Pydantic",
         "version": "2.13.4",
@@ -301,7 +319,7 @@ def test_procedural_standards_do_not_embed_command_recipes(
         re.IGNORECASE,
     )
     shell_fence = re.compile(r"```(?:bash|console|sh|shell|zsh)", re.IGNORECASE)
-    _, body = read_topic(root / topic)
+    body = read_topic(root / topic)
     assert shell_fence.search(body) is None
     assert line_recipe.search(body) is None
     assert inline_recipe.search(body) is None

@@ -1,18 +1,3 @@
----
-provenance:
-  source_repository: plato
-  source_revision: 6bb59d00ac01fd3238c091d90f2aea43872934c9
-  source_paths:
-    - AGENTS.md
-    - skills/jujutsu-workflow/SKILL.md
-    - skills/jujutsu-workflow/reference.md
-  approved_decision: docs/superpowers/specs/2026-07-27-plato-engineering-standards-migration-design.md
-  disposition: corrected
-  portability_result: portable-after-adaptation
-  review_date: "2026-07-27"
-  correction_note: "Replaced staging, branch, worktree, and rebase assumptions with repository-detected policy."
----
-
 # Source control
 
 ## Repository detection

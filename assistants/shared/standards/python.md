@@ -1,23 +1,3 @@
----
-provenance:
-  source_repository: plato
-  source_revision: 6bb59d00ac01fd3238c091d90f2aea43872934c9
-  source_paths:
-    - AGENTS.md
-    - .cursor/rules/104_python_style_guide.mdc
-    - .cursor/rules/lessons_learned.mdc
-    - .cursor/rules/lessons_promoted.mdc
-  source_roles:
-    .cursor/rules/lessons_promoted.mdc: provenance-only
-  approved_decision: docs/superpowers/specs/2026-07-27-plato-engineering-standards-migration-design.md
-  disposition: corrected
-  portability_result: portable-after-adaptation
-  review_date: "2026-07-27"
-  correction_note: >-
-    Removed repository-specific mandates, corrected class-attribute
-    documentation claims, and made Python 3.12 annotation evaluation explicit.
----
-
 # Python
 
 ## Scope and version

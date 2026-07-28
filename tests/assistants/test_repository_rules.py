@@ -1,5 +1,6 @@
 """Tests for passive repository-rule starter templates."""
 
+import re
 from pathlib import Path
 
 ENTRY_FILES = {
@@ -81,3 +82,13 @@ def test_repository_rule_readme_separates_default_and_all_paths(
 
     inventory = (repo_root / "assistants/inventory.yaml").read_text(encoding="utf-8")
     assert "templates/repository-rules" not in inventory
+
+
+def test_all_snapshot_index_links_only_copied_topics(repo_root: Path) -> None:
+    """Keep links in the copied standards index within the All inventory."""
+    index = (repo_root / "assistants/shared/standards/README.md").read_text(
+        encoding="utf-8"
+    )
+    linked_files = set(re.findall(r"\]\(([^)]+)\)", index))
+
+    assert linked_files == set(TOPICS[1:])

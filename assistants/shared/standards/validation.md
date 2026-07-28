@@ -1,20 +1,3 @@
----
-provenance:
-  source_repository: plato
-  source_revision: 6bb59d00ac01fd3238c091d90f2aea43872934c9
-  source_paths:
-    - .cursor/rules/104_data_validation.mdc
-    - .cursor/rules/104_pydantic_style_guide.mdc
-    - .cursor/rules/lessons_learned.mdc
-    - .cursor/rules/lessons_promoted.mdc
-  source_roles:
-    .cursor/rules/lessons_promoted.mdc: provenance-only
-  approved_decision: docs/superpowers/specs/2026-07-27-plato-engineering-standards-migration-design.md
-  disposition: adapted
-  portability_result: portable-after-adaptation
-  review_date: "2026-07-27"
----
-
 # Validation
 
 ## Separate the stages

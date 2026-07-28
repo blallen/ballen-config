@@ -1,21 +1,3 @@
----
-provenance:
-  source_repository: plato
-  source_revision: 6bb59d00ac01fd3238c091d90f2aea43872934c9
-  source_paths:
-    - .cursor/rules/test_rules_macro.mdc
-    - .cursor/rules/test_rules_micro.mdc
-    - .cursor/rules/lessons_learned.mdc
-    - .cursor/rules/lessons_promoted.mdc
-  source_roles:
-    .cursor/rules/lessons_promoted.mdc: provenance-only
-  approved_decision: docs/superpowers/specs/2026-07-27-plato-engineering-standards-migration-design.md
-  disposition: corrected
-  portability_result: portable-after-adaptation
-  review_date: "2026-07-27"
-  correction_note: "Removed repository commands, paths, thresholds, retries, and provider-specific doubles."
----
-
 # Testing
 
 ## Test levels and scope
