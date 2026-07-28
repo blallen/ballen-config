@@ -1,5 +1,6 @@
 """Contracts for operational bootstrap documentation."""
 
+import re
 from pathlib import Path
 
 
@@ -70,20 +71,30 @@ def test_portable_ssh_config_keeps_public_git_hosts(repo_root: Path) -> None:
         assert machine_specific not in text
 
 
-def test_agent_guardrail_is_short_and_operational(repo_root: Path) -> None:
-    """CLAUDE delegates canonical guidance and retains core safety rules."""
-    text = (repo_root / "CLAUDE.md").read_text(encoding="utf-8")
-    for phrase in (
-        "README.md",
-        "./bootstrap plan",
-        "profiles",
-        "skips",
-        "never copy credentials",
-        "never invent MCP configuration",
-        "./bootstrap doctor",
-    ):
-        assert phrase in text
-    assert len(text.splitlines()) <= 20
+def test_repository_agents_use_native_instruction_files(repo_root: Path) -> None:
+    """Keep repository guidance in each agent's native discovery location."""
+    paths = (
+        repo_root / "AGENTS.md",
+        repo_root / "CLAUDE.md",
+        repo_root / ".cursor/rules/engineering.mdc",
+    )
+    agents, claude, cursor = (path.read_text(encoding="utf-8") for path in paths)
+    opening, frontmatter, cursor_body = cursor.split("---", 2)
+    normalized_cursor = (
+        cursor_body.lstrip()
+        .replace("(../../assistants/", "(assistants/")
+        .replace("(../../README.md)", "(README.md)")
+    )
+
+    assert opening == ""
+    assert "alwaysApply: true" in frontmatter
+    assert agents == claude == normalized_cursor
+
+    for path, text in zip(paths, (agents, claude, cursor_body), strict=True):
+        for target in re.findall(r"\[[^]]+\]\(([^)]+)\)", text):
+            resolved = (path.parent / target).resolve()
+            assert resolved.is_relative_to(repo_root.resolve())
+            assert resolved.is_file()
 
 
 def test_manual_steps_cover_core_and_agent_handoffs(repo_root: Path) -> None:

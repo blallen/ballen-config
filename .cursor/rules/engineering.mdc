@@ -1,3 +1,9 @@
+---
+description: Repository engineering and bootstrap guidance
+globs:
+alwaysApply: true
+---
+
 # Repository instructions
 
 Repository instructions and executable configuration take precedence.
@@ -17,12 +23,12 @@ Use Jujutsu when `.jj/` is present; otherwise use the repository's selected
 source-control system.
 
 Before relevant implementation or review work, read the
-[engineering standards](assistants/shared/standards/README.md) index and
+[engineering standards](../../assistants/shared/standards/README.md) index and
 applicable topic documents.
 
 ## Bootstrap workflow
 
-Read [README.md](README.md) before changing bootstrap behavior or managed
+Read [README.md](../../README.md) before changing bootstrap behavior or managed
 configuration. Its manifests and security/state boundary are authoritative.
 
 - Run `./bootstrap plan` before any bootstrap mutation, preserving selected
