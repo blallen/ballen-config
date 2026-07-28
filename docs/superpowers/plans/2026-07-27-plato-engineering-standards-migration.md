@@ -226,7 +226,7 @@ Retain these deliberate Ruff ignores rather than inventing a stricter policy:
 
 ```toml
 ignore = [
-  "S", "COM", "CPY", "FIX", "TC", "D401", "N803", "N806",
+  "COM", "CPY", "FIX", "TC", "D401", "N803", "N806",
   "TD003", "ISC001", "RET504", "TRY300", "PLR0913",
 ]
 ```
@@ -268,7 +268,7 @@ Primary pin sources:
 ```text
 rtk uv run --frozen pytest tests/assistants/test_standard_templates.py -q
 rtk uv run --frozen pre-commit validate-config assistants/shared/standards/templates/python/.pre-commit-config.yaml
-rtk uv run --frozen pre-commit install-hooks --config assistants/shared/standards/templates/python/.pre-commit-config.yaml
+rtk uv run --frozen pre-commit install-hooks --config /Users/ballen/Projects/ballen-config-standards/assistants/shared/standards/templates/python/.pre-commit-config.yaml
 rtk uvx --from ruff==0.16.0 ruff check --config assistants/shared/standards/templates/python/ruff.toml --show-settings tests/assistants/test_standard_templates.py
 rtk uv run --frozen ruff check tests/assistants/test_standard_templates.py
 rtk uv run --frozen pre-commit run --files assistants/shared/standards/templates/python/README.md assistants/shared/standards/templates/python/ruff.toml assistants/shared/standards/templates/python/mypy.ini assistants/shared/standards/templates/python/pytest.ini assistants/shared/standards/templates/python/.pre-commit-config.yaml assistants/shared/standards/templates/python/.markdownlint.json tests/assistants/test_standard_templates.py
@@ -276,7 +276,9 @@ rtk uv run --frozen pre-commit run --files assistants/shared/standards/templates
 
 Expected: four focused tests and all validators pass. `install-hooks` proves
 the nested revisions and hook IDs resolve without running the starter policy
-over ballen-config.
+over ballen-config. Run only the `install-hooks` line from the colocated Git
+checkout `/Users/ballen/Projects/ballen-config`; a secondary Jujutsu workspace
+intentionally has no `.git` directory.
 
 - [ ] Request one targeted read-only review for tooling portability, pins, and
   newly invented policy. Resolve findings, rerun only the affected focused
