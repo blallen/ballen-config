@@ -75,6 +75,7 @@ assistants/shared/standards/
 ├── api-design.md
 ├── dependency-management.md
 ├── documentation.md
+├── provenance.yaml
 ├── pydantic.md
 ├── python.md
 ├── source-control.md
@@ -89,7 +90,6 @@ assistants/shared/standards/
     │   ├── pytest.ini
     │   └── ruff.toml
     └── repository-rules/
-        ├── .cursor/rules/engineering.mdc
         ├── AGENTS.md
         ├── CLAUDE.md
         └── README.md
@@ -102,7 +102,7 @@ tests/assistants/
 Modify:
 
 ```text
-assistants/shared/instructions/engineering.md
+assistants/shared/instructions/core.md
 assistants/cursor/user-rules.md
 assistants/claude/CLAUDE.md
 assistants/codex/AGENTS.md
@@ -111,6 +111,11 @@ tests/assistants/test_cursor.py
 tests/assistants/test_claude.py
 tests/assistants/test_codex.py
 ```
+
+Two file-map decisions changed during implementation and are recorded in
+[Implemented deviations](#implemented-deviations): provenance moved into one
+`provenance.yaml` manifest, and the repository-rule bundle ships no Cursor
+`.mdc` entry.
 
 Deliberately leave unchanged:
 
@@ -615,18 +620,52 @@ runtime/inventory/dependency changes, and Plato remains unchanged.
 
 ## Acceptance Checklist
 
-- [ ] The concise core renders once for Cursor, Claude Code, and Codex.
-- [ ] Global and repository-native rules say Pydantic v2, not Pydantic 2.8.
-- [ ] The tooling bundle has five valid configs plus README and no Plato
+- [x] The concise core renders once for Cursor, Claude Code, and Codex.
+- [x] Global and repository-native rules say Pydantic v2, not Pydantic 2.8.
+- [x] The tooling bundle has five valid configs plus README and no Plato
   coupling.
-- [ ] Default has exactly three native entries; All adds the index and eight
-  topics but no tooling.
-- [ ] Copied rules and tooling are explicitly repository-owned snapshots.
-- [ ] Every topic has exact provenance, review status, and required
-  corrections.
-- [ ] Topic standards contain policy; procedural workflows remain deferred to
+- [x] Default has exactly two native entries, `AGENTS.md` plus a delegating
+  `CLAUDE.md`; All adds the index and eight topics but no tooling.
+- [x] Copied rules and tooling are explicitly repository-owned snapshots.
+- [x] Every topic has exact provenance, review status, and required corrections
+  in `provenance.yaml`.
+- [x] Topic standards contain policy; procedural workflows remain deferred to
   the skills migration.
-- [ ] No catalog, resolver, installer, selector, generator, synchronization
+- [x] No catalog, resolver, installer, selector, generator, synchronization
   path, or runtime standards module was added.
-- [ ] Plato is clean and unchanged at the captured immutable revision.
-- [ ] Focused checks pass per commit and one full branch gate passes at the end.
+- [x] Plato is clean and unchanged at the captured immutable revision.
+- [x] Focused checks pass per commit and one full branch gate passes at the end.
+
+## Implemented Deviations
+
+The delivered branch differs from the design above in four reviewed ways. Task
+prose earlier in this plan still describes the original intent; this section is
+authoritative for what shipped.
+
+| Planned | Delivered | Reason |
+|---|---|---|
+| `assistants/shared/instructions/engineering.md` | `assistants/shared/instructions/core.md` | The file is the shared core for every agent, not an engineering-only section |
+| Per-topic YAML frontmatter | One `assistants/shared/standards/provenance.yaml` | Keeps migration audit metadata out of documents that repositories copy as normative guidance |
+| Default copies three native entries including `.cursor/rules/engineering.mdc` | Default copies `AGENTS.md` plus a delegating `CLAUDE.md` | Cursor discovers root `AGENTS.md` natively, so a third copy only adds drift |
+| Prose-assertion tests for topic bodies and index sections | Structural tests for file sets, links, provenance, and tooling parsing | Prose assertions restated the documents instead of protecting a contract |
+
+### Post-migration additions
+
+A follow-up comparison against Plato's own standards-discovery inventory found
+generic rules that generalization had dropped, and three Ruff settings the
+starter omitted. Both were closed after the original three commits:
+
+- Response-tone guidance in the shared core, generalized from
+  `.cursor/rules/104_llm_output.mdc`.
+- Restored portable rules: logging and stack-trace preservation, no production
+  `assert`, domain exception hierarchies, `Final[T]` on set-once module bindings,
+  tests accompanying behavior changes, test readability, attribute-docstring
+  practice, and wrap-validator scope.
+- Ruff `allow-star-arg-any`, `ban-relative-imports`, and the
+  flake8-pytest-style parenthesis settings, plus `SLF001` restored and `ANN`
+  removed from the test per-file ignores.
+
+Six files that discovery surfaces remain deliberately unmigrated as
+Plato-specific: the agent charter summary, prompt decomposition, agent
+construction standard, tool design guidelines, eval threshold guidelines, and
+the non-tone portion of the LLM output rule.
