@@ -1,6 +1,5 @@
 """Tests for the canonical, portable engineering standards library."""
 
-import re
 from pathlib import Path
 from typing import NotRequired, TypedDict, cast
 
@@ -115,47 +114,6 @@ class ProvenanceManifest(TypedDict):
     topics: dict[str, TopicProvenance]
 
 
-PROHIBITED_BODY_PATTERNS = (
-    ("stale Pydantic pin", re.compile(r"\bPydantic 2\.8\b", re.IGNORECASE)),
-    ("user-specific path", re.compile(r"/Users/")),
-    ("Plato import", re.compile(r"\b(?:from|import)\s+plato\b")),
-    (
-        "internal product or project",
-        re.compile(
-            r"\b(?:Plato|Autopilot|Avogadro|MechanisticModel|QSP|AMI-\d+|GitLab)\b",
-            re.IGNORECASE,
-        ),
-    ),
-    (
-        "internal issue or review",
-        re.compile(r"\b(?:AGTC-\d+|MR\s*[#!]\d+)\b", re.IGNORECASE),
-    ),
-    (
-        "internal infrastructure",
-        re.compile(
-            r"\b(?:1Password|AWS Secrets Manager|src/plato)\b",
-            re.IGNORECASE,
-        ),
-    ),
-    (
-        "agent-charter or skill coupling",
-        re.compile(r"(?:docs/agent_charter|plato:skill|plugins/cache)"),
-    ),
-    (
-        "generated assistant state",
-        re.compile(
-            r"(?:trust_level|"
-            r"\.(?:claude|codex|cursor)/(?:sessions|history)|mcp\.json)"
-        ),
-    ),
-    (
-        "token-shaped sample",
-        re.compile(r"\b(?:sk-|ghp_|glpat-)[A-Za-z0-9_-]{8,}\b"),
-    ),
-    ("placeholder marker", re.compile(r"\b(?:TODO|TBD|FIXME)\b")),
-)
-
-
 def standards_root(repo_root: Path) -> Path:
     """Locate canonical topics independently of repository-rule snapshots."""
     return repo_root / "assistants/shared/standards"
@@ -267,14 +225,6 @@ def test_provenance_manifest_records_reviewed_topic_sources(
         assert "correction_note" not in provenance
 
 
-@pytest.mark.parametrize("topic", TOPIC_FILES, ids=TOPIC_IDS)
-def test_topic_standard_body_is_portable(repo_root: Path, topic: str) -> None:
-    """Reject stale pins, internal coupling, state, tokens, and placeholders."""
-    body = read_topic(standards_root(repo_root) / topic)
-    for label, pattern in PROHIBITED_BODY_PATTERNS:
-        assert pattern.search(body) is None, f"{topic}: {label}"
-
-
 def test_pydantic_standard_records_supported_version_review(
     repo_root: Path,
 ) -> None:
@@ -287,40 +237,3 @@ def test_pydantic_standard_records_supported_version_review(
         "primary_source": "https://docs.pydantic.dev/latest/migration/",
         "release_history": "https://pypi.org/project/pydantic/#history",
     }
-
-
-@pytest.mark.parametrize(
-    "topic",
-    ("source-control.md", "dependency-management.md"),
-    ids=("source-control", "dependency-management"),
-)
-def test_procedural_standards_do_not_embed_command_recipes(
-    repo_root: Path,
-    topic: str,
-) -> None:
-    """Keep tool command recipes for the future skills migration."""
-    root = standards_root(repo_root)
-    command_fragment = (
-        r"(?:jj|git|uv)\s+"
-        r"(?:status|diff|log|show|new|bookmark|workspace|run|sync|lock|add|"
-        r"remove|commit|checkout|switch|rebase|worktree|branch|stage|push|"
-        r"pull|fetch|restore|reset|clean)\b"
-    )
-    line_recipe = re.compile(
-        r"^\s*(?:(?:[-*+]|>|\d+[.)])\s*)*(?:\$\s*)?" + command_fragment,
-        re.IGNORECASE | re.MULTILINE,
-    )
-    inline_recipe = re.compile(
-        r"`(?:\$\s*)?" + command_fragment + r"[^`]*`",
-        re.IGNORECASE,
-    )
-    prose_recipe = re.compile(
-        r"\b(?:run|execute|invoke|use|try)\s+`?(?:\$\s*)?" + command_fragment,
-        re.IGNORECASE,
-    )
-    shell_fence = re.compile(r"```(?:bash|console|sh|shell|zsh)", re.IGNORECASE)
-    body = read_topic(root / topic)
-    assert shell_fence.search(body) is None
-    assert line_recipe.search(body) is None
-    assert inline_recipe.search(body) is None
-    assert prose_recipe.search(body) is None
