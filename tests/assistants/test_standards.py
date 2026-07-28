@@ -1,0 +1,473 @@
+"""Tests for the canonical, portable engineering standards library."""
+
+from __future__ import annotations
+
+import re
+from pathlib import Path
+from typing import NotRequired, TypedDict, cast
+
+import yaml
+
+TOPIC_FILES = (
+    "python.md",
+    "pydantic.md",
+    "validation.md",
+    "api-design.md",
+    "testing.md",
+    "documentation.md",
+    "source-control.md",
+    "dependency-management.md",
+)
+CANONICAL_DOCUMENTS = {"README.md", *TOPIC_FILES}
+SOURCE_REVISION = "6bb59d00ac01fd3238c091d90f2aea43872934c9"  # pragma: allowlist secret
+APPROVED_DECISION = (
+    "docs/superpowers/specs/2026-07-27-plato-engineering-standards-migration-design.md"
+)
+LESSONS = (
+    ".cursor/rules/lessons_learned.mdc",
+    ".cursor/rules/lessons_promoted.mdc",
+)
+EXPECTED_SOURCE_PATHS = {
+    "python.md": (
+        "AGENTS.md",
+        ".cursor/rules/104_python_style_guide.mdc",
+        *LESSONS,
+    ),
+    "pydantic.md": (
+        "AGENTS.md",
+        ".cursor/rules/104_pydantic_style_guide.mdc",
+        *LESSONS,
+    ),
+    "validation.md": (
+        ".cursor/rules/104_data_validation.mdc",
+        ".cursor/rules/104_pydantic_style_guide.mdc",
+        *LESSONS,
+    ),
+    "api-design.md": (
+        ".cursor/rules/104_pythonic_apis.mdc",
+        *LESSONS,
+    ),
+    "testing.md": (
+        ".cursor/rules/test_rules_macro.mdc",
+        ".cursor/rules/test_rules_micro.mdc",
+        *LESSONS,
+    ),
+    "documentation.md": (
+        ".cursor/rules/104_python_style_guide.mdc",
+        ".cursor/rules/104_pydantic_style_guide.mdc",
+        *LESSONS,
+    ),
+    "source-control.md": (
+        "AGENTS.md",
+        "skills/jujutsu-workflow/SKILL.md",
+        "skills/jujutsu-workflow/reference.md",
+    ),
+    "dependency-management.md": (
+        "AGENTS.md",
+        ".cursor/rules/uv.mdc",
+        "docs/tooling/uv_workspace_guide.md",
+    ),
+}
+EXPECTED_SOURCE_ROLES = {
+    topic: {".cursor/rules/lessons_promoted.mdc": "provenance-only"}
+    for topic in (
+        "python.md",
+        "pydantic.md",
+        "validation.md",
+        "api-design.md",
+        "testing.md",
+        "documentation.md",
+    )
+}
+EXPECTED_SOURCE_ROLES["dependency-management.md"] = {
+    "docs/tooling/uv_workspace_guide.md": "evidence-after-correction"
+}
+ADAPTED_TOPICS = {"validation.md"}
+
+
+class Provenance(TypedDict):
+    """Validated provenance metadata for one standards topic."""
+
+    source_repository: str
+    source_revision: str
+    source_paths: list[str]
+    approved_decision: str
+    disposition: str
+    portability_result: str
+    review_date: str
+    source_roles: NotRequired[dict[str, str]]
+    correction_note: NotRequired[str]
+
+
+class VersionReview(TypedDict):
+    """Validated external version-review metadata."""
+
+    product: str
+    version: str
+    primary_source: str
+    release_history: str
+
+
+class TopicMetadata(TypedDict):
+    """Validated frontmatter for one standards topic."""
+
+    provenance: Provenance
+    version_review: NotRequired[VersionReview]
+
+
+PROHIBITED_BODY_PATTERNS = (
+    ("stale Pydantic pin", re.compile(r"\bPydantic 2\.8\b", re.IGNORECASE)),
+    ("user-specific path", re.compile(r"/Users/")),
+    ("Plato import", re.compile(r"\b(?:from|import)\s+plato\b")),
+    (
+        "internal product or project",
+        re.compile(
+            r"\b(?:Plato|Autopilot|Avogadro|MechanisticModel|QSP|AMI-\d+|GitLab)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "internal issue or review",
+        re.compile(r"\b(?:AGTC-\d+|MR\s*[#!]\d+)\b", re.IGNORECASE),
+    ),
+    (
+        "internal infrastructure",
+        re.compile(
+            r"\b(?:1Password|AWS Secrets Manager|src/plato)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "agent-charter or skill coupling",
+        re.compile(r"(?:docs/agent_charter|plato:skill|plugins/cache)"),
+    ),
+    (
+        "generated assistant state",
+        re.compile(
+            r"(?:trust_level|"
+            r"\.(?:claude|codex|cursor)/(?:sessions|history)|mcp\.json)"
+        ),
+    ),
+    (
+        "token-shaped sample",
+        re.compile(r"\b(?:sk-|ghp_|glpat-)[A-Za-z0-9_-]{8,}\b"),
+    ),
+    ("placeholder marker", re.compile(r"\b(?:TODO|TBD|FIXME)\b")),
+)
+APPROVED_CONTENT = {
+    "python.md": (
+        "Python 3.12",
+        "type hints",
+        "`TypedDict`",
+        "naming",
+        "imports",
+        "explicit exceptions",
+        "resource",
+        "serialization",
+        "readable control flow",
+        "valid falsy value",
+        "named constants",
+        "preserve object identity",
+        "without scalar equality",
+        "intentionally excluded cases",
+        "optional dependencies",
+        "exception contract changes",
+    ),
+    "pydantic.md": (
+        "boundary model",
+        "Pydantic v2",
+        'extra="forbid"',
+        "field descriptions",
+        "`Literal`",
+        "enum",
+        "validator",
+        "serialization",
+        "`SecretStr`",
+        "composition",
+        "trusted internal mappings",
+        "runtime dependency containers",
+        "`pydantic-settings`",
+        "`env_prefix`",
+        "(validation.md)",
+    ),
+    "validation.md": (
+        "parsing",
+        "validation",
+        "normalization",
+        "business rules",
+        "trust boundaries",
+        "structured results",
+        "redact",
+        "validated configuration",
+        "explicit booleans",
+        "`NotRequired`",
+        "nullability",
+        "single source",
+    ),
+    "api-design.md": (
+        "small typed contracts",
+        "HTTP semantics",
+        "structured errors",
+        "pagination",
+        "idempotency",
+        "compatibility",
+        "framework",
+        "not-found",
+        "not-ready",
+        "non-lossy",
+        "nullability",
+    ),
+    "testing.md": (
+        "test levels",
+        "regression-first",
+        "fixtures",
+        "patch at the use site",
+        "async-aware",
+        "behavioral assertions",
+        "exception message",
+        "strict expected failures",
+        "reviewed snapshots",
+        "opt-in",
+        "test theatre",
+        "test-data factories",
+        "deterministic control flow",
+        "optional dependencies",
+    ),
+    "documentation.md": (
+        "Google-style docstrings",
+        "class attributes",
+        "README",
+        "examples",
+        "diagrams",
+        "decision records",
+        "configured Markdown lint",
+        "duplicated API inventory",
+        "intentionally excluded cases",
+        "performance choices",
+        "Mermaid",
+        "single source",
+    ),
+    "source-control.md": (
+        "repository detection",
+        "`.jj/`",
+        "unrelated work",
+        "status",
+        "diff",
+        "destructive actions",
+    ),
+    "dependency-management.md": (
+        "repository-selected",
+        "declarations",
+        "lockfile",
+        "runtime",
+        "development dependencies",
+        "uv",
+    ),
+}
+
+
+def standards_root(repo_root: Path) -> Path:
+    """Return the canonical standards directory."""
+    return repo_root / "assistants/shared/standards"
+
+
+def read_topic(path: Path) -> tuple[TopicMetadata, str]:
+    """Parse and minimally narrow a topic's frontmatter and body."""
+    text = path.read_text(encoding="utf-8")
+    assert text.startswith("---\n")
+    _, raw_metadata, body = text.split("---", 2)
+    loaded = yaml.safe_load(raw_metadata)
+    assert isinstance(loaded, dict)
+
+    provenance = loaded.get("provenance")
+    assert isinstance(provenance, dict)
+    source_paths = provenance.get("source_paths")
+    assert isinstance(source_paths, list)
+    assert all(isinstance(source_path, str) for source_path in source_paths)
+    source_roles = provenance.get("source_roles")
+    assert source_roles is None or (
+        isinstance(source_roles, dict)
+        and all(
+            isinstance(key, str) and isinstance(value, str)
+            for key, value in source_roles.items()
+        )
+    )
+    version_review = loaded.get("version_review")
+    assert version_review is None or isinstance(version_review, dict)
+    return cast(TopicMetadata, loaded), body.lstrip()
+
+
+def test_standards_directory_contains_only_canonical_documents(
+    repo_root: Path,
+) -> None:
+    """Keep the direct standards surface small and explicit."""
+    root = standards_root(repo_root)
+    assert {path.name for path in root.iterdir() if path.is_file()} == (
+        CANONICAL_DOCUMENTS
+    )
+    assert {path.name for path in root.iterdir() if path.is_dir()} == {"templates"}
+
+
+def test_standards_index_links_every_canonical_topic_once(repo_root: Path) -> None:
+    """Link each normative topic exactly once from the index."""
+    text = (standards_root(repo_root) / "README.md").read_text(encoding="utf-8")
+    for topic in TOPIC_FILES:
+        assert text.count(f"]({topic})") == 1
+
+
+def test_standards_index_explains_authority_and_copy_modes(
+    repo_root: Path,
+) -> None:
+    """Keep authority, snapshot modes, and future loading boundaries explicit."""
+    text = (standards_root(repo_root) / "README.md").read_text(encoding="utf-8")
+    normalized = " ".join(text.split()).casefold()
+    for phrase in (
+        "always-on shared core",
+        "detailed topic files",
+        "topic files are normative",
+        "index is not a second authority",
+        "repository instructions and executable configuration take precedence",
+        "default",
+        "all",
+        "repository-owned snapshots",
+        "future skills",
+        "no resolver exists",
+    ):
+        assert phrase in normalized
+
+
+def test_topic_standard_has_structured_provenance(repo_root: Path) -> None:
+    """Freeze exact reviewed inputs and adaptation decisions per topic."""
+    root = standards_root(repo_root)
+    base_keys = {
+        "source_repository",
+        "source_revision",
+        "source_paths",
+        "approved_decision",
+        "disposition",
+        "portability_result",
+        "review_date",
+    }
+    for topic in TOPIC_FILES:
+        metadata, _ = read_topic(root / topic)
+        provenance = metadata["provenance"]
+        expected_roles = EXPECTED_SOURCE_ROLES.get(topic)
+        disposition = "adapted" if topic in ADAPTED_TOPICS else "corrected"
+        expected_keys = set(base_keys)
+        if expected_roles is not None:
+            expected_keys.add("source_roles")
+        if disposition == "corrected":
+            expected_keys.add("correction_note")
+
+        assert set(provenance) == expected_keys
+        assert provenance["source_repository"] == "plato"
+        assert provenance["source_revision"] == SOURCE_REVISION
+        assert tuple(provenance["source_paths"]) == EXPECTED_SOURCE_PATHS[topic]
+        assert provenance["approved_decision"] == APPROVED_DECISION
+        assert provenance["disposition"] == disposition
+        assert provenance["portability_result"] == "portable-after-adaptation"
+        assert provenance["review_date"] == "2026-07-27"
+        assert provenance.get("source_roles") == expected_roles
+        if disposition == "corrected":
+            assert provenance["correction_note"].strip()
+        else:
+            assert "correction_note" not in provenance
+
+
+def test_topic_standard_body_is_portable(repo_root: Path) -> None:
+    """Reject stale pins, internal coupling, state, tokens, and placeholders."""
+    root = standards_root(repo_root)
+    for topic in TOPIC_FILES:
+        _, body = read_topic(root / topic)
+        for label, pattern in PROHIBITED_BODY_PATTERNS:
+            assert pattern.search(body) is None, f"{topic}: {label}"
+
+
+def test_topic_standard_covers_approved_content(repo_root: Path) -> None:
+    """Keep the approved normative content represented in every topic."""
+    root = standards_root(repo_root)
+    for topic, requirements in APPROVED_CONTENT.items():
+        _, body = read_topic(root / topic)
+        normalized = " ".join(body.split()).casefold()
+        for requirement in requirements:
+            assert requirement.casefold() in normalized, (
+                f"{topic}: missing {requirement}"
+            )
+
+
+def test_high_risk_corrections_remain_semantic(repo_root: Path) -> None:
+    """Protect conditional and corrected rules from reversed wording."""
+    root = standards_root(repo_root)
+    bodies = {
+        topic: " ".join(read_topic(root / topic)[1].split()) for topic in TOPIC_FILES
+    }
+
+    assert "none is a universal requirement" in bodies["api-design.md"].casefold()
+    assert "Reject test theatre:" in bodies["testing.md"]
+    assert (
+        "Use `pydantic-settings` only when the repository declares that separate "
+        "dependency"
+    ) in bodies["pydantic.md"]
+    assert (
+        "Use uv only when the repository has selected it."
+        in (bodies["dependency-management.md"])
+    )
+    assert (
+        "Do not assume that a string placed after an assignment is displayed by "
+        "standard interactive help."
+    ) in bodies["documentation.md"]
+    assert (
+        "When `.jj/` is present, use Jujutsu semantics."
+        in (bodies["source-control.md"])
+    )
+    assert "native workspaces" not in bodies["source-control.md"].casefold()
+
+
+def test_pydantic_standard_records_supported_version_review(
+    repo_root: Path,
+) -> None:
+    """Record the reviewed stable baseline without making it normative."""
+    metadata, body = read_topic(standards_root(repo_root) / "pydantic.md")
+    review = metadata.get("version_review")
+    assert review == {
+        "product": "Pydantic",
+        "version": "2.13.4",
+        "primary_source": "https://docs.pydantic.dev/latest/migration/",
+        "release_history": "https://pypi.org/project/pydantic/#history",
+    }
+    assert "`model_post_init` is supported as an instance lifecycle hook." in body
+    assert "Pydantic v2" in body
+    assert "2.13.4" not in body
+    assert "deprecated" not in body.casefold()
+
+
+def test_procedural_standards_do_not_embed_command_recipes(
+    repo_root: Path,
+) -> None:
+    """Keep tool command recipes for the future skills migration."""
+    root = standards_root(repo_root)
+    command_fragment = (
+        r"(?:jj|git|uv)\s+"
+        r"(?:status|diff|log|show|new|bookmark|workspace|run|sync|lock|add|"
+        r"remove|commit|checkout|switch|rebase|worktree|branch|stage|push|"
+        r"pull|fetch|restore|reset|clean)\b"
+    )
+    line_recipe = re.compile(
+        r"^\s*(?:(?:[-*+]|>|\d+[.)])\s*)*(?:\$\s*)?" + command_fragment,
+        re.IGNORECASE | re.MULTILINE,
+    )
+    inline_recipe = re.compile(
+        r"`(?:\$\s*)?" + command_fragment + r"[^`]*`",
+        re.IGNORECASE,
+    )
+    prose_recipe = re.compile(
+        r"\b(?:run|execute|invoke|use|try)\s+`?(?:\$\s*)?" + command_fragment,
+        re.IGNORECASE,
+    )
+    shell_fence = re.compile(r"```(?:bash|console|sh|shell|zsh)", re.IGNORECASE)
+    for topic in ("source-control.md", "dependency-management.md"):
+        _, body = read_topic(root / topic)
+        assert shell_fence.search(body) is None
+        assert line_recipe.search(body) is None
+        assert inline_recipe.search(body) is None
+        assert prose_recipe.search(body) is None
