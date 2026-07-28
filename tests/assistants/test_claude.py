@@ -28,6 +28,7 @@ from ballen_config.configure import ApplyMethod
 from ballen_config.install import Installer
 from ballen_config.models import Component, Manager, ResolvedSetup
 from ballen_config.runtime import RuntimePaths
+from tests.assistants.assertions import assert_canonical_instruction_contract
 from tests.assistants.fakes import StatefulAssistantFake
 
 
@@ -416,12 +417,13 @@ def test_instruction_renderer_uses_canonical_guidance_and_claude_suffix(
         encoding="utf-8"
     )
     rendered = claude_instruction_renderer(paths)(suffix.encode(), None).decode()
-    precedence = "Repository instructions and executable configuration take precedence."
+    assert_canonical_instruction_contract(
+        rendered=rendered,
+        engineering=engineering,
+        suffix=suffix,
+    )
     assert rendered.startswith("# Engineering defaults\n")
     assert "# RTK\n" in rendered
-    assert rendered.count(engineering.rstrip()) == 1
-    assert " ".join(rendered.split()).count(precedence) == 1
-    assert precedence not in " ".join(suffix.split())
     assert rendered.endswith(
         "Do not copy credentials, sessions, project trust, or generated plugin state\n"
         "between machines.\n"

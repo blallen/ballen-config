@@ -88,7 +88,7 @@ ADAPTED_TOPICS = {"validation.md"}
 
 
 class Provenance(TypedDict):
-    """Validated provenance metadata for one standards topic."""
+    """Expected provenance mapping parsed from one standards topic."""
 
     source_repository: str
     source_revision: str
@@ -102,7 +102,7 @@ class Provenance(TypedDict):
 
 
 class VersionReview(TypedDict):
-    """Validated external version-review metadata."""
+    """Expected external-version review mapping in topic frontmatter."""
 
     product: str
     version: str
@@ -111,7 +111,7 @@ class VersionReview(TypedDict):
 
 
 class TopicMetadata(TypedDict):
-    """Validated frontmatter for one standards topic."""
+    """Expected frontmatter mapping for one standards topic."""
 
     provenance: Provenance
     version_review: NotRequired[VersionReview]
@@ -159,7 +159,7 @@ PROHIBITED_BODY_PATTERNS = (
 
 
 def standards_root(repo_root: Path) -> Path:
-    """Return the canonical standards directory."""
+    """Locate canonical topics independently of repository-rule snapshots."""
     return repo_root / "assistants/shared/standards"
 
 

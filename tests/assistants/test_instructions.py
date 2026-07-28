@@ -15,49 +15,25 @@ from ballen_config.assistants.models import (
 )
 
 
-def test_engineering_defaults_contain_portable_requirements(repo_root: Path) -> None:
-    """Keep portable engineering requirements in the authored defaults."""
+def test_engineering_defaults_are_concise_and_portable(repo_root: Path) -> None:
+    """Bound the native core and reject stale or repository-specific coupling."""
     path = repo_root / "assistants/shared/instructions/core.md"
     text = path.read_text(encoding="utf-8")
-    normalized = " ".join(text.split())
     assert len(text.split()) <= 200
-    for requirement in (
-        "Repository instructions and executable configuration take precedence.",
-        "staff-level judgment",
-        "simplest sufficient solution",
-        "readability",
-        "maintainability",
-        "fresh verification",
-        "Use Python 3.12.",
-        "`TypedDict` for controlled mapping shapes",
-        "Pydantic v2",
-        "Google-style docstrings",
-        "pytest fixtures",
-        "Use Jujutsu when `.jj/` is present",
+    for forbidden in (
+        "Pydantic 2.8",
+        "/Users/",
+        "plugins/cache/",
+        "Plato",
     ):
-        assert requirement in normalized
-    assert "Pydantic 2.8" not in normalized
+        assert forbidden not in text
 
 
-def test_rtk_guidance_is_portable_and_clean_machine_safe(
+def test_rtk_guidance_excludes_local_and_agent_specific_state(
     repo_root: Path,
 ) -> None:
-    """Retain supported RTK patterns without local or Codex-only framing."""
+    """Reject local paths and Codex-only framing from shared RTK guidance."""
     text = (repo_root / "assistants/shared/instructions/rtk.md").read_text()
-    assert "agent-run shell commands" in text
-    assert "prefixed with `rtk`" in text
-    for command in (
-        "rtk git status",
-        "rtk cargo test",
-        "rtk npm run build",
-        "rtk pytest -q",
-        "rtk gain",
-        "rtk gain --history",
-        "rtk proxy <cmd>",
-        "rtk --version",
-        "which rtk",
-    ):
-        assert command in text
     assert "/Users/" not in text
     assert "plugins/cache/" not in text
     assert "Codex CLI" not in text

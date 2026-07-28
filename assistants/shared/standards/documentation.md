@@ -13,18 +13,22 @@ provenance:
   disposition: corrected
   portability_result: portable-after-adaptation
   review_date: "2026-07-27"
-  correction_note: "Removed repository templates and corrected unsupported class-attribute documentation claims."
+  correction_note: >-
+    Removed repository templates, corrected unsupported class-attribute
+    documentation claims, and made public docstring coverage universal to
+    match the starter lint policy.
 ---
 
 # Documentation
 
 ## Code documentation
 
-Use Google-style docstrings for public modules, classes, functions, and methods
-whose contract is not obvious from the signature. Lead with a concise purpose,
-then document parameters, returns, raised exceptions, side effects, and
-important invariants. Spell out specialized terms and use specific type or
-class names instead of vague references.
+Use Google-style docstrings for every public module, class, function, and
+method. Include a concise purpose even when the signature is obvious so missing
+documentation remains mechanically detectable. Expand the docstring with
+parameters, returns, raised exceptions, side effects, and important invariants
+when those details add useful context. Spell out specialized terms and use
+specific type or class names instead of vague references.
 
 Name or document intentionally excluded cases, and explain non-obvious
 performance choices where a future simplification could change behavior.

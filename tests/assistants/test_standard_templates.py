@@ -15,14 +15,14 @@ import yaml
 
 
 class HookDocument(TypedDict):
-    """Describe one pre-commit hook."""
+    """Expected mapping shape for one pre-commit hook."""
 
     id: str
     args: NotRequired[list[str]]
 
 
 class RepositoryDocument(TypedDict):
-    """Describe one pre-commit hook repository."""
+    """Expected mapping shape for one pre-commit hook repository."""
 
     repo: str
     rev: str
@@ -30,7 +30,7 @@ class RepositoryDocument(TypedDict):
 
 
 class PreCommitDocument(TypedDict):
-    """Describe the starter pre-commit configuration."""
+    """Expected mapping shape for the starter pre-commit configuration."""
 
     repos: list[RepositoryDocument]
 
@@ -78,6 +78,16 @@ RETAINED_RUFF_IGNORES = {
     "TRY300",
     "PLR0913",
 }
+REQUIRED_DOCSTRING_RULES = {
+    "D100",
+    "D101",
+    "D102",
+    "D103",
+    "D104",
+    "D105",
+    "D106",
+    "D107",
+}
 REMOVED_MIGRATION_IGNORES = {"ASYNC240", "UP042", "PLW0108"}
 FORBIDDEN_CASEFOLDED = (
     "plato",
@@ -97,7 +107,7 @@ SECRET_SAMPLE_PATTERN = re.compile(
 
 
 def template_root(repo_root: Path) -> Path:
-    """Return the generic Python tooling template root."""
+    """Locate the copy-once Python bundle within the canonical standards tree."""
     return repo_root / "assistants/shared/standards/templates/python"
 
 
@@ -109,7 +119,7 @@ def read_ini(path: Path) -> ConfigParser:
 
 
 def read_pre_commit(path: Path) -> PreCommitDocument:
-    """Parse and narrow the pre-commit template."""
+    """Parse pre-commit YAML and narrow its repository list for typed assertions."""
     document = yaml.safe_load(path.read_text(encoding="utf-8"))
     assert isinstance(document, dict)
     assert isinstance(document.get("repos"), list)
@@ -136,10 +146,24 @@ def _assert_ruff_template(path: Path) -> None:
     ruff = tomllib.loads(path.read_text(encoding="utf-8"))
     assert ruff["target-version"] == "py312"
     assert ruff["line-length"] == 100
+    assert ruff["lint"]["select"] == ["ALL"]
     assert ruff["lint"]["pydocstyle"]["convention"] == "google"
     assert "tests/**/*.py" in ruff["lint"]["per-file-ignores"]
     ignored = set(ruff["lint"]["ignore"])
+    per_file_ignored = {
+        selector
+        for selectors in ruff["lint"]["per-file-ignores"].values()
+        for selector in selectors
+    }
+    docstring_disablers = {
+        selector
+        for selector in ignored | per_file_ignored
+        if any(rule.startswith(selector) for rule in REQUIRED_DOCSTRING_RULES)
+    }
     assert ignored >= RETAINED_RUFF_IGNORES
+    assert not docstring_disablers, (
+        f"missing-docstring rules disabled by {sorted(docstring_disablers)}"
+    )
     assert "S" not in ignored
     assert REMOVED_MIGRATION_IGNORES.isdisjoint(ignored)
 

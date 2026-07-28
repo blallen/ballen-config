@@ -38,6 +38,7 @@ from ballen_config.configure import (
 from ballen_config.install import InstallAction, Installer
 from ballen_config.models import Component, Manager, ResolvedSetup
 from ballen_config.runtime import RuntimePaths
+from tests.assistants.assertions import assert_canonical_instruction_contract
 from tests.assistants.fakes import StatefulAssistantFake
 
 _EXTENSION_IDS = (
@@ -497,11 +498,12 @@ def test_rendered_user_rules_are_canonical_and_manual_only(
         rtk=rtk,
         agent_suffix=suffix,
     )
+    assert_canonical_instruction_contract(
+        rendered=rendered,
+        engineering=engineering,
+        suffix=suffix,
+    )
     normalized = " ".join(rendered.split())
-    precedence = "Repository instructions and executable configuration take precedence."
-    assert rendered.count(engineering.rstrip()) == 1
-    assert normalized.count(precedence) == 1
-    assert precedence not in " ".join(suffix.split())
     assert "first-party browser capability" in normalized
     assert "global Playwright MCP server" in normalized
     assert "`glab` for GitLab" in normalized

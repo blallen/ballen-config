@@ -25,6 +25,7 @@ from ballen_config.assistants.models import AgentName, PluginCatalog
 from ballen_config.configure import ApplyMethod
 from ballen_config.models import Component, Manager, ResolvedSetup
 from ballen_config.runtime import RuntimePaths
+from tests.assistants.assertions import assert_canonical_instruction_contract
 from tests.assistants.fakes import StatefulAssistantFake
 
 
@@ -334,12 +335,13 @@ def test_instruction_and_configuration_own_only_codex_resources(
         encoding="utf-8"
     )
     rendered = codex_instruction_renderer(paths)(suffix.encode(), None).decode()
-    precedence = "Repository instructions and executable configuration take precedence."
+    assert_canonical_instruction_contract(
+        rendered=rendered,
+        engineering=engineering,
+        suffix=suffix,
+    )
     assert rendered.startswith("# Engineering defaults\n")
     assert f"@{temporary_home}/.codex/RTK.md" in rendered
-    assert rendered.count(engineering.rstrip()) == 1
-    assert " ".join(rendered.split()).count(precedence) == 1
-    assert precedence not in " ".join(suffix.split())
     assert rendered.endswith(
         "Never migrate authentication, trust, sessions, project paths, or generated plugin state.\n"
     )

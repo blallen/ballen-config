@@ -30,4 +30,4 @@ ignore = [
 convention = "google"
 
 [lint.per-file-ignores]
-"tests/**/*.py" = ["ANN", "ARG", "D", "PLR2004", "S101"]
+"tests/**/*.py" = ["ANN", "ARG", "PLR2004", "S101"]

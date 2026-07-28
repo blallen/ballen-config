@@ -35,7 +35,7 @@ TOOLING_FILES = (
 
 
 def repository_rules_root(repo_root: Path) -> Path:
-    """Return the passive repository-rule template root."""
+    """Locate passive native-rule snapshots within the canonical standards tree."""
     return repo_root / "assistants/shared/standards/templates/repository-rules"
 
 
@@ -63,10 +63,10 @@ def test_repository_rule_templates_share_the_canonical_baseline(
     assert agents == claude == cursor_body.lstrip() == expected
 
 
-def test_repository_rule_readme_defines_passive_copy_modes(
+def test_repository_rule_readme_separates_default_and_all_paths(
     repo_root: Path,
 ) -> None:
-    """Keep Default, All, and direct-copy behavior explicit and separate."""
+    """Keep Default and All path inventories distinct."""
     root = repository_rules_root(repo_root)
     text = (root / "README.md").read_text(encoding="utf-8")
     default = text.partition("## Default")[2].partition("## All")[0]
