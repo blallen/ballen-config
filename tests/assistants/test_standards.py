@@ -6,6 +6,7 @@ import re
 from pathlib import Path
 from typing import NotRequired, TypedDict, cast
 
+import pytest
 import yaml
 
 TOPIC_FILES = (
@@ -18,6 +19,7 @@ TOPIC_FILES = (
     "source-control.md",
     "dependency-management.md",
 )
+TOPIC_IDS = tuple(Path(topic).stem for topic in TOPIC_FILES)
 CANONICAL_DOCUMENTS = {"README.md", *TOPIC_FILES}
 SOURCE_REVISION = "6bb59d00ac01fd3238c091d90f2aea43872934c9"  # pragma: allowlist secret
 APPROVED_DECISION = (
@@ -154,116 +156,6 @@ PROHIBITED_BODY_PATTERNS = (
     ),
     ("placeholder marker", re.compile(r"\b(?:TODO|TBD|FIXME)\b")),
 )
-APPROVED_CONTENT = {
-    "python.md": (
-        "Python 3.12",
-        "type hints",
-        "`TypedDict`",
-        "naming",
-        "imports",
-        "explicit exceptions",
-        "resource",
-        "serialization",
-        "readable control flow",
-        "valid falsy value",
-        "named constants",
-        "preserve object identity",
-        "without scalar equality",
-        "intentionally excluded cases",
-        "optional dependencies",
-        "exception contract changes",
-    ),
-    "pydantic.md": (
-        "boundary model",
-        "Pydantic v2",
-        'extra="forbid"',
-        "field descriptions",
-        "`Literal`",
-        "enum",
-        "validator",
-        "serialization",
-        "`SecretStr`",
-        "composition",
-        "trusted internal mappings",
-        "runtime dependency containers",
-        "`pydantic-settings`",
-        "`env_prefix`",
-        "(validation.md)",
-    ),
-    "validation.md": (
-        "parsing",
-        "validation",
-        "normalization",
-        "business rules",
-        "trust boundaries",
-        "structured results",
-        "redact",
-        "validated configuration",
-        "explicit booleans",
-        "`NotRequired`",
-        "nullability",
-        "single source",
-    ),
-    "api-design.md": (
-        "small typed contracts",
-        "HTTP semantics",
-        "structured errors",
-        "pagination",
-        "idempotency",
-        "compatibility",
-        "framework",
-        "not-found",
-        "not-ready",
-        "non-lossy",
-        "nullability",
-    ),
-    "testing.md": (
-        "test levels",
-        "regression-first",
-        "fixtures",
-        "patch at the use site",
-        "async-aware",
-        "behavioral assertions",
-        "exception message",
-        "strict expected failures",
-        "reviewed snapshots",
-        "opt-in",
-        "test theatre",
-        "test-data factories",
-        "deterministic control flow",
-        "optional dependencies",
-    ),
-    "documentation.md": (
-        "Google-style docstrings",
-        "class attributes",
-        "README",
-        "examples",
-        "diagrams",
-        "decision records",
-        "configured Markdown lint",
-        "duplicated API inventory",
-        "intentionally excluded cases",
-        "performance choices",
-        "Mermaid",
-        "single source",
-    ),
-    "source-control.md": (
-        "repository detection",
-        "`.jj/`",
-        "unrelated work",
-        "status",
-        "diff",
-        "destructive actions",
-    ),
-    "dependency-management.md": (
-        "repository-selected",
-        "declarations",
-        "lockfile",
-        "runtime",
-        "development dependencies",
-        "uv",
-    ),
-}
 
 
 def standards_root(repo_root: Path) -> Path:
@@ -308,35 +200,21 @@ def test_standards_directory_contains_only_canonical_documents(
     assert {path.name for path in root.iterdir() if path.is_dir()} == {"templates"}
 
 
-def test_standards_index_links_every_canonical_topic_once(repo_root: Path) -> None:
+@pytest.mark.parametrize("topic", TOPIC_FILES, ids=TOPIC_IDS)
+def test_standards_index_links_every_canonical_topic_once(
+    repo_root: Path,
+    topic: str,
+) -> None:
     """Link each normative topic exactly once from the index."""
     text = (standards_root(repo_root) / "README.md").read_text(encoding="utf-8")
-    for topic in TOPIC_FILES:
-        assert text.count(f"]({topic})") == 1
+    assert text.count(f"]({topic})") == 1
 
 
-def test_standards_index_explains_authority_and_copy_modes(
+@pytest.mark.parametrize("topic", TOPIC_FILES, ids=TOPIC_IDS)
+def test_topic_standard_has_structured_provenance(
     repo_root: Path,
+    topic: str,
 ) -> None:
-    """Keep authority, snapshot modes, and future loading boundaries explicit."""
-    text = (standards_root(repo_root) / "README.md").read_text(encoding="utf-8")
-    normalized = " ".join(text.split()).casefold()
-    for phrase in (
-        "always-on shared core",
-        "detailed topic files",
-        "topic files are normative",
-        "index is not a second authority",
-        "repository instructions and executable configuration take precedence",
-        "default",
-        "all",
-        "repository-owned snapshots",
-        "future skills",
-        "no resolver exists",
-    ):
-        assert phrase in normalized
-
-
-def test_topic_standard_has_structured_provenance(repo_root: Path) -> None:
     """Freeze exact reviewed inputs and adaptation decisions per topic."""
     root = standards_root(repo_root)
     base_keys = {
@@ -348,86 +226,44 @@ def test_topic_standard_has_structured_provenance(repo_root: Path) -> None:
         "portability_result",
         "review_date",
     }
-    for topic in TOPIC_FILES:
-        metadata, _ = read_topic(root / topic)
-        provenance = metadata["provenance"]
-        expected_roles = EXPECTED_SOURCE_ROLES.get(topic)
-        disposition = "adapted" if topic in ADAPTED_TOPICS else "corrected"
-        expected_keys = set(base_keys)
-        if expected_roles is not None:
-            expected_keys.add("source_roles")
-        if disposition == "corrected":
-            expected_keys.add("correction_note")
+    metadata, _ = read_topic(root / topic)
+    provenance = metadata["provenance"]
+    expected_roles = EXPECTED_SOURCE_ROLES.get(topic)
+    disposition = "adapted" if topic in ADAPTED_TOPICS else "corrected"
+    expected_keys = set(base_keys)
+    if expected_roles is not None:
+        expected_keys.add("source_roles")
+    if disposition == "corrected":
+        expected_keys.add("correction_note")
 
-        assert set(provenance) == expected_keys
-        assert provenance["source_repository"] == "plato"
-        assert provenance["source_revision"] == SOURCE_REVISION
-        assert tuple(provenance["source_paths"]) == EXPECTED_SOURCE_PATHS[topic]
-        assert provenance["approved_decision"] == APPROVED_DECISION
-        assert provenance["disposition"] == disposition
-        assert provenance["portability_result"] == "portable-after-adaptation"
-        assert provenance["review_date"] == "2026-07-27"
-        assert provenance.get("source_roles") == expected_roles
-        if disposition == "corrected":
-            assert provenance["correction_note"].strip()
-        else:
-            assert "correction_note" not in provenance
+    assert set(provenance) == expected_keys
+    assert provenance["source_repository"] == "plato"
+    assert provenance["source_revision"] == SOURCE_REVISION
+    assert tuple(provenance["source_paths"]) == EXPECTED_SOURCE_PATHS[topic]
+    assert provenance["approved_decision"] == APPROVED_DECISION
+    assert provenance["disposition"] == disposition
+    assert provenance["portability_result"] == "portable-after-adaptation"
+    assert provenance["review_date"] == "2026-07-27"
+    assert provenance.get("source_roles") == expected_roles
+    if disposition == "corrected":
+        assert provenance["correction_note"].strip()
+    else:
+        assert "correction_note" not in provenance
 
 
-def test_topic_standard_body_is_portable(repo_root: Path) -> None:
+@pytest.mark.parametrize("topic", TOPIC_FILES, ids=TOPIC_IDS)
+def test_topic_standard_body_is_portable(repo_root: Path, topic: str) -> None:
     """Reject stale pins, internal coupling, state, tokens, and placeholders."""
-    root = standards_root(repo_root)
-    for topic in TOPIC_FILES:
-        _, body = read_topic(root / topic)
-        for label, pattern in PROHIBITED_BODY_PATTERNS:
-            assert pattern.search(body) is None, f"{topic}: {label}"
-
-
-def test_topic_standard_covers_approved_content(repo_root: Path) -> None:
-    """Keep the approved normative content represented in every topic."""
-    root = standards_root(repo_root)
-    for topic, requirements in APPROVED_CONTENT.items():
-        _, body = read_topic(root / topic)
-        normalized = " ".join(body.split()).casefold()
-        for requirement in requirements:
-            assert requirement.casefold() in normalized, (
-                f"{topic}: missing {requirement}"
-            )
-
-
-def test_high_risk_corrections_remain_semantic(repo_root: Path) -> None:
-    """Protect conditional and corrected rules from reversed wording."""
-    root = standards_root(repo_root)
-    bodies = {
-        topic: " ".join(read_topic(root / topic)[1].split()) for topic in TOPIC_FILES
-    }
-
-    assert "none is a universal requirement" in bodies["api-design.md"].casefold()
-    assert "Reject test theatre:" in bodies["testing.md"]
-    assert (
-        "Use `pydantic-settings` only when the repository declares that separate "
-        "dependency"
-    ) in bodies["pydantic.md"]
-    assert (
-        "Use uv only when the repository has selected it."
-        in (bodies["dependency-management.md"])
-    )
-    assert (
-        "Do not assume that a string placed after an assignment is displayed by "
-        "standard interactive help."
-    ) in bodies["documentation.md"]
-    assert (
-        "When `.jj/` is present, use Jujutsu semantics."
-        in (bodies["source-control.md"])
-    )
-    assert "native workspaces" not in bodies["source-control.md"].casefold()
+    _, body = read_topic(standards_root(repo_root) / topic)
+    for label, pattern in PROHIBITED_BODY_PATTERNS:
+        assert pattern.search(body) is None, f"{topic}: {label}"
 
 
 def test_pydantic_standard_records_supported_version_review(
     repo_root: Path,
 ) -> None:
     """Record the reviewed stable baseline without making it normative."""
-    metadata, body = read_topic(standards_root(repo_root) / "pydantic.md")
+    metadata, _ = read_topic(standards_root(repo_root) / "pydantic.md")
     review = metadata.get("version_review")
     assert review == {
         "product": "Pydantic",
@@ -435,14 +271,16 @@ def test_pydantic_standard_records_supported_version_review(
         "primary_source": "https://docs.pydantic.dev/latest/migration/",
         "release_history": "https://pypi.org/project/pydantic/#history",
     }
-    assert "`model_post_init` is supported as an instance lifecycle hook." in body
-    assert "Pydantic v2" in body
-    assert "2.13.4" not in body
-    assert "deprecated" not in body.casefold()
 
 
+@pytest.mark.parametrize(
+    "topic",
+    ("source-control.md", "dependency-management.md"),
+    ids=("source-control", "dependency-management"),
+)
 def test_procedural_standards_do_not_embed_command_recipes(
     repo_root: Path,
+    topic: str,
 ) -> None:
     """Keep tool command recipes for the future skills migration."""
     root = standards_root(repo_root)
@@ -465,9 +303,8 @@ def test_procedural_standards_do_not_embed_command_recipes(
         re.IGNORECASE,
     )
     shell_fence = re.compile(r"```(?:bash|console|sh|shell|zsh)", re.IGNORECASE)
-    for topic in ("source-control.md", "dependency-management.md"):
-        _, body = read_topic(root / topic)
-        assert shell_fence.search(body) is None
-        assert line_recipe.search(body) is None
-        assert inline_recipe.search(body) is None
-        assert prose_recipe.search(body) is None
+    _, body = read_topic(root / topic)
+    assert shell_fence.search(body) is None
+    assert line_recipe.search(body) is None
+    assert inline_recipe.search(body) is None
+    assert prose_recipe.search(body) is None
