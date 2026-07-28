@@ -1,7 +1,5 @@
 """Render canonical guidance into agent-native instruction documents."""
 
-from __future__ import annotations
-
 from pathlib import Path
 
 _FORBIDDEN_OUTPUT_MARKERS = ("{{", "plugins/cache/")

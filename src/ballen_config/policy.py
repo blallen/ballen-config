@@ -1,7 +1,5 @@
 """Enforce security and portability policy across the tracked repository tree."""
 
-from __future__ import annotations
-
 import os
 import re
 import stat

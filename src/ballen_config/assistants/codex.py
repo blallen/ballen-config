@@ -1,7 +1,5 @@
 """Configure portable Codex settings, instructions, and native plugins."""
 
-from __future__ import annotations
-
 import json
 import tomllib
 from pathlib import Path
@@ -228,7 +226,7 @@ def install_actions(
 def codex_instruction_renderer(paths: RuntimePaths) -> Renderer:
     """Build the canonical engineering and Codex instruction renderer."""
     engineering = _reviewed_source(
-        paths, Path("assistants/shared/instructions/engineering.md")
+        paths, Path("assistants/shared/instructions/core.md")
     ).read_text(encoding="utf-8")
     rtk = _reviewed_source(
         paths, Path("assistants/shared/instructions/rtk.md")

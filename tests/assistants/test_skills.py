@@ -1,7 +1,5 @@
 """Tests for portable shared-skill validation and convergence."""
 
-from __future__ import annotations
-
 import os
 import shutil
 from hashlib import sha256

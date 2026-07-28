@@ -1,5 +1,6 @@
 """Contracts for operational bootstrap documentation."""
 
+import re
 from pathlib import Path
 
 
@@ -70,20 +71,23 @@ def test_portable_ssh_config_keeps_public_git_hosts(repo_root: Path) -> None:
         assert machine_specific not in text
 
 
-def test_agent_guardrail_is_short_and_operational(repo_root: Path) -> None:
-    """CLAUDE delegates canonical guidance and retains core safety rules."""
-    text = (repo_root / "CLAUDE.md").read_text(encoding="utf-8")
-    for phrase in (
-        "README.md",
-        "./bootstrap plan",
-        "profiles",
-        "skips",
-        "never copy credentials",
-        "never invent MCP configuration",
-        "./bootstrap doctor",
-    ):
-        assert phrase in text
-    assert len(text.splitlines()) <= 20
+def test_repository_agents_use_native_instruction_files(repo_root: Path) -> None:
+    """Share one native baseline without triple-loading it in Cursor."""
+    paths = (
+        repo_root / "AGENTS.md",
+        repo_root / "CLAUDE.md",
+    )
+    agents, claude = (path.read_text(encoding="utf-8") for path in paths)
+
+    assert agents.startswith("# Repository instructions\n")
+    assert claude == "# Claude Code repository entry\n\n@AGENTS.md\n"
+    assert not (repo_root / ".cursor/rules/engineering.mdc").exists()
+
+    for path, text in zip(paths, (agents, claude), strict=True):
+        for target in re.findall(r"\[[^]]+\]\(([^)]+)\)", text):
+            resolved = (path.parent / target).resolve()
+            assert resolved.is_relative_to(repo_root.resolve())
+            assert resolved.is_file()
 
 
 def test_manual_steps_cover_core_and_agent_handoffs(repo_root: Path) -> None:

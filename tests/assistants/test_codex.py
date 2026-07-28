@@ -1,7 +1,5 @@
 """Tests for portable Codex settings, instructions, and plugins."""
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest
@@ -25,6 +23,7 @@ from ballen_config.assistants.models import AgentName, PluginCatalog
 from ballen_config.configure import ApplyMethod
 from ballen_config.models import Component, Manager, ResolvedSetup
 from ballen_config.runtime import RuntimePaths
+from tests.assistants.assertions import assert_canonical_instruction_contract
 from tests.assistants.fakes import StatefulAssistantFake
 
 
@@ -329,16 +328,21 @@ def test_instruction_and_configuration_own_only_codex_resources(
 ) -> None:
     """Render canonical guidance plus an absolute managed RTK include."""
     paths = RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home)
-    rendered = codex_instruction_renderer(paths)(
-        (repo_root / "assistants/codex/AGENTS.md").read_bytes(), None
-    ).decode()
+    suffix = (repo_root / "assistants/codex/AGENTS.md").read_text(encoding="utf-8")
+    engineering = (repo_root / "assistants/shared/instructions/core.md").read_text(
+        encoding="utf-8"
+    )
+    rendered = codex_instruction_renderer(paths)(suffix.encode(), None).decode()
+    assert_canonical_instruction_contract(
+        rendered=rendered,
+        engineering=engineering,
+        suffix=suffix,
+    )
     assert rendered.startswith("# Engineering defaults\n")
     assert f"@{temporary_home}/.codex/RTK.md" in rendered
     assert rendered.endswith(
-        "Repository instructions take precedence for repository-specific behavior.\n"
         "Never migrate authentication, trust, sessions, project paths, or generated plugin state.\n"
     )
-    suffix = (repo_root / "assistants/codex/AGENTS.md").read_text(encoding="utf-8")
     assert all(
         concept in suffix
         for concept in (

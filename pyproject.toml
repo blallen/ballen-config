@@ -42,6 +42,9 @@ mypy_path = "src"
 [tool.ruff]
 target-version = "py312"
 line-length = 88
+# Starter configurations are data for other repositories. Without this, Ruff
+# treats the bundled ruff.toml as a nested project root and caches beside it.
+extend-exclude = ["assistants/shared/standards/templates"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]

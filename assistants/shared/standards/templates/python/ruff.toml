@@ -1,0 +1,43 @@
+line-length = 100
+indent-width = 4
+target-version = "py312"
+
+[format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+docstring-code-format = true
+
+[lint]
+select = ["ALL"]
+ignore = [
+  "COM",
+  "CPY",
+  "FIX",
+  "TC",
+  "D401",
+  "N803",
+  "N806",
+  "TD003",
+  "ISC001",
+  "RET504",
+  "TRY300",
+  "PLR0913",
+]
+
+[lint.pydocstyle]
+convention = "google"
+
+[lint.flake8-annotations]
+allow-star-arg-any = true
+
+[lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[lint.flake8-pytest-style]
+fixture-parentheses = true
+mark-parentheses = true
+
+[lint.per-file-ignores]
+"tests/**/*.py" = ["ARG", "FBT001", "PLR2004", "S101", "SLF001"]

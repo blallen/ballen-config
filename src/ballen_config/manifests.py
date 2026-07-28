@@ -1,7 +1,5 @@
-from __future__ import annotations
-
 from pathlib import Path
-from typing import Any
+from typing import Any, Self
 
 import yaml
 
@@ -41,7 +39,7 @@ class ManifestRepository:
         self.components = components
 
     @classmethod
-    def load(cls, root: Path) -> ManifestRepository:
+    def load(cls, root: Path) -> Self:
         """Load profiles and component manifests from a directory.
 
         Args:

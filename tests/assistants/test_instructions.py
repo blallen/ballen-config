@@ -1,7 +1,5 @@
 """Tests for canonical shared coding-agent instructions."""
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest
@@ -15,42 +13,25 @@ from ballen_config.assistants.models import (
 )
 
 
-def test_engineering_defaults_contain_portable_requirements(repo_root: Path) -> None:
-    """Keep portable engineering requirements in the authored defaults."""
-    path = repo_root / "assistants/shared/instructions/engineering.md"
-    text = path.read_text()
-    assert all(
-        requirement in text
-        for requirement in (
-            "Use Python 3.12.",
-            "TypedDict for external mappings",
-            "Pydantic 2.8",
-            "Google-style docstrings.",
-            "Use pytest fixtures.",
-            "Prefer Jujutsu for source control.",
-        )
-    )
+def test_engineering_defaults_are_concise_and_portable(repo_root: Path) -> None:
+    """Bound the native core and reject stale or repository-specific coupling."""
+    path = repo_root / "assistants/shared/instructions/core.md"
+    text = path.read_text(encoding="utf-8")
+    assert len(text.split()) <= 200
+    for forbidden in (
+        "Pydantic 2.8",
+        "/Users/",
+        "plugins/cache/",
+        "Plato",
+    ):
+        assert forbidden not in text
 
 
-def test_rtk_guidance_is_portable_and_clean_machine_safe(
+def test_rtk_guidance_excludes_local_and_agent_specific_state(
     repo_root: Path,
 ) -> None:
-    """Retain supported RTK patterns without local or Codex-only framing."""
+    """Reject local paths and Codex-only framing from shared RTK guidance."""
     text = (repo_root / "assistants/shared/instructions/rtk.md").read_text()
-    assert "agent-run shell commands" in text
-    assert "prefixed with `rtk`" in text
-    for command in (
-        "rtk git status",
-        "rtk cargo test",
-        "rtk npm run build",
-        "rtk pytest -q",
-        "rtk gain",
-        "rtk gain --history",
-        "rtk proxy <cmd>",
-        "rtk --version",
-        "which rtk",
-    ):
-        assert command in text
     assert "/Users/" not in text
     assert "plugins/cache/" not in text
     assert "Codex CLI" not in text
@@ -79,9 +60,7 @@ def test_cursor_and_claude_embed_canonical_sections(
     suffix: str,
 ) -> None:
     """Embed reviewed engineering and RTK text without transformations."""
-    engineering = (
-        repo_root / "assistants/shared/instructions/engineering.md"
-    ).read_text()
+    engineering = (repo_root / "assistants/shared/instructions/core.md").read_text()
     rtk = (repo_root / "assistants/shared/instructions/rtk.md").read_text()
     rendered = render_native_instructions(
         engineering=engineering,
@@ -98,9 +77,7 @@ def test_codex_uses_absolute_rtk_include_without_embedding(
     temporary_home: Path,
 ) -> None:
     """Reference the separately managed Codex RTK file by absolute path."""
-    engineering = (
-        repo_root / "assistants/shared/instructions/engineering.md"
-    ).read_text()
+    engineering = (repo_root / "assistants/shared/instructions/core.md").read_text()
     rtk = (repo_root / "assistants/shared/instructions/rtk.md").read_text()
     include = temporary_home / ".codex/RTK.md"
     rendered = render_native_instructions(

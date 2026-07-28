@@ -1,7 +1,5 @@
 """Tests for strict coding-agent inventory models."""
 
-from __future__ import annotations
-
 import pytest
 from pydantic import ValidationError
 
@@ -726,7 +724,7 @@ def test_cursor_atlassian_mcp_path_rejects_every_other_resource_shape(
                 "id": "shared.instructions",
                 "kind": "file",
                 "owner": "shared",
-                "source": "assistants/shared/instructions/engineering.md",
+                "source": "assistants/shared/instructions/core.md",
                 "destination": ".claude/CLAUDE.md",
                 "targets": ["claude-code"],
             },

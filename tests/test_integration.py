@@ -1,7 +1,5 @@
 """End-to-end configuration convergence tests in an isolated home."""
 
-from __future__ import annotations
-
 import hashlib
 import os
 import stat

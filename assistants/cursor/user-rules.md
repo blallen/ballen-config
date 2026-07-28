@@ -1,6 +1,5 @@
 # Cursor additions
 
-Repository instructions take precedence for repository-specific behavior.
 Use Cursor's first-party browser capability rather than a global Playwright
 MCP server. Use `glab` for GitLab operations and the official Notion
 integration. Never copy authentication, history, worktrees, indexes, caches,

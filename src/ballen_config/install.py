@@ -1,7 +1,5 @@
 """Intentional, idempotent component installation."""
 
-from __future__ import annotations
-
 import hashlib
 import os
 import shutil
@@ -11,7 +9,7 @@ import urllib.request
 from collections.abc import Callable, Sequence
 from http.client import HTTPMessage
 from pathlib import Path
-from typing import IO, Literal, Protocol, cast
+from typing import IO, Literal, Protocol, Self, cast
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -47,7 +45,7 @@ class InstallAction(BaseModel):
     sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
     @model_validator(mode="after")
-    def validate_variant(self) -> InstallAction:
+    def validate_variant(self) -> Self:
         """Require complete, internally consistent action fields.
 
         Returns:
@@ -144,7 +142,7 @@ class HttpsRedirectHandler(urllib.request.HTTPRedirectHandler):
 class DownloadResponse(Protocol):
     """Minimal response surface consumed by the HTTPS downloader."""
 
-    def __enter__(self) -> DownloadResponse:
+    def __enter__(self) -> Self:
         """Enter the response context."""
 
     def __exit__(

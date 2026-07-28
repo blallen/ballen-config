@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from collections.abc import Sequence
 from enum import StrEnum
 from pathlib import Path
@@ -28,7 +26,7 @@ class Inspector(Protocol):
 class PlanContributor(Protocol):
     """Extension seam for configuration, manual, and assistant actions."""
 
-    def actions(self, resolved: ResolvedSetup) -> tuple[PlanAction, ...]:
+    def actions(self, resolved: ResolvedSetup) -> tuple["PlanAction", ...]:
         """Return redacted structural actions for the resolved setup."""
 
 

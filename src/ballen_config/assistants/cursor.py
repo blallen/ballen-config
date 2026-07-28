@@ -1,7 +1,5 @@
 """Manage reviewed Cursor settings and curated extensions."""
 
-from __future__ import annotations
-
 import json
 from pathlib import Path
 from typing import TypedDict, cast
@@ -403,7 +401,7 @@ def cursor_rules_renderer(paths: RuntimePaths) -> Renderer:
     """
     engineering = _reviewed_source(
         paths,
-        Path("assistants/shared/instructions/engineering.md"),
+        Path("assistants/shared/instructions/core.md"),
     ).read_text()
     rtk = _reviewed_source(
         paths,

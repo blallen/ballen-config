@@ -1,7 +1,5 @@
 """Validate and converge portable shared coding-agent skills."""
 
-from __future__ import annotations
-
 import os
 import re
 import stat

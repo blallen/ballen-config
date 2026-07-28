@@ -1,7 +1,5 @@
 """Tests for portable Claude Code settings and reviewed plugins."""
 
-from __future__ import annotations
-
 import json
 from pathlib import Path
 
@@ -28,6 +26,7 @@ from ballen_config.configure import ApplyMethod
 from ballen_config.install import Installer
 from ballen_config.models import Component, Manager, ResolvedSetup
 from ballen_config.runtime import RuntimePaths
+from tests.assistants.assertions import assert_canonical_instruction_contract
 from tests.assistants.fakes import StatefulAssistantFake
 
 
@@ -410,12 +409,20 @@ def test_instruction_renderer_uses_canonical_guidance_and_claude_suffix(
 ) -> None:
     """Render canonical engineering and RTK guidance before Claude additions."""
     paths = RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home)
-    source = (repo_root / "assistants/claude/CLAUDE.md").read_bytes()
-    rendered = claude_instruction_renderer(paths)(source, None).decode()
+    suffix_path = repo_root / "assistants/claude/CLAUDE.md"
+    suffix = suffix_path.read_text(encoding="utf-8")
+    engineering = (repo_root / "assistants/shared/instructions/core.md").read_text(
+        encoding="utf-8"
+    )
+    rendered = claude_instruction_renderer(paths)(suffix.encode(), None).decode()
+    assert_canonical_instruction_contract(
+        rendered=rendered,
+        engineering=engineering,
+        suffix=suffix,
+    )
     assert rendered.startswith("# Engineering defaults\n")
     assert "# RTK\n" in rendered
     assert rendered.endswith(
-        "Repository instructions take precedence for repository-specific behavior.\n"
         "Do not copy credentials, sessions, project trust, or generated plugin state\n"
         "between machines.\n"
     )

@@ -1,7 +1,5 @@
 """Strict JSON decoding for reviewed and native agent data."""
 
-from __future__ import annotations
-
 import json
 from typing import Never
 
