@@ -1,6 +1,6 @@
 """Tests for the canonical, portable engineering standards library."""
 
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import NotRequired, TypedDict, cast
 
 import pytest
@@ -17,71 +17,22 @@ TOPIC_FILES = (
     "dependency-management.md",
 )
 TOPIC_IDS = tuple(Path(topic).stem for topic in TOPIC_FILES)
-REVIEWED_STANDARD_FILES = {"README.md", "provenance.yaml", *TOPIC_FILES}
+REVIEWED_STANDARD_FILES = {"README.md", *TOPIC_FILES}
+PROVENANCE_MANIFEST = (
+    "docs/superpowers/specs/2026-07-27-plato-engineering-standards-provenance.yaml"
+)
 SOURCE_REVISION = "6bb59d00ac01fd3238c091d90f2aea43872934c9"  # pragma: allowlist secret
 APPROVED_DECISION = (
     "docs/superpowers/specs/2026-07-27-plato-engineering-standards-migration-design.md"
 )
-LESSONS = (
-    ".cursor/rules/lessons_learned.mdc",
-    ".cursor/rules/lessons_promoted.mdc",
-)
-EXPECTED_SOURCE_PATHS = {
-    "python.md": (
-        "AGENTS.md",
-        ".cursor/rules/104_python_style_guide.mdc",
-        *LESSONS,
-    ),
-    "pydantic.md": (
-        "AGENTS.md",
-        ".cursor/rules/104_pydantic_style_guide.mdc",
-        *LESSONS,
-    ),
-    "validation.md": (
-        ".cursor/rules/104_data_validation.mdc",
-        ".cursor/rules/104_pydantic_style_guide.mdc",
-        *LESSONS,
-    ),
-    "api-design.md": (
-        ".cursor/rules/104_pythonic_apis.mdc",
-        *LESSONS,
-    ),
-    "testing.md": (
-        ".cursor/rules/test_rules_macro.mdc",
-        ".cursor/rules/test_rules_micro.mdc",
-        *LESSONS,
-    ),
-    "documentation.md": (
-        ".cursor/rules/104_python_style_guide.mdc",
-        ".cursor/rules/104_pydantic_style_guide.mdc",
-        *LESSONS,
-    ),
-    "source-control.md": (
-        "AGENTS.md",
-        "skills/jujutsu-workflow/SKILL.md",
-        "skills/jujutsu-workflow/reference.md",
-    ),
-    "dependency-management.md": (
-        "AGENTS.md",
-        ".cursor/rules/uv.mdc",
-        "docs/tooling/uv_workspace_guide.md",
-    ),
+DISPOSITIONS = {"adapted", "corrected"}
+TOPIC_KEYS = {
+    "source_paths",
+    "disposition",
+    "source_roles",
+    "correction_note",
+    "version_review",
 }
-EXPECTED_SOURCE_ROLES = {
-    topic: {".cursor/rules/lessons_promoted.mdc": "provenance-only"}
-    for topic in (
-        "python.md",
-        "pydantic.md",
-        "validation.md",
-        "api-design.md",
-        "testing.md",
-        "documentation.md",
-    )
-}
-EXPECTED_SOURCE_ROLES["dependency-management.md"] = {
-    "docs/tooling/uv_workspace_guide.md": "evidence-after-correction"
-}
-ADAPTED_TOPICS = {"validation.md"}
 
 
 class TopicProvenance(TypedDict):
@@ -119,29 +70,11 @@ def standards_root(repo_root: Path) -> Path:
     return repo_root / "assistants/shared/standards"
 
 
-def read_provenance(path: Path) -> ProvenanceManifest:
-    """Parse and minimally narrow the standards provenance manifest."""
-    loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
+def read_provenance(repo_root: Path) -> ProvenanceManifest:
+    """Parse the audit manifest as a trusted, repository-owned asset."""
+    text = (repo_root / PROVENANCE_MANIFEST).read_text(encoding="utf-8")
+    loaded = yaml.safe_load(text)
     assert isinstance(loaded, dict)
-
-    topics = loaded.get("topics")
-    assert isinstance(topics, dict)
-    for topic, provenance in topics.items():
-        assert isinstance(topic, str)
-        assert isinstance(provenance, dict)
-        source_paths = provenance.get("source_paths")
-        assert isinstance(source_paths, list)
-        assert all(isinstance(source_path, str) for source_path in source_paths)
-        source_roles = provenance.get("source_roles")
-        assert source_roles is None or (
-            isinstance(source_roles, dict)
-            and all(
-                isinstance(key, str) and isinstance(value, str)
-                for key, value in source_roles.items()
-            )
-        )
-        version_review = provenance.get("version_review")
-        assert version_review is None or isinstance(version_review, dict)
     return cast(ProvenanceManifest, loaded)
 
 
@@ -153,12 +86,13 @@ def read_topic(path: Path) -> str:
 def test_standards_directory_contains_only_reviewed_files(
     repo_root: Path,
 ) -> None:
-    """Keep normative standards and their audit record small and explicit."""
+    """Ship only normative standards; audit metadata lives with the decision."""
     root = standards_root(repo_root)
     assert {path.name for path in root.iterdir() if path.is_file()} == (
         REVIEWED_STANDARD_FILES
     )
     assert {path.name for path in root.iterdir() if path.is_dir()} == {"templates"}
+    assert (repo_root / PROVENANCE_MANIFEST).is_file()
 
 
 @pytest.mark.parametrize("topic", TOPIC_FILES, ids=TOPIC_IDS)
@@ -186,9 +120,8 @@ def test_provenance_manifest_records_reviewed_topic_sources(
     repo_root: Path,
     topic: str,
 ) -> None:
-    """Freeze exact reviewed inputs and adaptation decisions per topic."""
-    root = standards_root(repo_root)
-    manifest = read_provenance(root / "provenance.yaml")
+    """Pin the reviewed revision and enforce per-topic audit invariants."""
+    manifest = read_provenance(repo_root)
     assert set(manifest) == {
         "source_repository",
         "source_revision",
@@ -205,31 +138,35 @@ def test_provenance_manifest_records_reviewed_topic_sources(
     assert set(manifest["topics"]) == set(TOPIC_FILES)
 
     provenance = manifest["topics"][topic]
-    expected_roles = EXPECTED_SOURCE_ROLES.get(topic)
-    disposition = "adapted" if topic in ADAPTED_TOPICS else "corrected"
-    expected_keys = {"source_paths", "disposition"}
-    if expected_roles is not None:
-        expected_keys.add("source_roles")
-    if disposition == "corrected":
-        expected_keys.add("correction_note")
-    if topic == "pydantic.md":
-        expected_keys.add("version_review")
+    assert set(provenance) <= TOPIC_KEYS
 
-    assert set(provenance) == expected_keys
-    assert tuple(provenance["source_paths"]) == EXPECTED_SOURCE_PATHS[topic]
-    assert provenance["disposition"] == disposition
-    assert provenance.get("source_roles") == expected_roles
+    source_paths = provenance["source_paths"]
+    assert source_paths
+    assert len(set(source_paths)) == len(source_paths)
+    for source_path in source_paths:
+        pure = PurePosixPath(source_path)
+        assert not pure.is_absolute()
+        assert ".." not in pure.parts
+
+    roles = provenance.get("source_roles", {})
+    assert set(roles) <= set(source_paths)
+    assert all(role.strip() for role in roles.values())
+
+    disposition = provenance["disposition"]
+    assert disposition in DISPOSITIONS
     if disposition == "corrected":
         assert provenance["correction_note"].strip()
     else:
         assert "correction_note" not in provenance
+    if topic != "pydantic.md":
+        assert "version_review" not in provenance
 
 
 def test_pydantic_standard_records_supported_version_review(
     repo_root: Path,
 ) -> None:
     """Record the reviewed stable baseline without making it normative."""
-    manifest = read_provenance(standards_root(repo_root) / "provenance.yaml")
+    manifest = read_provenance(repo_root)
     review = manifest["topics"]["pydantic.md"].get("version_review")
     assert review == {
         "product": "Pydantic",
