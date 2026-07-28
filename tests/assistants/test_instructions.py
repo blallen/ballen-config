@@ -17,19 +17,26 @@ from ballen_config.assistants.models import (
 
 def test_engineering_defaults_contain_portable_requirements(repo_root: Path) -> None:
     """Keep portable engineering requirements in the authored defaults."""
-    path = repo_root / "assistants/shared/instructions/engineering.md"
-    text = path.read_text()
-    assert all(
-        requirement in text
-        for requirement in (
-            "Use Python 3.12.",
-            "TypedDict for external mappings",
-            "Pydantic 2.8",
-            "Google-style docstrings.",
-            "Use pytest fixtures.",
-            "Prefer Jujutsu for source control.",
-        )
-    )
+    path = repo_root / "assistants/shared/instructions/core.md"
+    text = path.read_text(encoding="utf-8")
+    normalized = " ".join(text.split())
+    assert len(text.split()) <= 200
+    for requirement in (
+        "Repository instructions and executable configuration take precedence.",
+        "staff-level judgment",
+        "simplest sufficient solution",
+        "readability",
+        "maintainability",
+        "fresh verification",
+        "Use Python 3.12.",
+        "`TypedDict` for controlled mapping shapes",
+        "Pydantic v2",
+        "Google-style docstrings",
+        "pytest fixtures",
+        "Use Jujutsu when `.jj/` is present",
+    ):
+        assert requirement in normalized
+    assert "Pydantic 2.8" not in normalized
 
 
 def test_rtk_guidance_is_portable_and_clean_machine_safe(
@@ -79,9 +86,7 @@ def test_cursor_and_claude_embed_canonical_sections(
     suffix: str,
 ) -> None:
     """Embed reviewed engineering and RTK text without transformations."""
-    engineering = (
-        repo_root / "assistants/shared/instructions/engineering.md"
-    ).read_text()
+    engineering = (repo_root / "assistants/shared/instructions/core.md").read_text()
     rtk = (repo_root / "assistants/shared/instructions/rtk.md").read_text()
     rendered = render_native_instructions(
         engineering=engineering,
@@ -98,9 +103,7 @@ def test_codex_uses_absolute_rtk_include_without_embedding(
     temporary_home: Path,
 ) -> None:
     """Reference the separately managed Codex RTK file by absolute path."""
-    engineering = (
-        repo_root / "assistants/shared/instructions/engineering.md"
-    ).read_text()
+    engineering = (repo_root / "assistants/shared/instructions/core.md").read_text()
     rtk = (repo_root / "assistants/shared/instructions/rtk.md").read_text()
     include = temporary_home / ".codex/RTK.md"
     rendered = render_native_instructions(

@@ -329,16 +329,20 @@ def test_instruction_and_configuration_own_only_codex_resources(
 ) -> None:
     """Render canonical guidance plus an absolute managed RTK include."""
     paths = RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home)
-    rendered = codex_instruction_renderer(paths)(
-        (repo_root / "assistants/codex/AGENTS.md").read_bytes(), None
-    ).decode()
+    suffix = (repo_root / "assistants/codex/AGENTS.md").read_text(encoding="utf-8")
+    engineering = (repo_root / "assistants/shared/instructions/core.md").read_text(
+        encoding="utf-8"
+    )
+    rendered = codex_instruction_renderer(paths)(suffix.encode(), None).decode()
+    precedence = "Repository instructions and executable configuration take precedence."
     assert rendered.startswith("# Engineering defaults\n")
     assert f"@{temporary_home}/.codex/RTK.md" in rendered
+    assert rendered.count(engineering.rstrip()) == 1
+    assert " ".join(rendered.split()).count(precedence) == 1
+    assert precedence not in " ".join(suffix.split())
     assert rendered.endswith(
-        "Repository instructions take precedence for repository-specific behavior.\n"
         "Never migrate authentication, trust, sessions, project paths, or generated plugin state.\n"
     )
-    suffix = (repo_root / "assistants/codex/AGENTS.md").read_text(encoding="utf-8")
     assert all(
         concept in suffix
         for concept in (

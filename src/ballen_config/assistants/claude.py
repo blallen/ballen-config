@@ -346,7 +346,7 @@ def claude_instruction_renderer(paths: RuntimePaths) -> Renderer:
         A pure Claude instruction renderer.
     """
     engineering = _reviewed_source(
-        paths, Path("assistants/shared/instructions/engineering.md")
+        paths, Path("assistants/shared/instructions/core.md")
     ).read_text(encoding="utf-8")
     rtk = _reviewed_source(
         paths, Path("assistants/shared/instructions/rtk.md")

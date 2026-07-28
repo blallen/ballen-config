@@ -141,7 +141,7 @@ def cursor_source_repo(tmp_path: Path) -> Path:
         + "\n"
     )
     (cursor_root / "user-rules.md").write_text("# Cursor additions\n")
-    (shared_root / "engineering.md").write_text("# Engineering\n")
+    (shared_root / "core.md").write_text("# Engineering\n")
     (shared_root / "rtk.md").write_text("# RTK\n")
     return repo
 
@@ -485,9 +485,7 @@ def test_rendered_user_rules_are_canonical_and_manual_only(
     contribution = configuration(_resolved_setup("cursor"), paths)
     spec = next(item for item in contribution.specs if item.id == "cursor-user-rules")
     suffix = spec.source.read_text()
-    engineering = (
-        repo_root / "assistants/shared/instructions/engineering.md"
-    ).read_text()
+    engineering = (repo_root / "assistants/shared/instructions/core.md").read_text()
     rtk = (repo_root / "assistants/shared/instructions/rtk.md").read_text()
     rendered = contribution.renderers["cursor-user-rules"](
         spec.source.read_bytes(),
@@ -500,7 +498,10 @@ def test_rendered_user_rules_are_canonical_and_manual_only(
         agent_suffix=suffix,
     )
     normalized = " ".join(rendered.split())
-    assert "Repository instructions take precedence" in normalized
+    precedence = "Repository instructions and executable configuration take precedence."
+    assert rendered.count(engineering.rstrip()) == 1
+    assert normalized.count(precedence) == 1
+    assert precedence not in " ".join(suffix.split())
     assert "first-party browser capability" in normalized
     assert "global Playwright MCP server" in normalized
     assert "`glab` for GitLab" in normalized

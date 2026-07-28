@@ -403,7 +403,7 @@ def cursor_rules_renderer(paths: RuntimePaths) -> Renderer:
     """
     engineering = _reviewed_source(
         paths,
-        Path("assistants/shared/instructions/engineering.md"),
+        Path("assistants/shared/instructions/core.md"),
     ).read_text()
     rtk = _reviewed_source(
         paths,
