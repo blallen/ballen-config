@@ -532,3 +532,161 @@ def test_crash_between_publish_and_receipt_blocks(
             state=state,
         )
     assert excinfo.value.state == LegacyRenameState.BLOCKED_UNMANAGED_SUCCESSOR
+
+
+from ballen_config.assistants.checks import assistant_checks
+from ballen_config.doctor import CheckSeverity, FindingStatus, run_doctor
+from tests.assistants.fakes import StatefulAssistantFake
+
+
+def test_doctor_reports_blocked_unmanaged_legacy(
+    temporary_home: Path, tmp_path: Path
+) -> None:
+    paths, catalog, _digest = _prepare_rename_repo(temporary_home, tmp_path)
+    legacy = temporary_home / ".cursor/skills/old-skill"
+    _write_skill(legacy, "old-skill")
+    catalog_path = paths.repo_root / "assistants/shared/skills/catalog.yaml"
+    catalog_path.write_text(
+        yaml.safe_dump(
+            {
+                "skills": [_skill_item("new-skill")],
+                "renames": [{"from": "old-skill", "to": "new-skill"}],
+            },
+            sort_keys=False,
+        )
+    )
+    findings = assistant_checks(
+        enabled=frozenset({"cursor"}),
+        paths=paths,
+        runner=StatefulAssistantFake(temporary_home),
+    )
+    report = run_doctor(findings)
+    finding = report.finding("skill-rename.old-skill.cursor")
+    assert finding.status is FindingStatus.MANUAL
+    assert finding.severity is CheckSeverity.WARNING
+
+
+def test_doctor_reports_unreceipted_successor(
+    temporary_home: Path, tmp_path: Path
+) -> None:
+    paths, catalog, digest = _prepare_rename_repo(temporary_home, tmp_path)
+    successor = temporary_home / ".cursor/skills/new-skill"
+    shutil.copytree(paths.repo_root / "assistants/shared/skills/new-skill", successor)
+    assert hash_skill_tree(successor) == digest
+    findings = assistant_checks(
+        enabled=frozenset({"cursor"}),
+        paths=paths,
+        runner=StatefulAssistantFake(temporary_home),
+    )
+    finding = run_doctor(findings).finding("skill-rename.old-skill.cursor")
+    assert finding.status is FindingStatus.MANUAL
+    assert finding.severity is CheckSeverity.WARNING
+
+
+def test_doctor_reports_legacy_drift(
+    temporary_home: Path, tmp_path: Path
+) -> None:
+    paths, catalog, _digest = _prepare_rename_repo(
+        temporary_home, tmp_path, legacy_present=True
+    )
+    legacy = temporary_home / ".cursor/skills/old-skill"
+    record = _record(name="old-skill", target=AgentName.CURSOR, digest="0" * 64)
+    StateStore(paths).write(BootstrapState(managed={record.resource_id: record}))
+    findings = assistant_checks(
+        enabled=frozenset({"cursor"}),
+        paths=paths,
+        runner=StatefulAssistantFake(temporary_home),
+    )
+    finding = run_doctor(findings).finding("skill-rename.old-skill.cursor")
+    assert finding.status is FindingStatus.DRIFT
+    assert finding.severity is CheckSeverity.ERROR
+    assert legacy.exists()
+
+
+def test_doctor_reports_incomplete_cleanup_when_successor_present(
+    temporary_home: Path, tmp_path: Path
+) -> None:
+    paths, catalog, digest = _prepare_rename_repo(
+        temporary_home, tmp_path, legacy_present=True
+    )
+    legacy = temporary_home / ".cursor/skills/old-skill"
+    legacy_digest = hash_skill_tree(legacy)
+    legacy_record = _record(
+        name="old-skill", target=AgentName.CURSOR, digest=legacy_digest
+    )
+    successor = temporary_home / ".cursor/skills/new-skill"
+    shutil.copytree(paths.repo_root / "assistants/shared/skills/new-skill", successor)
+    successor_record = ManagedRecord(
+        resource_id=f"shared-skill-new-skill-{AgentName.CURSOR.value}",
+        source_digest=digest,
+        destination_digest=digest,
+        destination=".cursor/skills/new-skill",
+    )
+    StateStore(paths).write(
+        BootstrapState(
+            managed={
+                legacy_record.resource_id: legacy_record,
+                successor_record.resource_id: successor_record,
+            }
+        )
+    )
+    findings = assistant_checks(
+        enabled=frozenset({"cursor"}),
+        paths=paths,
+        runner=StatefulAssistantFake(temporary_home),
+    )
+    finding = run_doctor(findings).finding("skill-rename.old-skill.cursor")
+    assert finding.status is FindingStatus.DRIFT
+    assert finding.severity is CheckSeverity.ERROR
+
+
+def test_doctor_reports_skipped_rename_target(
+    temporary_home: Path, tmp_path: Path
+) -> None:
+    paths, catalog, _digest = _prepare_rename_repo(temporary_home, tmp_path)
+    findings = assistant_checks(
+        enabled=frozenset(),
+        paths=paths,
+        runner=StatefulAssistantFake(temporary_home),
+    )
+    finding = run_doctor(findings).finding("skill-rename.old-skill.cursor")
+    assert finding.status is FindingStatus.SKIPPED
+    assert finding.severity is CheckSeverity.INFO
+
+
+def test_end_to_end_fixture_rename_plan_configure_doctor_idempotent(
+    temporary_home: Path, tmp_path: Path
+) -> None:
+    paths, catalog, _digest = _prepare_rename_repo(
+        temporary_home, tmp_path, legacy_present=True
+    )
+    legacy = temporary_home / ".cursor/skills/old-skill"
+    digest = hash_skill_tree(legacy)
+    record = _record(name="old-skill", target=AgentName.CURSOR, digest=digest)
+    store = StateStore(paths)
+    store.write(BootstrapState(managed={record.resource_id: record}))
+    setup = _resolved_setup("cursor")
+    contribution = configuration(setup, paths, catalog)
+    engine = ConfigurationEngine(
+        paths=paths, state_store=store, timestamp="20260729T120000Z"
+    )
+    run_configure(engine, contribution.specs, skill_renames=contribution.skill_renames)
+    assert not legacy.exists()
+    findings = assistant_checks(
+        enabled=frozenset({"cursor"}),
+        paths=paths,
+        runner=StatefulAssistantFake(temporary_home),
+    )
+    assert all(not item.id.startswith("skill-rename.") for item in findings)
+    contribution2 = configuration(setup, paths, catalog)
+    engine2 = ConfigurationEngine(
+        paths=paths, state_store=store, timestamp="20260729T130000Z"
+    )
+    report = run_configure(
+        engine2, contribution2.specs, skill_renames=contribution2.skill_renames
+    )
+    assert all(action.outcome == "unchanged" for action in report.actions)
+    assert all(
+        action.legacy_state == LegacyRenameState.CLEAN
+        for action in contribution2.skill_renames
+    )

@@ -289,7 +289,7 @@ def test_successful_all_orders_every_cli_seam(
     monkeypatch.setattr("ballen_config.cli.run_install", install)
     monkeypatch.setattr(
         "ballen_config.cli.run_configure",
-        lambda *_args: (
+        lambda *_args, **_kwargs: (
             events.append("configure")
             or ConfigureStageReport(actions=(), changed_count=0)
         ),
