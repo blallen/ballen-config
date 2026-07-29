@@ -112,6 +112,8 @@ repeated routing logic.
   and, under the proof rules below, removes.
 - Reimplement GitHub, GitLab, or other remote-service connectors.
 - Make GitHub and GitLab workflows artificially identical.
+- Add a generic `using-gitforge` router over the provider skills; see
+  [why the forge skills stay parallel](#why-the-forge-skills-stay-parallel).
 - Move normative dependency, testing, typing, documentation, or source-control
   policy out of `assistants/shared/standards/`.
 - Make one harness read another harness's installed files.
@@ -463,7 +465,9 @@ This is a substantial genericization, not a rename. The skill:
   neither a connector nor `glab` is available;
 - separates provider setup from workflow guidance;
 - previews mutations and confirms the canonical remote target;
-- requires explicit user intent before remote writes; and
+- requires explicit user intent before remote writes;
+- confirms the resolved remote is actually GitLab before proceeding, and names
+  `using-github` when it is not; and
 - never migrates authentication or MCP configuration.
 
 The skill owns safe GitLab procedure. A connector or `glab` owns API and
@@ -484,14 +488,46 @@ assumptions. The skill:
   neither a connector nor `gh` is available;
 - separates provider setup from workflow guidance;
 - previews mutations and confirms the canonical remote target;
-- requires explicit user intent before remote writes; and
+- requires explicit user intent before remote writes;
+- confirms the resolved remote is actually GitHub before proceeding, and names
+  `using-gitlab` when it is not; and
 - never migrates authentication or MCP configuration.
 
 Pull-request review threads, checks, and merge semantics differ from GitLab's
 merge requests. The skill keeps those differences visible rather than flattening
 them into shared vocabulary: structural parity is the goal, artificial identity
-is not. A generic forge router remains deferred until both skills demonstrate
-repeated routing logic.
+is not.
+
+#### Why the forge skills stay parallel
+
+The two contracts share every structural bullet and differ only in the provider
+command, which invites a generic `using-gitforge` skill that routes to one of
+them. That router is rejected rather than deferred.
+
+The shared bullets are a safety protocol, not shared content: identity from the
+checkout, provider discovery, read-only preference, documented fallback, preview,
+target confirmation, explicit mutation intent, and no credential migration. What
+differs is the domain vocabulary. A router shares the dispatch, which is the part
+worth least, and leaves the protocol duplicated anyway.
+
+Routing is also the most aggressive possible use of the least proven mechanism
+here. Cross-skill reference is unproven enough to need a
+[release gate](#release-gate) for one pair, and a router needs two hops of it.
+It degrades badly where the standards pair degrades well: `review-project-standards`
+still owns a review procedure if its reference fails, whereas a router that
+cannot route has no content of its own. The forge is usually named by the
+request, and the reciprocal guard bullets above resolve the remaining ambiguity
+for the cost of one sentence each.
+
+Parity is therefore maintained by drafting both skills in adjacent slices and
+reviewing them against each other, not by a shared tree. The mechanical version
+of that sharing is already scoped where its risk earns it: the roadmap's
+non-user-facing [`forge-comment-plan`](#forge-review) contract owns canonical
+target and head-SHA confirmation, batch validation, preview-before-apply,
+stale-head detection, and duplicate protection for the mutation-heavy review
+workflows, with provider skills owning API translation. Revisit a shared tree
+when that contract lands and there are six forge consumers rather than two, or if
+forge detection itself becomes a recurring burden.
 
 ### `using-jujutsu`
 
@@ -981,6 +1017,11 @@ enabled target, invoke `review-project-standards` and confirm from the target's
 observable output that discovery is consulted before review findings. Record the
 reference form that each harness satisfies, since cross-skill sibling access is
 not documented behavior.
+
+The forge guard smoke runs each provider skill against a fixture repository whose
+remote belongs to the other forge, and confirms the skill names its counterpart
+instead of proceeding. This is what replaces a router, so it is verified rather
+than assumed.
 
 ### Repository verification
 
