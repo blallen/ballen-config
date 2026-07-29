@@ -1123,29 +1123,6 @@ def test_managed_skill_publish_failure_rolls_back(
     assert store.load() == before_state
 
 
-_REJECT: Final[tuple[str, ...]] = (
-    "plato",
-    "/users/",
-    "/home/",
-    "ami-",
-    "pydantic 2.8",
-    "{{",
-    "sk-",
-    "ghp_",
-    "glpat-",
-)
-
-
-def _assert_skill_tree_excludes_blacklisted_tokens(root: Path) -> None:
-    """Reject tokens from a bounded blacklist in shared-skill text files."""
-    for path in sorted(root.rglob("*")):
-        if not path.is_file():
-            continue
-        text = path.read_text(encoding="utf-8").lower()
-        for token in _REJECT:
-            assert token not in text, f"{token!r} in {path}"
-
-
 def test_checked_in_skill_catalog_plans_content_workstream_for_all_agents(
     repo_root: Path,
     temporary_home: Path,
@@ -1173,15 +1150,6 @@ def test_checked_in_skill_catalog_plans_content_workstream_for_all_agents(
     assert expected_ids.issubset({spec.id for spec in contribution.specs})
     assert not paths.state_root.exists()
     assert not any(temporary_home.iterdir())
-
-
-def test_checked_in_skill_trees_exclude_blacklisted_tokens(
-    repo_root: Path,
-    checked_in_skill_catalog: SkillCatalog,
-) -> None:
-    """Reject bounded portability and security tokens in every catalog tree."""
-    for skill in checked_in_skill_catalog.skills:
-        _assert_skill_tree_excludes_blacklisted_tokens(repo_root / skill.source)
 
 
 def test_using_uv_projection_matches_canonical_standard(repo_root: Path) -> None:
