@@ -93,6 +93,10 @@ Action: Parallelize tests to reduce runtime to under 10 minutes."
 
 Replace vague language with specific numbers:
 
+Quantify only sourced or directly observed values. Preserve each value's source,
+context, timeframe, and denominator. If evidence is unavailable, state the gap
+or explicitly label a grounded estimate; never invent measurements or precision.
+
 | Vague                    | Quantified                              |
 | ------------------------ | --------------------------------------- |
 | "significantly improved" | "reduced latency by 40%"                |

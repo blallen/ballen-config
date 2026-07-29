@@ -1249,7 +1249,7 @@ def _assert_shared_skill_synchronized(
         ),
         pytest.param(
             "writing-executive-communications",
-            "d9ed78b2ad36585bb9467d1265a462cee33b5c65e52fb6fc58edadbb7b1a50a6",  # pragma: allowlist secret
+            "3c824845f43a60ad6af5221d9706e26226e707163afef091b0312fd3a8cd9d6b",  # pragma: allowlist secret
             "Genericized from plato/skills/reports-consultant-style at commit "
             "f3b91eead0eff7d0c9cada3bc8e689f7610fba55; commit history records the "
             "promotion.",
@@ -1383,13 +1383,20 @@ def test_using_uv_skill_has_distinct_sync_and_policy_handoff_contract(
 def test_writing_executive_communications_avoids_placeholder_option_labels(
     repo_root: Path,
 ) -> None:
-    """Keep descriptive option names and drop Plato skill identity."""
+    """Keep descriptive options and require evidence-bound quantification."""
     text = (
         repo_root / "assistants/shared/skills/writing-executive-communications/SKILL.md"
     ).read_text(encoding="utf-8")
+    normalized = " ".join(text.split())
+    assert "Incremental refactor" in text
+    assert "Complete rewrite" in text
     assert "Option A" not in text
     assert "Option B" not in text
     assert "reports-consultant-style" not in text
+    assert "sourced or directly observed values" in normalized
+    assert "source, context, timeframe, and denominator" in normalized
+    assert "state the gap or explicitly label a grounded estimate" in normalized
+    assert "never invent measurements or precision" in normalized
 
 
 def test_using_gitlab_names_github_counterpart_for_wrong_forge(
