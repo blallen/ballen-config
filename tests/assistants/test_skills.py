@@ -1224,7 +1224,7 @@ def _assert_shared_skill_synchronized(
     [
         pytest.param(
             "discover-project-standards",
-            "8c7819686294b30b6fa668c6e2b00c10c58bd3e5e78c8c8876cc7ec33063a722",  # pragma: allowlist secret
+            "c748dc5434c64aef74007c63966e5dfb2bc42914af78145bc70804806c06a08d",  # pragma: allowlist secret
             "Genericized from plato/skills/tooling-discover-standards at commit "
             "f3b91eead0eff7d0c9cada3bc8e689f7610fba55; commit history records the "
             "promotion.",
@@ -1233,7 +1233,7 @@ def _assert_shared_skill_synchronized(
         ),
         pytest.param(
             "review-project-standards",
-            "d1802e05d6235e19630e0cd1982ec1c9b99a1fae9bcffbfce06252256d7a22c6",  # pragma: allowlist secret
+            "9fe8886151b8db6130b0fb3685174fc10ae43531a2a63253cf2cdc5826c430f0",  # pragma: allowlist secret
             "Genericized from plato/skills/tooling-review-standards at commit "
             "f3b91eead0eff7d0c9cada3bc8e689f7610fba55; commit history records the "
             "promotion.",
@@ -1294,13 +1294,50 @@ def test_shared_skill_catalog_and_configuration_are_synchronized(
     )
 
 
-def test_review_skill_references_discovery_by_name(repo_root: Path) -> None:
-    """Composition uses the portable skill name, not the Plato source name."""
+def test_standards_pair_discovery_contract_is_stable(repo_root: Path) -> None:
+    """Discovery reports its reusable inventory without reviewing code."""
+    text = (
+        repo_root / "assistants/shared/skills/discover-project-standards/SKILL.md"
+    ).read_text(encoding="utf-8")
+    for field in (
+        "Ordered Instruction Sources",
+        "Applicable Standards",
+        "Repository-Selected Tools",
+        "Conflicts",
+        "Unavailable Sources",
+    ):
+        assert field in text
+    for instruction in (
+        "CLAUDE.md",
+        "AGENTS.md",
+        "GEMINI.md",
+        "COPILOT.md",
+        ".github/copilot-instructions.md",
+    ):
+        assert instruction in text
+    assert "applicable precedence" in text
+    assert "executable tool configuration" in text
+    assert "narrative standards" in text
+    assert "Do not review code or diffs." in text
+
+
+def test_standards_pair_review_uses_neutral_supplied_scope(repo_root: Path) -> None:
+    """Review composes discovery without selecting a VCS change scope."""
     text = (
         repo_root / "assistants/shared/skills/review-project-standards/SKILL.md"
     ).read_text(encoding="utf-8")
-    assert "discover-project-standards" in text
+    assert "Invoke `discover-project-standards`" in text
     assert "tooling-discover-standards" not in text
+    assert "supplied diff or changed-file set" in text
+    assert "A git diff" not in text
+    assert "Git/Jujutsu change-scope resolver" not in text
+    for outcome in (
+        "No applicable standards",
+        "Incomplete discovery",
+        "Clean review",
+        "Actionable findings",
+    ):
+        assert outcome in text
 
 
 def test_using_uv_projection_matches_canonical_standard(repo_root: Path) -> None:

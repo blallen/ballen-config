@@ -1,29 +1,37 @@
 ---
 name: discover-project-standards
 description: >-
-  Use when you need to locate human-written project standards and lesson
-  archives in a repository and return a concise inventory for downstream
-  review skills, without analyzing application code.
+  Use when you need to locate repository instruction sources, human-written
+  standards, and repository-selected tools for downstream review skills,
+  without analyzing application code.
 ---
-
-<!-- markdownlint-disable -->
 
 # Discover Project Standards
 
-Discover human-written standards and lesson files for the current repository.
-This skill is a shared primitive for review workflows; it does not analyze code.
+Discover repository instruction sources and human-written standards for the
+current repository. This shared primitive does not analyze code.
 
 ## Instructions
 
-Probe the paths below. Read every path that exists. Do not infer standards from
-missing files.
+Probe every supported location below. Read each existing instruction or
+standards file. Do not infer standards from missing files.
 
 | Category | Locations |
-|----------|-----------|
-| Cursor workspace rules | `.cursor/rules/*.mdc`, `.cursor/rules/*.md` |
+| --- | --- |
+| Cursor workspace rules | `.cursorrules`, `.cursor/rules/*.mdc`, `.cursor/rules/*.md` |
 | Agent instructions | `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, `COPILOT.md`, `.github/copilot-instructions.md` |
 | Contribution and docs standards | `CONTRIBUTING.md`; under `docs/`, discover style or coding guides by name (glob or filename keywords such as `style`, `standard`, `guide`, `conventions`) |
 | Accumulated lessons | `lessons_learned.mdc` or similarly named lesson archives under `.cursor/rules/` |
+
+Discover repository-local executable tool configuration (for example,
+`pyproject.toml`, `package.json`, `Makefile`, CI workflows, formatter, linter,
+or test-runner configuration) as evidence of repository-selected tools. Record
+the selected tools and their source paths, but do not treat tool configuration
+as narrative standards.
+
+Record applicable precedence when the repository instructions or active agent
+declare it. Do not invent a universal precedence: report conflicting or
+unresolved precedence in **Conflicts**.
 
 Do not treat another repository’s checked-in `assistants/shared/standards/` tree
 (or any personal managed-standards mirror) as an implicit standard for the
@@ -31,38 +39,34 @@ target project unless that tree is part of the project under review.
 
 ## Output Contract
 
-Return a compact inventory with:
-
-1. **Found files** by category
-2. **Missing expected locations** by category
-3. **Prioritized files to read first** (when many files exist)
-4. **Coverage note** (for example: "No lessons file found; proceeding with rule files only")
-
-Use this structure:
+Return this stable logical result for downstream consumers:
 
 ```markdown
 ## Standards Discovery Inventory
 
-### Found
-- Cursor workspace rules: `.cursor/rules/104_python_style_guide.mdc`, ...
-- Agent instructions: `CLAUDE.md`
-- Contribution/docs standards: `CONTRIBUTING.md`
-- Accumulated lessons: `.cursor/rules/lessons_learned.mdc`
+### Ordered Instruction Sources
+1. `AGENTS.md` — repository-declared precedence
+2. `.cursor/rules/engineering.mdc` — no conflicting declaration
 
-### Missing
-- Agent instructions: `AGENTS.md`, `GEMINI.md`, `COPILOT.md`
+### Applicable Standards
+- `CONTRIBUTING.md` — contribution requirements
+- `docs/style-guide.md` — documentation style
 
-### Prioritized Read Order
-1. `.cursor/rules/104_python_style_guide.mdc`
-2. `.cursor/rules/test_rules_micro.mdc`
-3. `CLAUDE.md`
+### Repository-Selected Tools
+- Ruff — `pyproject.toml`
+- pytest — `pyproject.toml`
 
-### Coverage Note
-No lesson archive beyond `lessons_learned.mdc` found.
+### Conflicts
+- No conflict found.
+
+### Unavailable Sources
+- `GEMINI.md`, `COPILOT.md`, and lesson archives were not found.
 ```
 
-When no applicable standards files exist, say so plainly, leave Found empty or
-nearly empty, list Missing expected locations, and stop after the inventory.
+When no applicable standards exist, say so explicitly in **Applicable
+Standards** and stop after the inventory. When a source is unreadable or
+discovery cannot cover a relevant location, record incomplete coverage in
+**Unavailable Sources**.
 
 ## Boundaries
 
