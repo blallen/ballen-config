@@ -597,15 +597,22 @@ def run_configure(
     skill_renames: Sequence[Any] = (),
 ) -> ConfigureStageReport:
     """Plan, apply specs, then apply rename cleanups under one mutation lock."""
-    from ballen_config.assistants.skills import apply_skill_rename_cleanups
+    from ballen_config.assistants.skills import (
+        apply_skill_rename_cleanups,
+        preflight_skill_rename_cleanups,
+        verify_skill_rename_successors,
+    )
 
     with engine.state_store.mutation():
         planned = engine.plan(specs)
+        frozen_renames = tuple(skill_renames)
+        preflight_skill_rename_cleanups(engine, frozen_renames)
         ordered = tuple(sorted(specs, key=lambda spec: spec.id))
         applied = tuple(
             engine.apply(spec) for spec, _ in zip(ordered, planned, strict=True)
         )
-        apply_skill_rename_cleanups(engine, tuple(skill_renames))
+        verify_skill_rename_successors(engine, frozen_renames)
+        apply_skill_rename_cleanups(engine, frozen_renames)
     return ConfigureStageReport(
         actions=applied,
         changed_count=sum(action.outcome != "unchanged" for action in applied),

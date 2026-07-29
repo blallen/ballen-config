@@ -512,6 +512,118 @@ def _has_exact_successor_proof(
         return False
 
 
+def _require_exact_successor_proof(
+    *,
+    action: SkillRenameAction,
+    state: BootstrapState,
+    home: Path,
+) -> None:
+    """Raise when one frozen successor tree and receipt are not exact."""
+    if not _has_exact_successor_proof(action=action, state=state, home=home):
+        raise SkillRenameBlockedError(
+            action.from_name,
+            action.to_name,
+            action.target,
+            LegacyRenameState.BLOCKED_UNMANAGED_SUCCESSOR,
+        )
+
+
+def _require_frozen_legacy_proof(
+    *,
+    action: SkillRenameAction,
+    state: BootstrapState,
+    home: Path,
+) -> RenameTargetClassification:
+    """Reclassify one frozen legacy action and require its exact plan state."""
+    classification = classify_rename_target(
+        from_name=action.from_name,
+        to_name=action.to_name,
+        target=action.target,
+        home=home,
+        state=state,
+        successor_digest=action.successor_destination_digest,
+        enabled=True,
+    )
+    if (
+        classification.legacy_state != action.legacy_state
+        or classification.legacy_record != action.legacy_record
+    ):
+        raise SkillRenameBlockedError(
+            action.from_name,
+            action.to_name,
+            action.target,
+            classification.legacy_state,
+        )
+    return classification
+
+
+def _existing_successor_matches_frozen_tree(
+    *,
+    action: SkillRenameAction,
+    home: Path,
+) -> bool:
+    """Return whether an already present successor has the frozen tree digest."""
+    successor_destination = _candidate(home, action.successor_relative)
+    metadata = _metadata(successor_destination)
+    if metadata is None or not stat.S_ISDIR(metadata.st_mode):
+        return False
+    try:
+        return (
+            hash_skill_tree(successor_destination)
+            == action.successor_destination_digest
+        )
+    except ValueError:
+        return False
+
+
+def preflight_skill_rename_cleanups(
+    engine: ConfigurationEngine,
+    actions: tuple[SkillRenameAction, ...],
+) -> None:
+    """Prove every frozen legacy cleanup remains safe before any apply.
+
+    Caller holds the outer state mutation lock. Managed-spec planning has already
+    validated each successor source and destination feasibility.
+    """
+    state = engine.state_store.load()
+    for action in sorted(
+        actions, key=lambda item: (item.from_name, item.to_name, item.target.value)
+    ):
+        _require_frozen_legacy_proof(
+            action=action,
+            state=state,
+            home=engine.paths.home,
+        )
+        if _existing_successor_matches_frozen_tree(
+            action=action,
+            home=engine.paths.home,
+        ):
+            _require_exact_successor_proof(
+                action=action,
+                state=state,
+                home=engine.paths.home,
+            )
+
+
+def verify_skill_rename_successors(
+    engine: ConfigurationEngine,
+    actions: tuple[SkillRenameAction, ...],
+) -> None:
+    """Prove every successor tree and receipt before any legacy cleanup.
+
+    Caller holds the outer state mutation lock after all managed specs apply.
+    """
+    state = engine.state_store.load()
+    for action in sorted(
+        actions, key=lambda item: (item.from_name, item.to_name, item.target.value)
+    ):
+        _require_exact_successor_proof(
+            action=action,
+            state=state,
+            home=engine.paths.home,
+        )
+
+
 def apply_skill_rename_cleanups(
     engine: ConfigurationEngine,
     actions: tuple[SkillRenameAction, ...],
@@ -530,36 +642,16 @@ def apply_skill_rename_cleanups(
         actions, key=lambda item: (item.from_name, item.to_name, item.target.value)
     ):
         state = engine.state_store.load()
-        if not _has_exact_successor_proof(
+        _require_exact_successor_proof(
             action=action,
             state=state,
             home=engine.paths.home,
-        ):
-            raise SkillRenameBlockedError(
-                action.from_name,
-                action.to_name,
-                action.target,
-                LegacyRenameState.BLOCKED_UNMANAGED_SUCCESSOR,
-            )
-        classification = classify_rename_target(
-            from_name=action.from_name,
-            to_name=action.to_name,
-            target=action.target,
-            home=engine.paths.home,
-            state=state,
-            successor_digest=action.successor_destination_digest,
-            enabled=True,
         )
-        if (
-            classification.legacy_state != action.legacy_state
-            or classification.legacy_record != action.legacy_record
-        ):
-            raise SkillRenameBlockedError(
-                action.from_name,
-                action.to_name,
-                action.target,
-                classification.legacy_state,
-            )
+        classification = _require_frozen_legacy_proof(
+            action=action,
+            state=state,
+            home=engine.paths.home,
+        )
         if action.legacy_state == LegacyRenameState.CLEAN:
             continue
         if action.legacy_record is None:
