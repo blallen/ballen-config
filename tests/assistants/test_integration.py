@@ -749,11 +749,11 @@ def test_aggregate_configure_copies_and_tracks_shared_jujutsu_workflow_skill(
         home=temporary_home,
         runner=fake_runner,
     )
-    source = repo_root / "assistants/shared/skills/jujutsu-workflow"
+    source = repo_root / "assistants/shared/skills/using-jujutsu"
     destinations = {
-        "cursor": temporary_home / ".cursor/skills/jujutsu-workflow",
-        "claude-code": temporary_home / ".claude/skills/jujutsu-workflow",
-        "codex": temporary_home / ".agents/skills/jujutsu-workflow",
+        "cursor": temporary_home / ".cursor/skills/using-jujutsu",
+        "claude-code": temporary_home / ".claude/skills/using-jujutsu",
+        "codex": temporary_home / ".agents/skills/using-jujutsu",
     }
 
     assert first.exit_code == 0
@@ -770,12 +770,12 @@ def test_aggregate_configure_copies_and_tracks_shared_jujutsu_workflow_skill(
         .managed
     )
     assert set(records) >= {
-        "shared-skill-jujutsu-workflow-cursor",
-        "shared-skill-jujutsu-workflow-claude-code",
-        "shared-skill-jujutsu-workflow-codex",
+        "shared-skill-using-jujutsu-cursor",
+        "shared-skill-using-jujutsu-claude-code",
+        "shared-skill-using-jujutsu-codex",
     }
     for target, destination in destinations.items():
-        resource_id = f"shared-skill-jujutsu-workflow-{target}"
+        resource_id = f"shared-skill-using-jujutsu-{target}"
         receipt = records[resource_id]
         assert receipt.resource_id == resource_id
         assert receipt.destination == str(destination.relative_to(temporary_home))
@@ -805,10 +805,10 @@ def test_aggregate_plan_skips_divergent_cursor_shared_skill_when_cursor_skipped(
     fake_runner: StatefulAssistantFake,
 ) -> None:
     """Allow a Claude and Codex plan to ignore a skipped Cursor skill tree."""
-    conflict = temporary_home / ".cursor/skills/jujutsu-workflow"
+    conflict = temporary_home / ".cursor/skills/using-jujutsu"
     conflict.mkdir(parents=True)
     (conflict / "SKILL.md").write_text(
-        "---\nname: jujutsu-workflow\ndescription: Different.\n---\n"
+        "---\nname: using-jujutsu\ndescription: Different.\n---\n"
     )
     output: list[str] = []
 
@@ -822,9 +822,9 @@ def test_aggregate_plan_skips_divergent_cursor_shared_skill_when_cursor_skipped(
 
     assert result.exit_code == 0
     rendered = "\n".join(output)
-    assert "shared-skill-jujutsu-workflow-claude-code" in rendered
-    assert "shared-skill-jujutsu-workflow-codex" in rendered
-    assert "shared-skill-jujutsu-workflow-cursor" not in rendered
+    assert "shared-skill-using-jujutsu-claude-code" in rendered
+    assert "shared-skill-using-jujutsu-codex" in rendered
+    assert "shared-skill-using-jujutsu-cursor" not in rendered
 
 
 def test_all_agent_skips_leave_no_assistant_plan_or_native_commands(

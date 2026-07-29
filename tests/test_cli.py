@@ -184,10 +184,10 @@ def test_shared_skill_collision_reports_a_redacted_actionable_outcome(
     fake_home: Path,
 ) -> None:
     """Map a real managed-skill collision to its stable relative-path report."""
-    collision = fake_home / ".cursor/skills/jujutsu-workflow"
+    collision = fake_home / ".cursor/skills/using-jujutsu"
     collision.mkdir(parents=True)
     (collision / "SKILL.md").write_text(
-        "---\nname: jujutsu-workflow\ndescription: Different.\n---\n"
+        "---\nname: using-jujutsu\ndescription: Different.\n---\n"
     )
 
     def shared_skill_configuration(
@@ -220,8 +220,8 @@ def test_shared_skill_collision_reports_a_redacted_actionable_outcome(
         exit_code=2,
         report=StageReport(
             outcomes=(
-                "shared skill collision: jujutsu-workflow at "
-                ".cursor/skills/jujutsu-workflow",
+                "shared skill collision: using-jujutsu at "
+                ".cursor/skills/using-jujutsu",
             )
         ),
     )
