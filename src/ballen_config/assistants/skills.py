@@ -836,6 +836,8 @@ def configuration(
     setup: ResolvedSetup,
     paths: RuntimePaths,
     catalog: SkillCatalog,
+    *,
+    include_rename_actions: bool = True,
 ) -> ConfigurationContribution:
     """Resolve every eligible shared skill through core tree primitives.
 
@@ -864,11 +866,15 @@ def configuration(
     if not selected and not catalog.renames:
         return ConfigurationContribution()
     state = StateStore(paths).load()
-    skill_renames = plan_skill_renames(
-        catalog=catalog,
-        setup=setup,
-        paths=paths,
-        state=state,
+    skill_renames = (
+        plan_skill_renames(
+            catalog=catalog,
+            setup=setup,
+            paths=paths,
+            state=state,
+        )
+        if include_rename_actions
+        else ()
     )
     if not selected:
         return ConfigurationContribution(skill_renames=skill_renames)

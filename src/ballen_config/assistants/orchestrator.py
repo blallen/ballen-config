@@ -194,6 +194,8 @@ class AssistantOrchestrator:
         self,
         setup: ResolvedSetup,
         paths: RuntimePaths,
+        *,
+        include_rename_actions: bool = True,
     ) -> ConfigurationContribution:
         """Compose target configuration from preloaded models."""
         desired = self._require(setup, paths)
@@ -226,13 +228,26 @@ class AssistantOrchestrator:
                     home=paths.home,
                     enabled=enabled,
                 ),
-                skills_configuration(setup, paths, desired.skill_catalog),
+                skills_configuration(
+                    setup,
+                    paths,
+                    desired.skill_catalog,
+                    include_rename_actions=include_rename_actions,
+                ),
             )
         )
         return replace(
             contribution,
             specs=tuple(sorted(contribution.specs, key=lambda spec: spec.id)),
         )
+
+    def diagnostic_configuration(
+        self,
+        setup: ResolvedSetup,
+        paths: RuntimePaths,
+    ) -> ConfigurationContribution:
+        """Build ordinary configuration without mutating skill rename actions."""
+        return self.configuration(setup, paths, include_rename_actions=False)
 
     def doctor_checks(
         self,
