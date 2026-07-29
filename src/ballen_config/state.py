@@ -1,8 +1,15 @@
 """Private, versioned state for bootstrap ownership and outcomes."""
 
+from __future__ import annotations
+
+import errno
+import fcntl
 import os
 import stat
 import tempfile
+import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Literal
 
@@ -42,12 +49,21 @@ class BootstrapState(BaseModel):
     managed: dict[str, ManagedRecord] = Field(default_factory=dict)
 
 
+class StateMutationContentionError(RuntimeError):
+    """Raised when a non-blocking mutation lock acquire fails."""
+
+
 class StateStore:
     """Atomically persist private bootstrap state."""
 
     def __init__(self, paths: RuntimePaths) -> None:
         self.paths = paths
         self.path = paths.state_root / "state.json"
+        self._lock_path = paths.state_root / ".mutation.lock"
+        self._lock_fd: int | None = None
+        self._lock_depth = 0
+        self._lock_owner: int | None = None
+        self._thread_guard = threading.Lock()
 
     def _validate_paths(self) -> None:
         """Reject state paths outside home or through symlinked components."""
@@ -66,6 +82,67 @@ class StateStore:
             raise ValueError(f"symlinked path component: {self.path}")
         if not stat.S_ISREG(metadata.st_mode):
             raise ValueError(f"state path is not a regular file: {self.path}")
+
+    @contextmanager
+    def mutation(self, *, blocking: bool = True) -> Iterator[None]:
+        """Acquire the exclusive advisory mutation lock.
+
+        Reentrant for the owning thread. Non-blocking acquire raises
+        ``StateMutationContentionError`` instead of waiting.
+        """
+        self._acquire(blocking=blocking)
+        try:
+            yield
+        finally:
+            self._release()
+
+    def _acquire(self, *, blocking: bool) -> None:
+        ident = threading.get_ident()
+        with self._thread_guard:
+            if self._lock_depth > 0:
+                if self._lock_owner != ident:
+                    raise StateMutationContentionError(
+                        "mutation lock held by another thread"
+                    )
+                self._lock_depth += 1
+                return
+            self._validate_paths()
+            self.paths.state_root.mkdir(parents=True, mode=0o700, exist_ok=True)
+            self.paths.state_root.chmod(0o700)
+            fd = os.open(
+                self._lock_path,
+                os.O_CREAT | os.O_RDWR,
+                0o600,
+            )
+            os.fchmod(fd, 0o600)
+            flags = fcntl.LOCK_EX if blocking else fcntl.LOCK_EX | fcntl.LOCK_NB
+            try:
+                fcntl.flock(fd, flags)
+            except OSError as error:
+                os.close(fd)
+                if error.errno in {errno.EACCES, errno.EAGAIN}:
+                    raise StateMutationContentionError(
+                        "mutation lock contention"
+                    ) from error
+                raise
+            self._lock_fd = fd
+            self._lock_owner = ident
+            self._lock_depth = 1
+
+    def _release(self) -> None:
+        with self._thread_guard:
+            if self._lock_depth <= 0 or self._lock_fd is None:
+                raise RuntimeError("mutation lock release without acquire")
+            self._lock_depth -= 1
+            if self._lock_depth > 0:
+                return
+            fd = self._lock_fd
+            self._lock_fd = None
+            self._lock_owner = None
+            try:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+            finally:
+                os.close(fd)
 
     def load(self) -> BootstrapState:
         """Load state, or return empty versioned state when absent."""
@@ -106,9 +183,10 @@ class StateStore:
         Args:
             record: Result to associate with the resource identifier.
         """
-        state = self.load()
-        installs = {**state.installs, record.resource_id: record}
-        self.write(state.model_copy(update={"installs": installs}))
+        with self.mutation():
+            state = self.load()
+            installs = {**state.installs, record.resource_id: record}
+            self.write(state.model_copy(update={"installs": installs}))
 
     def record_managed(self, record: ManagedRecord) -> None:
         """Record managed-destination ownership metadata.
@@ -116,6 +194,7 @@ class StateStore:
         Args:
             record: Ownership record to associate with the resource identifier.
         """
-        state = self.load()
-        managed = {**state.managed, record.resource_id: record}
-        self.write(state.model_copy(update={"managed": managed}))
+        with self.mutation():
+            state = self.load()
+            managed = {**state.managed, record.resource_id: record}
+            self.write(state.model_copy(update={"managed": managed}))
