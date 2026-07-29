@@ -5,6 +5,7 @@ import re
 import stat
 from collections.abc import Mapping
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 from types import MappingProxyType
 from typing import Final, Literal
@@ -209,6 +210,158 @@ def _matching_record(
         if key != resource_id or candidate.resource_id != resource_id:
             raise ValueError("managed record mismatch")
     return record
+
+
+class LegacyRenameState(StrEnum):
+    """Classification of one target for a declared skill rename."""
+
+    CLEAN = "clean"
+    EXACT_LIVE = "exact_live"
+    EXACT_STALE = "exact_stale"
+    BLOCKED_AMBIGUOUS_RECEIPT = "blocked_ambiguous_receipt"
+    BLOCKED_UNMANAGED_OR_AMBIGUOUS = "blocked_unmanaged_or_ambiguous"
+    BLOCKED_DRIFT = "blocked_drift"
+    BLOCKED_UNMANAGED_SUCCESSOR = "blocked_unmanaged_successor"
+    SKIPPED = "skipped"
+
+
+@dataclass(frozen=True)
+class RenameTargetClassification:
+    """Per-target rename classification with relative destinations."""
+
+    target: AgentName
+    legacy_state: LegacyRenameState
+    legacy_record: ManagedRecord | None
+    legacy_relative: Path
+    successor_relative: Path
+
+
+def classify_rename_target(
+    *,
+    from_name: str,
+    to_name: str,
+    target: AgentName,
+    home: Path,
+    state: BootstrapState,
+    successor_digest: str,
+    enabled: bool,
+) -> RenameTargetClassification:
+    """Classify one enabled or skipped target for a declared rename.
+
+    Args:
+        from_name: Retired skill directory name.
+        to_name: Successor skill directory name declared in the catalog.
+        target: Concrete coding-agent target under consideration.
+        home: Existing user home root.
+        state: Read-only managed-resource ownership snapshot.
+        successor_digest: Expected digest of the successor source tree.
+        enabled: Whether the target is selected for this run.
+
+    Returns:
+        Classification including relative legacy and successor paths.
+    """
+    legacy_relative = _SKILL_ROOTS[target] / from_name
+    successor_relative = _SKILL_ROOTS[target] / to_name
+    if not enabled:
+        return RenameTargetClassification(
+            target=target,
+            legacy_state=LegacyRenameState.SKIPPED,
+            legacy_record=None,
+            legacy_relative=legacy_relative,
+            successor_relative=successor_relative,
+        )
+
+    home = _validated_home(home)
+    resource_id = f"shared-skill-{from_name}-{target.value}"
+    ambiguous_receipt = False
+    try:
+        record = _matching_record(
+            state=state,
+            resource_id=resource_id,
+            relative_destination=legacy_relative,
+        )
+    except ValueError:
+        record = None
+        ambiguous_receipt = True
+
+    destination = _candidate(home, legacy_relative)
+    metadata = _metadata(destination)
+    tree_present = metadata is not None and stat.S_ISDIR(metadata.st_mode)
+    live_digest: str | None = None
+    if tree_present:
+        try:
+            live_digest = hash_skill_tree(destination)
+        except ValueError:
+            live_digest = None
+
+    if ambiguous_receipt:
+        legacy_state = (
+            LegacyRenameState.BLOCKED_AMBIGUOUS_RECEIPT
+            if not tree_present
+            else LegacyRenameState.BLOCKED_UNMANAGED_OR_AMBIGUOUS
+        )
+    elif not tree_present and record is None:
+        legacy_state = LegacyRenameState.CLEAN
+    elif (
+        tree_present
+        and record is not None
+        and live_digest is not None
+        and live_digest == record.destination_digest
+    ):
+        legacy_state = LegacyRenameState.EXACT_LIVE
+    elif not tree_present and record is not None:
+        legacy_state = LegacyRenameState.EXACT_STALE
+    elif tree_present and (
+        record is None or live_digest is None
+    ):
+        legacy_state = LegacyRenameState.BLOCKED_UNMANAGED_OR_AMBIGUOUS
+    elif (
+        tree_present
+        and record is not None
+        and live_digest is not None
+        and live_digest != record.destination_digest
+    ):
+        legacy_state = LegacyRenameState.BLOCKED_DRIFT
+    else:
+        legacy_state = LegacyRenameState.BLOCKED_UNMANAGED_OR_AMBIGUOUS
+
+    if legacy_state in {
+        LegacyRenameState.CLEAN,
+        LegacyRenameState.EXACT_LIVE,
+        LegacyRenameState.EXACT_STALE,
+    }:
+        successor_destination = _candidate(home, successor_relative)
+        successor_metadata = _metadata(successor_destination)
+        if (
+            successor_metadata is not None
+            and stat.S_ISDIR(successor_metadata.st_mode)
+        ):
+            try:
+                successor_live = hash_skill_tree(successor_destination)
+            except ValueError:
+                successor_live = None
+            successor_resource_id = f"shared-skill-{to_name}-{target.value}"
+            try:
+                successor_record = _matching_record(
+                    state=state,
+                    resource_id=successor_resource_id,
+                    relative_destination=successor_relative,
+                )
+            except ValueError:
+                successor_record = None
+            if (
+                successor_live == successor_digest
+                and successor_record is None
+            ):
+                legacy_state = LegacyRenameState.BLOCKED_UNMANAGED_SUCCESSOR
+
+    return RenameTargetClassification(
+        target=target,
+        legacy_state=legacy_state,
+        legacy_record=record,
+        legacy_relative=legacy_relative,
+        successor_relative=successor_relative,
+    )
 
 
 def plan_skill_copies(
