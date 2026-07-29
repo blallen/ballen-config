@@ -7,11 +7,14 @@ import subprocess
 from collections.abc import Sequence
 from pathlib import Path, PurePath
 
-from pydantic import BaseModel, ConfigDict
+import yaml
+from pydantic import BaseModel, ConfigDict, ValidationError
+from yaml import YAMLError
 
 from ballen_config.assistants.cursor_mcp import (
     is_approved_atlassian_mcp_source,
 )
+from ballen_config.assistants.models import SkillCatalog
 
 _GENERATED_PARTS = frozenset(
     {
@@ -88,6 +91,7 @@ _LOCAL_MARKETPLACE_PATTERN = re.compile(
     rb"(?:trust_level\s*=\s*['\"]trusted['\"]|local_marketplace\s*[:=]|source\s*[:=]\s*['\"]?(?:file://|/|~/|\./|\.\./))",
     re.IGNORECASE,
 )
+_SKILL_CATALOG_PATH = PurePath("assistants/shared/skills/catalog.yaml")
 
 
 class Violation(BaseModel):
@@ -256,6 +260,32 @@ def _is_operational(path: Path) -> bool:
     return bool(path.parts and path.parts[0] in _OPERATIONAL_DIRECTORIES)
 
 
+def _repository_import_content(path: Path, content: bytes) -> bytes:
+    """Return catalog content without non-executable provenance when valid.
+
+    Args:
+        path: Repository-relative file path.
+        content: Original file bytes.
+
+    Returns:
+        Bytes to inspect for repository-specific imports. Invalid catalog input
+        returns the original bytes so policy enforcement fails closed.
+    """
+    if PurePath(path.as_posix()) != _SKILL_CATALOG_PATH:
+        return content
+    try:
+        catalog = SkillCatalog.model_validate(yaml.safe_load(content.decode("utf-8")))
+        return yaml.safe_dump(
+            catalog.model_dump(
+                mode="json",
+                by_alias=True,
+                exclude={"skills": {"__all__": {"provenance"}}},
+            )
+        ).encode()
+    except (UnicodeDecodeError, ValidationError, TypeError, ValueError, YAMLError):
+        return content
+
+
 def _content_rules(path: Path, content: bytes) -> set[str]:
     """Collect content policy rules that a validated file violates.
 
@@ -286,7 +316,7 @@ def _content_rules(path: Path, content: bytes) -> set[str]:
         rules.add("forbidden-mcp")
     if path.name == "mcp.json":
         rules.add("forbidden-mcp")
-    if _REPOSITORY_IMPORT_PATTERN.search(content):
+    if _REPOSITORY_IMPORT_PATTERN.search(_repository_import_content(path, content)):
         rules.add("repo-specific-import")
     if _LOCAL_MARKETPLACE_PATTERN.search(content):
         rules.add("local-marketplace")
