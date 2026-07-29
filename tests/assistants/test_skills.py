@@ -1301,3 +1301,29 @@ def test_using_uv_catalog_and_configuration_are_synchronized(
             "3a34c9b01fe08bba8690219381fa6c056d4c580adf7c62820701c3284bcdd363"  # pragma: allowlist secret
         ),
     )
+
+
+def test_writing_executive_communications_avoids_placeholder_option_labels(
+    repo_root: Path,
+) -> None:
+    """Keep descriptive option names and drop Plato skill identity."""
+    text = (
+        repo_root / "assistants/shared/skills/writing-executive-communications/SKILL.md"
+    ).read_text(encoding="utf-8")
+    assert "Option A" not in text
+    assert "Option B" not in text
+    assert "reports-consultant-style" not in text
+
+
+def test_writing_executive_communications_catalog_and_configuration_are_synchronized(
+    repo_root: Path, temporary_home: Path
+) -> None:
+    """Pin writing-executive-communications catalog and configuration."""
+    _assert_shared_skill_synchronized(
+        repo_root,
+        temporary_home,
+        name="writing-executive-communications",
+        tree_digest=(
+            "d9ed78b2ad36585bb9467d1265a462cee33b5c65e52fb6fc58edadbb7b1a50a6"  # pragma: allowlist secret
+        ),
+    )
