@@ -2,7 +2,10 @@
 
 ## Status
 
-Detailed design for review.
+Detailed design. Engine scope is a bounded rename protocol plus the coarse
+mutation lock its ownership proof requires; an earlier revision generalized this
+into a retirement subsystem and has been reduced. Ready for an implementation
+plan.
 
 This document defines Workstream 2 of the
 [Plato generic assets migration program](2026-07-27-plato-generic-assets-migration-design.md).
@@ -32,11 +35,11 @@ skill root, records a digest-backed managed receipt, detects unmanaged
 collisions, preserves drift, and converges idempotently. Whole-harness skip
 already removes a target from selection.
 
-It does not provide retirement. The engine has no path for removing a skill that
-leaves the catalog, and making such a removal safe also requires serialized state
-mutation, target-isolated planning, and explicit adoption of byte-identical
-content. Those four additions are the engine work this workstream contributes; see
-[the rename and orphan cleanup](#jujutsu-workflow-rename-and-orphan-cleanup).
+It cannot rename a skill. The engine has no path for removing a managed record
+that leaves the catalog, and making such a removal safe also requires serializing
+the tree and receipt mutation it depends on. Those two additions are the engine
+work this workstream contributes; see
+[the rename protocol](#jujutsu-workflow-rename-protocol).
 
 An earlier revision of this design delivered five of these skills as a personal
 plugin named `ballen-workflows`, with three native manifests, two root
@@ -82,9 +85,9 @@ repeated routing logic.
 
 - Deliver seven reviewed, portable workflow skills from one authored tree in
   `ballen-config`.
-- Deliver every skill through the existing `SkillSpec` schema and installer
-  unchanged. The only schema addition is the retirement declaration required to
-  make cleanup safe.
+- Keep the existing `SkillSpec` delivery model intact, and deliver every skill
+  through it. The only schema addition is the rename declaration required to make
+  cleanup safe.
 - Install every first-release skill for Cursor, Claude Code, and Codex in the
   `default` profile, subject only to the existing whole-harness skip.
 - Preserve native plugins, connectors, and command-line tools as authoritative
@@ -93,9 +96,8 @@ repeated routing logic.
   in skills.
 - Rename `jujutsu-workflow` to `using-jujutsu` without deleting unmanaged or
   modified content.
-- Add the generic orphan cleanup the engine currently lacks, so any skill can
-  be renamed or retired safely, along with the state serialization, target
-  isolation, and adoption behavior that cleanup depends on.
+- Add the bounded rename protocol the engine currently lacks, together with the
+  coarse mutation lock its ownership proof depends on.
 - Preserve source provenance and a clear roadmap for later generic skills.
 
 ## Non-Goals
@@ -120,6 +122,10 @@ repeated routing logic.
   release.
 - Add `conduct-self-review` before its quality, test, type, and change-scope
   contracts exist.
+- Build a general retirement subsystem: successor-free retirement, adoption of
+  unmanaged content, per-target results, or a reusable executable-action
+  hierarchy. This workstream needs one safe rename; see
+  [deferred generic retirement](#deferred-generic-retirement).
 
 ## Design Invariants
 
@@ -147,16 +153,18 @@ repeated routing logic.
 11. Only state proven to be managed by `ballen-config` may be replaced or
     removed. Matching bytes without an exact managed receipt never authorize
     deletion.
-12. Retirement is declared, never inferred. Absence from a resolved selection
-    is not evidence of retirement, because profile, include, and skip
-    resolution all produce the same absence.
-13. A target whose legacy ownership is ambiguous or drifted receives no
+12. A rename is declared, never inferred. Absence from a resolved selection is
+    not evidence of a rename, because profile, include, and skip resolution all
+    produce the same absence.
+13. Ambiguous or drifted legacy ownership blocks the run and installs no
     replacement. No completed run leaves two skills claiming one procedure on a
-    target it converged, and any interrupted run leaves a recognized state that
-    the next run resolves before other work.
-14. Every state mutation is serialized. A destructive mutation is planned,
-    applied, and reported like any other action, never performed as a side
-    effect of inspection.
+    target it converged; an interrupted run leaves either a recognized state the
+    next run resolves before other work or a blocked state it reports.
+14. Tree and receipt mutation is serialized as one unit against concurrent runs;
+    a crash can still separate them, so that state is classified rather than
+    assumed away. A destructive mutation
+    is planned, applied, and reported like any other action, never performed as a
+    side effect of inspection.
 
 ## Architecture
 
@@ -260,52 +268,50 @@ skills:
     provenance: Genericized from plato/skills/reports-consultant-style at commit f3b91eead0eff7d0c9cada3bc8e689f7610fba55; commit history records the promotion.
     portability_status: reviewed-generic
 
-retired:
-  - name: jujutsu-workflow
-    replaced_by: using-jujutsu
-    reason: Renamed for consistency with the using-<tool> convention.
+renames:
+  - from: jujutsu-workflow
+    to: using-jujutsu
 ```
 
-### Retirement declarations
+### Rename declarations
 
-`retired` is the one schema addition. It is a tuple of frozen entries carrying a
-retired skill `name`, an optional `replaced_by` naming a current skill, and a
-`reason`. Validation rejects a `name` that still appears in `skills`, a
-`replaced_by` that does not, and duplicate names.
+`renames` is the one schema addition: a tuple of frozen entries carrying `from`
+and `to`. Both are required, so a rename without a successor is unrepresentable.
+Validation rejects a `from` that still appears in `skills`, a `to` that does not,
+and duplicate `from` values.
 
-The declaration exists because retirement cannot be safely inferred; see
-[classification](#classification) for how it is consumed. Its cost is one small
-model and one catalog section, which is the correct trade against deleting a
-skill the operator never retired.
+The declaration exists because a rename cannot be safely inferred from local
+state. `_eligible_targets` drops a skill whose profiles do not intersect the
+active profiles, so a skill excluded by the current profile is indistinguishable
+from one that was renamed. Keying cleanup on resolved desired state would retire
+every `work`-profile skill during a `--profile default` run. All seven current
+entries are `[default]`, but `work` inherits from `default` and the roadmap
+contemplates work-only skills, so an explicit declaration is the safe form.
+Candidacy is therefore computed from the complete parsed catalog, before profile,
+include, target, or skip resolution.
 
-It carries **intent only**. It deliberately does not restate historical target
-coverage or an expected legacy digest, because both already exist in per-machine
-state and a second copy in the repository could disagree with reality without
-any principled way to resolve the conflict. See
-[ownership proof](#ownership-proof) for the evidence the classifier actually
-uses.
+The declaration carries **intent only**. It deliberately does not restate
+historical target coverage or an expected legacy digest, because both already
+exist in per-machine state and a second copy in the repository could disagree
+with reality without any principled way to resolve the conflict. See
+[ownership proof](#ownership-proof) for the evidence the protocol actually uses.
 
-Declarations are permanent tombstones. They are never removed on the strength of
-one machine's converged state, because `retired` lives in the repository and is
+Declarations are permanent. They are never removed on the strength of one
+machine's converged state, because `renames` lives in the repository and is
 shared across machines while receipts are per-machine, and because a harness
-skipped today may be enabled tomorrow. A declaration is retired from the catalog
-only by an explicit human decision that every machine has converged, which no
-automated check can establish.
+skipped today may be enabled tomorrow. A declaration leaves the catalog only by
+an explicit human decision that every machine has converged, which no automated
+check can establish.
 
-### Pure retirement
+A managed record whose name is absent from `skills` but undeclared in `renames`
+is never cleaned. It is reported so the operator can either declare the rename or
+restore the entry.
 
-`replaced_by` is optional, so retirement has two shapes.
-
-A **rename** declares `replaced_by`. The replacement must install and verify on a
-target before that target's legacy state is cleaned, and the ordering below
-applies in full.
-
-A **pure retirement** omits `replaced_by`: the skill leaves the catalog with no
-successor. There is nothing to install, so replacement proof is not part of the
-sequence and no target is ever blocked for lack of it. Classification, backup,
-and compare-and-remove run directly, and the failure and recovery rules apply
-unchanged minus every replacement clause. Cleanup planning selects the shape from
-the declaration, and both shapes are tested.
+Retirement without a successor is deliberately not modeled. No skill in this
+workstream needs it, and requiring `to` keeps the mechanism a rename protocol
+rather than a general retirement subsystem. See
+[deferred generic retirement](#deferred-generic-retirement) for the conditions
+that would justify revisiting this.
 
 Required external commands are documented in each `SKILL.md`, together with the
 skill's behavior when the command is absent. They are deliberately not modeled
@@ -541,7 +547,7 @@ MECE decomposition, situation-complication-resolution framing, quantified
 claims, explicit confidence levels, and the executive-summary format. It owns no
 document format, presentation renderer, or storage destination.
 
-## `jujutsu-workflow` Rename and Orphan Cleanup
+## `jujutsu-workflow` Rename Protocol
 
 ### Provenance
 
@@ -567,57 +573,94 @@ Renaming the catalog entry alone would therefore leave the installed
 authority, and it is the one real problem the superseded plugin design
 identified.
 
-Making that removal safe requires three further changes, each grounded in current
-behavior rather than anticipated need. State mutation is not serialized, so a
-destructive mutation can lose a concurrent update. Skill planning is not
-target-isolated, so one target's collision suppresses every target's actions.
-Byte-identical unmanaged content produces no action and therefore no receipt, so
-replacement verification can be permanently unsatisfiable. Each is specified
-below and lands as its own foundation slice.
+Making that removal safe requires one further change. Neither state mutation nor
+the tree-and-receipt pair it describes is serialized, so a destructive mutation
+can lose a concurrent update or leave a receipt disagreeing with the tree it
+describes. That is specified below and lands as its own slice.
 
-### Generic orphan cleanup
+Nothing beyond those two changes — a removal path and the lock — is added. There
+is no general retirement framework, no reusable executable-action hierarchy, and
+no per-target result model; see
+[deferred generic retirement](#deferred-generic-retirement). The scope is one
+declared rename, expressed as a single
+`SkillRenameAction` with a planning half and an applying half, symmetric with
+every other engine action.
 
-The fix belongs in the engine, not in a skill-specific migration. Add:
+### The rename protocol
 
-1. serialized state mutation, described below;
-2. a compare-and-remove on `StateStore` that deletes a managed record only when
-   the stored value exactly equals the expected value from the frozen plan,
-   performed inside one critical section; and
-3. a cleanup action with a planning half and an applying half, symmetric with
-   every other engine action: planning resolves candidates from the retirement
-   declarations, classifies each per target, and emits a redacted `PlanAction`
-   per resolved operation; applying executes only what that frozen plan
-   contains.
+Planning resolves the declared rename, classifies each enabled target, and emits
+a redacted `PlanAction` per resolved operation. Applying executes only what that
+frozen plan contains, in this order:
 
-The `jujutsu-workflow` rename is the first caller. No `migration.*` finding
-identifiers, per-skill migration action, or bespoke rollback path is introduced,
-and every later skill rename or retirement reuses the same behavior.
+1. acquire the coarse mutation lock;
+2. classify legacy state on every enabled target, accepting only the three states
+   below;
+3. preflight successor feasibility on every enabled target, so an install that
+   cannot succeed is known before anything is mutated;
+4. on any other classification, or any infeasible successor, change nothing and
+   fail clearly;
+5. install `using-jujutsu` where it is absent, and verify its receipt;
+6. where legacy state remains, back up the tree, then compare-and-remove its
+   exact receipt; and
+7. on a later run, resume only the resumable interrupted states below.
+
+Exactly three legacy states are accepted, and step 2 requires each enabled target
+to be in one of them:
+
+| Accepted state | Legacy tree | Legacy receipt | Steps that apply |
+|---|---|---|---|
+| Clean | Absent | Absent | 5 only; nothing to clean |
+| Exact live legacy | Present at its recorded digest | Exact | 5, then 6 in full |
+| Exact stale receipt | Absent | Exact | 5, then 6's compare-and-remove without a backup |
+
+A clean target is the normal case on a new machine or a harness enabled after the
+rename, so requiring live legacy state everywhere would fail those targets for no
+reason. An exact stale receipt is the interrupted-cleanup state from a previous
+run. Every other combination is a blocking classification; see
+[classification](#classification).
+
+Steps 3 and 5 both span all enabled targets deliberately. Because blocking is
+all-or-nothing, discovering at step 5 that the successor cannot install on the
+third target, after step 6 already cleaned the first, would be exactly the
+half-converged outcome the protocol exists to prevent. Feasibility is therefore
+established for every target before any target is mutated.
+
+Steps 5 and 6 are ordered, not merely sequential: cleanup never runs before the
+successor is proven on that target, and step 2's classification is revalidated
+under the lock immediately before step 6.
 
 Cleanup is never a side effect of inspection. `plan` and `doctor` stay read-only:
 they classify and report, and only `configure` mutates.
 
-#### Serializing state mutation
+#### Transaction scope
 
 `StateStore.write` is atomic for the file, using a same-directory temporary,
-`fsync`, and `replace`. The mutators are not. `record_managed` and
-`record_install` each perform `load`, then build a new mapping, then `write`, with
-no lock across the three steps, so two concurrent runs can lose one another's
-updates.
+`fsync`, and `replace`. Nothing larger is. `record_managed` and `record_install`
+each perform `load`, then build a new mapping, then `write`, with no lock across
+the three steps, so two concurrent runs can lose one another's updates.
 
-That race is pre-existing and shared by every mutator, but cleanup is the first
-mutator that *deletes*, which changes the consequence. A lost `record_managed`
-update self-heals on the next converge; a lost update that clobbers a
-compare-and-remove leaves a receipt for a tree already moved to backup, or drops a
-receipt for a tree still in place. Either outcome breaks the ownership proof the
-whole mechanism depends on.
+Serializing only those three steps would not be enough, because the unit that
+must stay consistent is the tree together with its receipt, and those are mutated
+in separate places. `ConfigurationEngine.apply` revalidates with `digest_tree`,
+then `_backup` moves the destination aside with `shutil.move`, then the tree is
+published, and only then does `_record` call `record_managed`. Two concurrent
+runs can interleave anywhere across that span and leave a receipt describing a
+tree that was moved, or a tree with no receipt.
 
-The fix therefore cannot be scoped to cleanup: an exclusive advisory lock in
-`state_root`, held across `load`, compare, and `write`, must cover **every** state
+The lock bounds concurrency, not crashes. It prevents two runs from interleaving
+across that span, but it cannot make a tree publish and a receipt write atomic
+with respect to process death, because they are separate files with no shared
+journal. A crash between them is therefore a state the design must classify
+rather than exclude; see
+[an unprovable replacement destination](#an-unprovable-replacement-destination-blocks-and-reports).
+
+The lock is therefore one coarse exclusive advisory lock in `state_root`,
+acquired before apply-time digest validation and held through backup, publish or
+removal, and the receipt write or compare-and-remove. It covers **every** state
 mutator, because a cleanup-only lock would still lose to a concurrent
-`record_managed`. Compare-and-remove then reads, compares against the frozen
-expected value, and writes without releasing the lock. A run that cannot acquire
-the lock reports contention and makes no mutation rather than proceeding
-optimistically.
+`record_managed`. Compare-and-remove reads, compares against the frozen expected
+value, and writes without releasing it. A run that cannot acquire the lock
+reports contention and mutates nothing rather than proceeding optimistically.
 
 A generation counter with retry is the alternative, and is rejected for this
 workstream: `BootstrapState.version` already means schema version, so overloading
@@ -632,7 +675,7 @@ rather than an omission.
 `ManagedRecord` carries `resource_id`, `destination`, `source_digest`, and
 `destination_digest`, and records are keyed by `resource_id`, which is
 `f"shared-skill-{name}-{target.value}"`. Two consequences follow. Historical
-target coverage is derivable by enumerating stored keys for a retired name, across
+target coverage is derivable by enumerating stored keys for the old name, across
 every target rather than only the enabled ones. The expected legacy digest is
 `destination_digest` on that record.
 
@@ -647,32 +690,10 @@ the trust root for all managed content. A pinned digest in the repository would 
 improve this, because a declaration that disagreed with a stored receipt would
 leave the classifier with two claims and no principled tie-breaker.
 
-#### Candidate resolution never reads the resolved selection
-
-A cleanup candidate comes from two independent conditions, both required:
-
-1. the name appears in `retired`; and
-2. the name appears nowhere in `skills`, evaluated against the **complete
-   parsed catalog**, before profile, include, target, or skip resolution.
-
-Absence from the resolved selection is explicitly not a candidacy signal.
-`_eligible_targets` drops a skill whose profiles do not intersect the active
-profiles, so a skill excluded by the profile in use is indistinguishable from one
-that was retired. Keying cleanup on resolved desired state would retire every
-`work`-profile skill during a `--profile default` run, back up its tree, drop its
-receipt, and reinstall it on the next `work` run. No current entry triggers this,
-because all seven are `[default]`, but `work` inherits from `default` and the
-roadmap contemplates work-only skills, so the ordering is load-bearing rather
-than theoretical.
-
-A record whose name is absent from `skills` but undeclared in `retired` is never
-cleaned. It is reported so the operator can either declare the retirement or
-restore the entry.
-
 ### Classification
 
-Each enabled target is classified independently before the plan is frozen. Every
-row below presumes the candidate is already declared retired.
+Each enabled target is classified before the plan is frozen. Every row below
+presumes the candidate is already declared in `renames`.
 
 | Installed tree | Managed receipt | Classification | Planned action |
 |---|---|---|---|
@@ -694,64 +715,75 @@ The ambiguous-orphaned-receipt row needs implementation attention rather than
 only a table entry. `_matching_record` currently raises
 `ValueError("managed record mismatch")` when a stored record disagrees with the
 expected resource ID or destination, or when two records claim one destination.
-Cleanup planning must classify that condition and report it, because an exception
-there would abort the run instead of preserving the receipt and blocking one
-target.
+Rename planning must classify that condition and report it, because an
+unhandled exception there would abort the run with a raised error instead of a
+reported classification and a preserved receipt.
 
 #### Blocking the replacement
 
-On a target classified unmanaged, ambiguous, or drifted, the run installs no
-replacement for that target. Deploying `using-jujutsu` beside a
-`jujutsu-workflow` tree that `ballen-config` cannot prove it owns would leave two
-installed skills describing one procedure, with nothing determining which the
-agent loads. That is the duplicate authority this cleanup exists to remove, so
-the correct outcome is to converge no further on that target and report it.
+When any enabled target is classified unmanaged, ambiguous, or drifted, the run
+installs no replacement. Deploying `using-jujutsu` beside a `jujutsu-workflow`
+tree that `ballen-config` cannot prove it owns would leave two installed skills
+describing one procedure, with nothing determining which the agent loads. That is
+the duplicate authority this rename exists to remove, so the correct outcome is to
+converge no further and report the blocked target.
 
-Blocking is per target. Other enabled targets install and clean normally, and
-partial completion is an expected result rather than a failure. The replacement
-lands on a blocked target only after the operator resolves the legacy state and
-reruns.
+Blocking is all-or-nothing, matching what the planner already does.
+`plan_skill_copies` builds its desired mapping across all requested targets and
+then raises `SkillCollisionError` from a scan loop covering all of them, so one
+target's collision returns no actions for any target. That behavior is kept: the
+run fails closed, converges nothing, and reports the blocked target. The operator
+either resolves the legacy state or reruns with the existing whole-harness
+`--skip` for that harness, which already provides the isolation a per-target
+result model would have provided automatically.
 
-Per-target blocking is not what the current planner does, and this is the second
-change it needs. `plan_skill_copies` builds its desired mapping across all
-requested targets and then raises `SkillCollisionError` from a scan loop covering
-all of them, so one target's collision returns no actions for any target.
-Planning and results must become target-isolated: a collision or block on one
-target must leave the others' actions intact, and the run's result must carry a
-per-target outcome instead of one aggregate success or exception.
+A per-target result refactor is deliberately rejected. It would exist only to
+preserve partial progress after a single harness collision, and it would change
+every skill install path and its tests to do so.
 
-Ordering per unblocked target is: install the replacement and verify its receipt,
-then revalidate the legacy receipt and live digest immediately before cleanup,
-then back up, then compare-and-remove. Cleanup never runs before the replacement
-is proven. Pure retirement omits the first step entirely.
+#### An unprovable replacement destination blocks and reports
 
-#### Replacement verification requires adopt-or-reject
+Replacement proof is a written receipt, and the planner will not produce one when
+the destination already holds content whose digest equals the source digest: the
+scan loop skips it and the action loop emits nothing, so no `SkillCopyAction` is
+created, no managed-tree spec is derived, and no receipt is written. Step 5 then
+cannot be satisfied, so the run blocks and reports rather than cleaning legacy
+state it cannot pair with a proven replacement.
 
-Replacement proof is a written receipt, and the current planner will not always
-produce one. When a destination already holds content whose digest equals the
-source digest, the scan loop skips it and the action loop emits nothing, so no
-`SkillCopyAction` is created, no managed-tree spec is derived, and no receipt is
-written. Byte-identical unmanaged content therefore leaves replacement
-verification permanently unsatisfiable, which would block cleanup on that target
-forever rather than transiently.
+Two paths reach this state, and the second is the reason it needs a
+classification rather than a footnote.
 
-Byte-identical unmanaged content becomes an explicit **adopt** action: the planner
-emits it, the plan reports it as adoption rather than as a no-op, and applying it
-writes the managed receipt without rewriting identical bytes. Adoption is
-justified because the content is exactly what `ballen-config` would have written,
-and it claims ownership rather than removing anything. Anything not byte-identical
-and not receipt-backed stays a rejection, reported for user resolution, exactly as
-today.
+Hand-authored content is the unlikely path. `plan_skill_copies` requires
+`declared_skill_name(source) == name`, so the rename edits the `SKILL.md`
+frontmatter and the two trees have different digests; arriving here that way
+requires someone to have written the new content under the new name at the new
+destination. The same fact keeps the pinned legacy digest a valid discriminator.
 
-Adoption must be visible in the plan. Silently claiming a destination the user
-placed is the failure mode to avoid, so an adopt action is a reported operation
-whose absence from the plan means no adoption occurred.
+A crash during step 5 is the realistic path. `apply` publishes the tree before
+`_record` writes the receipt, and the lock cannot make those two atomic against
+process death, so a crash in that window leaves an exact `using-jujutsu` tree
+with no receipt. The next run finds byte-identical unmanaged content at the
+successor destination — the same state, arrived at through the protocol's own
+ordering rather than through operator error.
+
+Both are classified as a **blocked unmanaged replacement**: the run installs
+nothing, cleans nothing, and reports the destination through doctor. The remedy is
+to remove the unreceipted `using-jujutsu` tree and rerun, which is safe precisely
+because the content is reproducible from the canonical source. This state is
+tested explicitly, from a simulated crash between publish and receipt write.
+
+Auto-adopting such a tree is deliberately rejected, and the crash path does not
+change that. Without a receipt there is no way to distinguish our own interrupted
+publish from content the operator placed, so adoption would claim ownership on
+byte equality alone — the exact inference invariant 11 forbids. The cost of
+refusing is one manual deletion after a crash, which is the correct side to err
+on.
 
 ### Failure and recovery
 
 Rename ordering installs the replacement before removing the legacy state, so a
-failure after that point can leave both present. Both are then recognized and
-resumable rather than terminal:
+failure after that point can leave both present. Each outcome below is either
+resumable or blocked, never silently inconsistent:
 
 - Failure before the replacement is proven leaves the legacy tree and receipt
   untouched, and nothing to resume.
@@ -759,26 +791,39 @@ resumable rather than terminal:
   receipt, and retains the replacement.
 - A crash after backing up the tree but before receipt removal leaves an absent
   path plus an exact stale receipt.
+- A crash between publishing the successor and writing its receipt leaves an
+  exact unreceipted `using-jujutsu` tree, which blocks rather than resumes.
 - A legacy tree or receipt that changes between planning and cleanup fails
   closed.
 - Backups use the existing timestamped private backup area.
 
-The last two bullets above describe transient duplicate authority: the replacement
-is installed while legacy content or its receipt still exists. That window is
-bounded by the next `configure` run, which resolves outstanding cleanup before
-other skill work, and it is reported as an error by doctor until resolved. This is
-the accepted cost of installing the replacement first.
+The middle bullets above describe transient duplicate authority: the replacement
+is installed while legacy content or its receipt still exists. Doctor reports it
+as an error until it clears.
+
+Automatic resolution is guaranteed only for the exactly recognized intermediate
+states — an absent path with an exact stale receipt, and a restored tree with its
+exact receipt. The next `configure` run resolves those before other skill work.
+Legacy state that has changed, been duplicated, or drifted correctly fails closed
+instead, and stays blocked until the operator resolves it, which may be
+indefinitely. That is the intended behavior: an unrecognized state is exactly the
+case where automatic mutation is unsafe.
+
+An unreceipted successor tree is recognized but deliberately not auto-resolved,
+which is the one place those two categories come apart. It is reported with its
+remedy rather than repaired, because repairing it means claiming ownership on byte
+equality alone.
 
 Rolling back the replacement is deliberately rejected. Uninstalling content just
-proven correct, to restore a tree already proven eligible for retirement, adds
+proven correct, to restore a tree already proven eligible for removal, adds
 mutation and new failure paths — including a failed rollback — to avoid an overlap
 that is bounded, detected, and reported. Staging the replacement inactively is
 also rejected, because no harness offers an inactive skill state to stage into.
 
 The consequence for invariant 13 is stated plainly: no completed run leaves two
 skills claiming one procedure on a target it converged, and an interrupted run
-leaves a state the next run recognizes and resolves first. A claim of no overlap
-at any instant would be false.
+leaves either a recognized state the next run resolves first or a blocked state it
+reports. A claim of no overlap at any instant would be false.
 
 ### Doctor
 
@@ -788,13 +833,12 @@ target-qualified finding identifier is introduced:
 
 | Situation | Existing state | Severity |
 |---|---|---|
-| No orphaned managed skill state | No finding emitted | n/a |
+| No leftover legacy skill state | No finding emitted | n/a |
 | Harness explicitly skipped | `skipped` | info |
-| Unmanaged, ambiguous, or duplicated legacy receipt; replacement blocked | `manual` | warning |
-| Receipt-backed content differs from its recorded digest; replacement blocked | `drift` | error |
+| Unmanaged, ambiguous, or duplicated legacy receipt; rename blocked | `manual` | warning |
+| Unreceipted `using-jujutsu` tree at the successor destination; rename blocked | `manual` | warning |
+| Receipt-backed content differs from its recorded digest; rename blocked | `drift` | error |
 | Replacement installed with legacy tree or receipt still present | `drift` | error |
-| Retired declaration whose cleanup has not completed on an enabled target | `missing` | warning |
-| Record absent from `skills` with no retirement declaration | `manual` | warning |
 
 `manual` is the established state for ownership that requires user resolution,
 which is exactly the preserved-legacy case. `drift` covers the interrupted-cleanup
@@ -804,8 +848,8 @@ implementation finds that any situation above cannot be expressed in the current
 vocabulary, adding a state is a reviewed change to the shared check model, not an
 incidental part of this workstream.
 
-Doctor never recommends removing a retirement declaration. Local convergence says
-nothing about other machines or currently skipped harnesses, so a tombstone
+Doctor never recommends removing a rename declaration. Local convergence says
+nothing about other machines or currently skipped harnesses, so a declaration
 outliving its usefulness is the intended, harmless steady state.
 
 Messages remain normalized and redact absolute paths, digests, file contents, and
@@ -815,31 +859,34 @@ command output.
 
 Implementation proceeds as independently reviewable vertical slices:
 
-1. Serialize state mutation behind the shared lock, covering every existing
-   mutator, with no other behavior change.
-2. Make skill planning target-isolated and add the explicit adopt action for
-   byte-identical unmanaged content.
-3. Add generic orphan cleanup: the retirement model, candidate resolution,
-   classification, the cleanup plan and apply action pair, compare-and-remove,
+1. Take the coarse mutation lock across apply-time digest validation, backup,
+   publish, and every state mutator, with no other behavior change.
+2. Add the rename protocol: the `renames` model, classification,
+   `SkillRenameAction` with its plan and apply halves, compare-and-remove,
    backup, rollback, and doctor reporting, with no content change.
-4. Rename `jujutsu-workflow` to `using-jujutsu` as the first caller of that
-   cleanup, including its retirement declaration.
-5. Add `discover-project-standards` and `review-project-standards` together, and
+3. Rename `jujutsu-workflow` to `using-jujutsu` as that protocol's caller,
+   including its rename declaration.
+4. Add `discover-project-standards` and `review-project-standards` together, and
    satisfy the composition release gate.
-6. Add `using-uv` and its generated `dependency-management.md` projection.
-7. Promote `writing-executive-communications`. This slice depends only on the
-   foundation slices and may land at any point after them.
-8. Rewrite and add `using-gitlab`.
-9. Add `using-github` immediately afterwards, reusing the provider-discovery
+5. Add `using-uv` and its generated `dependency-management.md` projection.
+6. Promote `writing-executive-communications`.
+7. Rewrite and add `using-gitlab`.
+8. Add `using-github` immediately afterwards, reusing the provider-discovery
    and mutation-safety pattern reviewed in the previous slice.
 
 The two forge skills stay separate slices so each is reviewed on its own
 mutation behavior, even though they are drafted together.
 
-The first three slices are engine work with no content change, and they carry the
-safety-critical behavior. Nothing after them can be reviewed honestly until they
-land, because every later slice depends on target-isolated planning and on
-cleanup that cannot fire without a declaration.
+The engine slices form one chain: slice 2 depends on slice 1, because
+compare-and-remove must run inside the lock's critical section, and slice 3
+depends on slice 2 and transitively on slice 1. Slice 1 is worth landing first
+regardless, because it is small and fixes a pre-existing race on its own.
+
+Slices 4 through 8 are five additive content slices covering six skills — the
+standards pair stays coupled by design — and none of them depends on the engine
+chain or on each other. They land in any order. Every skill in this workstream,
+including `using-jujutsu`, can be authored and content-reviewed in parallel with
+the engine work; only `using-jujutsu`'s merge waits on the chain.
 
 Every slice uses coherent reviewable checkpoints, leaves no duplicate
 authority, updates catalog provenance, and passes plan, configure, doctor,
@@ -850,9 +897,8 @@ skip, collision, and idempotency tests.
 ### Static and model tests
 
 - catalog parsing, unknown-field rejection, and kebab-case skill names;
-- retirement declarations: rejection of a retired name still present in
-  `skills`, of a `replaced_by` that is absent from `skills`, and of duplicate
-  retired names, plus acceptance of a declaration that omits `replaced_by`;
+- rename declarations: rejection of a `from` still present in `skills`, of a `to`
+  absent from `skills`, of a missing `to`, and of duplicate `from` values;
 - dependency existence, cycles, and target and profile coverage for the
   standards pair;
 - canonical tree digests for each new and renamed skill;
@@ -864,66 +910,64 @@ skip, collision, and idempotency tests.
 - whole-harness skip behavior; and
 - default and inherited profile resolution.
 
-### Orphan cleanup tests
+### Rename protocol tests
 
 Parameterize every classification row across Cursor, Claude Code, and Codex.
 Cover exact resource, destination, and digest matching; absent paths with
 mismatched or duplicated receipts, asserting a reported classification rather
 than a raised `ValueError`; symlinks, special files, and traversal;
-time-of-check/time-of-use changes; ordering of install, verify, backup, and
-receipt removal; rollback restoring both tree and receipt while retaining the
-replacement; crash resume from each recognized intermediate state; partial target
-completion and target skips; doctor status, severity, ordering, and redaction;
-and a first cleanup followed by a zero-action, zero-backup second run.
+time-of-check/time-of-use changes; the step 5 before step 6 ordering; rollback
+restoring both tree and receipt while retaining the replacement; resume from each
+recognized intermediate state; target skips; doctor status, severity, ordering,
+and redaction; and a first rename followed by a zero-action, zero-backup second
+run.
 
-Both retirement shapes need coverage: a rename that proves its replacement before
-cleaning, and a pure retirement that omits `replaced_by`, performs no install, and
-is never blocked for missing replacement proof.
+Each of the three accepted legacy states needs its own case: a clean target
+installs the successor and cleans nothing, an exact live legacy target runs the
+full sequence, and an exact stale receipt performs compare-and-remove with no
+backup. Successor feasibility needs a case where one target's successor
+destination is blocked and no target is mutated at all.
 
-Interrupted-cleanup states need explicit assertions that the next `configure`
-resolves outstanding cleanup before other skill work, and that doctor reports
-`drift` at error severity for as long as a replacement coexists with legacy
-content or its receipt.
+Recovery needs assertions on both sides of the guarantee: the next `configure`
+resolves each recognized intermediate state before other skill work, changed or
+duplicated legacy state stays blocked across repeated runs and mutates nothing,
+and doctor reports `drift` at error severity for as long as a replacement
+coexists with legacy content or its receipt.
 
-### State serialization tests
+A simulated crash between publishing the successor and writing its receipt needs
+its own case: the next run reports a blocked unmanaged replacement at `manual`
+severity, adopts nothing, cleans no legacy state, and mutates nothing across
+repeated runs until the unreceipted tree is removed.
 
-- every mutator acquires the lock, asserted by a test that fails if a new mutator
-  bypasses it;
+### Transaction tests
+
+- every state mutator acquires the lock, asserted by a test that fails if a new
+  mutator bypasses it;
+- the lock is held across apply-time digest validation, backup, publish, and the
+  receipt write, asserted by a test that fails if it is released between them;
 - a compare-and-remove observing an unexpected stored value makes no change;
 - a concurrent mutation attempt reports contention and mutates nothing rather
   than proceeding; and
-- lock acquisition failure never leaves a partially applied cleanup.
+- lock acquisition failure never leaves a tree and receipt disagreeing.
 
-### Adoption and target-isolation tests
+### Candidate resolution tests
 
-- byte-identical unmanaged content produces a reported adopt action and a written
-  receipt, so replacement verification can succeed;
-- adoption rewrites no bytes and appears in the plan, so it can never happen
-  silently;
-- content that is neither byte-identical nor receipt-backed is still rejected;
-  and
-- a collision on one target leaves the other targets' actions intact and yields a
-  per-target result rather than one aggregate exception.
-
-Candidate resolution needs its own cases, because they guard against deleting a
-skill nobody retired:
+These guard against deleting a skill nobody renamed:
 
 - a skill present in `skills` but excluded by the active profile is never a
   candidate, asserted with a `work`-profile fixture entry converged under
   `--profile default`;
 - the same for exclusion by `--skip` and by target selection;
-- a name absent from `skills` with no `retired` entry is reported and never
-  cleaned;
-- a declared retirement whose name is still in `skills` fails catalog
-  validation; and
+- a name absent from `skills` with no `renames` entry is reported and never
+  cleaned; and
 - candidacy is computed from the complete parsed catalog, asserted by a test
   that would fail if resolution moved after profile filtering.
 
 ### Blocked-replacement tests
 
 For each ambiguous, orphaned-receipt, and drifted classification, assert that no
-replacement is installed on that target, that no receipt is written for it, that
-other enabled targets still converge, and that the run reports partial completion
+replacement is installed, that no receipt is written, that the legacy tree and
+receipt are left exactly as found, and that the run reports the blocked target
 rather than success.
 
 ### Native smokes
@@ -970,6 +1014,49 @@ Any revival must also resolve what the superseded revision did not: private
 repository authentication for a Git-backed marketplace, Codex plugin-update
 behavior, and a local edit loop that does not require publishing a release to
 test a change.
+
+## Deferred Generic Retirement
+
+A generic retirement mechanism is out of scope, deferred rather than rejected.
+This workstream needs exactly one safe rename, so it builds a bounded rename
+protocol: `renames` requires a successor, blocking stays all-or-nothing, and
+unmanaged content is preserved and reported rather than adopted.
+
+An earlier revision generalized that rename into a retirement subsystem. The
+generality, not the rename, is what attracted successor-free retirement,
+adoption, per-target results, and a reusable executable-action hierarchy, none of
+which had a caller here. Revisit the generalization when at least one of the
+following is true:
+
+- a skill genuinely leaves the catalog with no successor, which `renames` cannot
+  express by construction;
+- a second rename or retirement arrives whose shape the bounded protocol does not
+  fit;
+- a blocked harness stops being resolvable by whole-harness `--skip`, meaning
+  partial convergence across targets becomes a real requirement rather than a
+  convenience; or
+- unmanaged content at a replacement destination becomes a recurring operator
+  burden rather than the near-unreachable case it is today.
+
+Any revival inherits safety work this revision deliberately does not do, and each
+item exists only with the feature it guards:
+
+- adoption of byte-identical unmanaged content must revalidate at apply time.
+  Planning-time byte equality is not ownership proof, because the destination can
+  change before apply. Re-digest source and destination under the mutation lock
+  immediately before writing the receipt, require that no conflicting managed
+  record claims the destination, and write nothing on mismatch.
+- per-target results must propagate dependency failure. If
+  `discover-project-standards` is blocked on one target, the dependent
+  `review-project-standards` must be blocked on that same target, or a dependent
+  skill installs against a missing dependency.
+- a broader doctor matrix must still map onto the states `doctor.py` defines.
+  Adding a state is a reviewed change to the shared check model, not an
+  incidental part of a retirement feature.
+
+The coarse mutation lock is not deferred. It is required by the rename protocol,
+it fixes a pre-existing race in every state mutator, and it is a prerequisite for
+any of the above rather than part of it.
 
 ## Post-v1 Roadmap
 
@@ -1089,8 +1176,8 @@ The workstream is complete when:
 
 - all seven first-release skills install from one reviewed source into Cursor,
   Claude Code, and Codex through the existing shared-skill catalog;
-- delivering them required no change to `SkillSpec` or the installer, and the
-  only schema addition is the retirement declaration;
+- the existing `SkillSpec` delivery model remained intact, and the only schema
+  addition is the rename declaration;
 - every promoted skill records its source in catalog provenance, and no entry
   claims `reviewed-generic` before its portability review is performed;
 - the bundled standards reference exactly matches its canonical source;
@@ -1101,24 +1188,23 @@ The workstream is complete when:
 - remote mutation requires explicit user intent;
 - no prohibited operational state is migrated;
 - the engine can prune an orphaned managed skill record, and does so only for a
-  declared retirement with exact receipt and digest proof, through a planned and
+  declared rename with exact receipt and digest proof, through a planned and
   reported action rather than a side effect of inspection;
 - no profile, include, target, or skip selection can make a skill that remains in
-  the catalog look retired;
-- every state mutator serializes behind the shared lock, and a compare-and-remove
-  cannot lose a concurrent update;
-- both retirement shapes work: a rename that proves its replacement first, and a
-  pure retirement with no successor;
-- skill planning is target-isolated, and byte-identical unmanaged content is
-  adopted through a reported action so replacement verification can succeed;
-- the old `jujutsu-workflow` installation is retired only where that proof
-  permits; unmanaged, orphaned-receipt, or drifted content is preserved,
-  reported, and receives no replacement on that target;
-- every interrupted-cleanup state is recognized, resolved before other skill work
-  on the next run, and reported as an error until it clears;
-- plan, configure, doctor, skip, collision, adoption, cleanup,
-  blocked-replacement, serialization, rollback, and idempotency behavior are
-  tested; and
+  the catalog look renamed;
+- the lock is held across apply-time digest validation, backup, publish, and
+  receipt mutation, so no two concurrent runs can leave a tree and receipt
+  disagreeing, and a compare-and-remove cannot lose a concurrent update;
+- the tree and receipt writes a crash can still separate are classified, reported
+  with a remedy, and never auto-adopted;
+- the old `jujutsu-workflow` installation is removed only where that proof
+  permits; unmanaged, orphaned-receipt, or drifted content is preserved and
+  reported, and the run installs no replacement;
+- each resumable interrupted state is resolved before other skill work on the next
+  run, every other one — recognized or not — stays blocked and reported, and none
+  clears silently;
+- plan, configure, doctor, skip, collision, rename, blocked-replacement,
+  transaction, rollback, and idempotency behavior are tested; and
 - each later roadmap group has a clear dependency and ownership boundary.
 
 ## Implementation Boundary
