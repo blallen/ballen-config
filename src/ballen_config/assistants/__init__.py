@@ -100,6 +100,7 @@ from ballen_config.assistants.models import (
 from ballen_config.assistants.orchestrator import AssistantOrchestrator
 from ballen_config.assistants.skills import (
     LegacyRenameState,
+    RenameTargetClassification,
     SkillCollisionError,
     SkillCopyAction,
     SkillRenameAction,
@@ -145,6 +146,7 @@ __all__ = [
     "PluginCatalogProjection",
     "PluginSpec",
     "PortableResource",
+    "RenameTargetClassification",
     "ResourceBase",
     "SkillCatalog",
     "SkillCollisionError",

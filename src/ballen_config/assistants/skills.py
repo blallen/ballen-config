@@ -287,6 +287,7 @@ def classify_rename_target(
 
     destination = _candidate(home, legacy_relative)
     metadata = _metadata(destination)
+    leaf_present = metadata is not None
     tree_present = metadata is not None and stat.S_ISDIR(metadata.st_mode)
     live_digest: str | None = None
     if tree_present:
@@ -298,10 +299,10 @@ def classify_rename_target(
     if ambiguous_receipt:
         legacy_state = (
             LegacyRenameState.BLOCKED_AMBIGUOUS_RECEIPT
-            if not tree_present
+            if not leaf_present
             else LegacyRenameState.BLOCKED_UNMANAGED_OR_AMBIGUOUS
         )
-    elif not tree_present and record is None:
+    elif not leaf_present and record is None:
         legacy_state = LegacyRenameState.CLEAN
     elif (
         tree_present
@@ -310,9 +311,9 @@ def classify_rename_target(
         and live_digest == record.destination_digest
     ):
         legacy_state = LegacyRenameState.EXACT_LIVE
-    elif not tree_present and record is not None:
+    elif not leaf_present and record is not None:
         legacy_state = LegacyRenameState.EXACT_STALE
-    elif tree_present and (record is None or live_digest is None):
+    elif leaf_present and (not tree_present or record is None or live_digest is None):
         legacy_state = LegacyRenameState.BLOCKED_UNMANAGED_OR_AMBIGUOUS
     elif (
         tree_present
@@ -395,6 +396,8 @@ class SkillRenameAction:
     legacy_relative: Path
     successor_resource_id: str
     successor_relative: Path
+    successor_source_digest: str
+    successor_destination_digest: str
 
 
 _ACCEPTED_RENAME_STATES: Final[frozenset[LegacyRenameState]] = frozenset(
@@ -469,6 +472,8 @@ def plan_skill_renames(
                         f"shared-skill-{rename.to_name}-{target.value}"
                     ),
                     successor_relative=classification.successor_relative,
+                    successor_source_digest=successor_digest,
+                    successor_destination_digest=successor_digest,
                 )
             )
     return tuple(
@@ -477,6 +482,34 @@ def plan_skill_renames(
             key=lambda item: (item.from_name, item.to_name, item.target.value),
         )
     )
+
+
+def _has_exact_successor_proof(
+    *,
+    action: SkillRenameAction,
+    state: BootstrapState,
+    home: Path,
+) -> bool:
+    """Return whether the frozen successor receipt and tree agree exactly."""
+    record = state.managed.get(action.successor_resource_id)
+    if record is None or (
+        record.resource_id != action.successor_resource_id
+        or record.destination != action.successor_relative.as_posix()
+        or record.source_digest != action.successor_source_digest
+        or record.destination_digest != action.successor_destination_digest
+    ):
+        return False
+    successor_destination = _candidate(home, action.successor_relative)
+    metadata = _metadata(successor_destination)
+    if metadata is None or not stat.S_ISDIR(metadata.st_mode):
+        return False
+    try:
+        return (
+            hash_skill_tree(successor_destination)
+            == action.successor_destination_digest
+        )
+    except ValueError:
+        return False
 
 
 def apply_skill_rename_cleanups(
@@ -497,8 +530,11 @@ def apply_skill_rename_cleanups(
         actions, key=lambda item: (item.from_name, item.to_name, item.target.value)
     ):
         state = engine.state_store.load()
-        successor_record = state.managed.get(action.successor_resource_id)
-        if successor_record is None:
+        if not _has_exact_successor_proof(
+            action=action,
+            state=state,
+            home=engine.paths.home,
+        ):
             raise SkillRenameBlockedError(
                 action.from_name,
                 action.to_name,
@@ -511,7 +547,7 @@ def apply_skill_rename_cleanups(
             target=action.target,
             home=engine.paths.home,
             state=state,
-            successor_digest=successor_record.destination_digest,
+            successor_digest=action.successor_destination_digest,
             enabled=True,
         )
         if (
@@ -676,6 +712,7 @@ def managed_tree_spec(action: SkillCopyAction) -> ManagedTreeSpec:
         source=action.source,
         destination=action.relative_destination,
         component=action.target.value,
+        expected_source_digest=action.digest,
     )
 
 
