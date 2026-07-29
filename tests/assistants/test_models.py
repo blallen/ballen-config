@@ -858,3 +858,99 @@ def test_skill_catalog_rejects_invalid_dependency_graphs(
     """Reject ambiguous or incomplete skill dependency graphs."""
     with pytest.raises(ValidationError, match=message):
         SkillCatalog.model_validate({"skills": skills})
+
+
+def test_skill_rename_requires_successor_absent_from_and_present_to() -> None:
+    catalog = SkillCatalog.model_validate(
+        {
+            "skills": [
+                {
+                    "name": "using-jujutsu",
+                    "source": "assistants/shared/skills/using-jujutsu",
+                    "targets": ["cursor"],
+                    "profiles": ["default"],
+                    "dependencies": [],
+                    "provenance": "renamed",
+                    "portability_status": "reviewed-generic",
+                }
+            ],
+            "renames": [{"from": "jujutsu-workflow", "to": "using-jujutsu"}],
+        }
+    )
+    assert catalog.renames[0].from_name == "jujutsu-workflow"
+    assert catalog.renames[0].to_name == "using-jujutsu"
+
+
+@pytest.mark.parametrize(
+    ("payload", "match"),
+    [
+        (
+            {
+                "skills": [
+                    {
+                        "name": "jujutsu-workflow",
+                        "source": "assistants/shared/skills/jujutsu-workflow",
+                        "targets": ["cursor"],
+                        "profiles": ["default"],
+                        "dependencies": [],
+                        "provenance": "x",
+                        "portability_status": "reviewed-generic",
+                    },
+                    {
+                        "name": "using-jujutsu",
+                        "source": "assistants/shared/skills/using-jujutsu",
+                        "targets": ["cursor"],
+                        "profiles": ["default"],
+                        "dependencies": [],
+                        "provenance": "x",
+                        "portability_status": "reviewed-generic",
+                    },
+                ],
+                "renames": [{"from": "jujutsu-workflow", "to": "using-jujutsu"}],
+            },
+            "rename from still present in skills",
+        ),
+        (
+            {
+                "skills": [
+                    {
+                        "name": "using-jujutsu",
+                        "source": "assistants/shared/skills/using-jujutsu",
+                        "targets": ["cursor"],
+                        "profiles": ["default"],
+                        "dependencies": [],
+                        "provenance": "x",
+                        "portability_status": "reviewed-generic",
+                    }
+                ],
+                "renames": [
+                    {"from": "old-a", "to": "using-jujutsu"},
+                    {"from": "old-a", "to": "using-jujutsu"},
+                ],
+            },
+            "duplicate rename from",
+        ),
+        (
+            {
+                "skills": [
+                    {
+                        "name": "using-jujutsu",
+                        "source": "assistants/shared/skills/using-jujutsu",
+                        "targets": ["cursor"],
+                        "profiles": ["default"],
+                        "dependencies": [],
+                        "provenance": "x",
+                        "portability_status": "reviewed-generic",
+                    }
+                ],
+                "renames": [{"from": "jujutsu-workflow", "to": "missing-skill"}],
+            },
+            "rename to absent from skills",
+        ),
+    ],
+)
+def test_skill_rename_validation_rejects_invalid_declarations(
+    payload: dict[str, object], match: str
+) -> None:
+    with pytest.raises(ValidationError, match=match):
+        SkillCatalog.model_validate(payload)
