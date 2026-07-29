@@ -25,6 +25,7 @@ from ballen_config.state import (
 
 
 def _paths(repo_root: Path, home: Path) -> RuntimePaths:
+    """Build runtime paths rooted at the supplied repository and home."""
     return RuntimePaths.from_roots(repo_root=repo_root, home=home)
 
 

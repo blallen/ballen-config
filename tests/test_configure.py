@@ -321,12 +321,10 @@ def test_public_tree_digest_preserves_stored_digest_compatibility(
     """Keep existing managed-tree state valid after making the digest public."""
     source = config_paths.repo_root / "tree"
     source.mkdir()
-    (source / "SKILL.md").write_text(
-        "---\nname: example-skill\ndescription: Example.\n---\n\n# Example\n"
-    )
-    (source / "reference.md").write_text("# Reference\n")
+    (source / "payload.bin").write_bytes(b"\x00managed-tree-digest-contract\xff\x01")
+    (source / "metadata.json").write_text('{"format":1}\n', encoding="utf-8")
     (source / "empty").mkdir()
-    expected_digest = "426c50bb5755776ac2290e8f5ffdee12270e0bcfdb6a94c3dca93e06cb270608"  # pragma: allowlist secret
+    expected_digest = "70c689a06872d5833d4cccb6703cfaafa158e1fd02a848ffe67de049f494f865"  # pragma: allowlist secret
     assert digest_tree(source) == expected_digest
 
 

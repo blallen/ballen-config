@@ -26,15 +26,22 @@ from ballen_config.configure import (
     ConfigurationPlanContributor,
     run_configure,
 )
-from ballen_config.doctor import CheckSeverity, FindingStatus, run_doctor
+from ballen_config.doctor import CheckSeverity, DoctorFinding, FindingStatus, run_doctor
 from ballen_config.models import Component, Manager, ResolvedSetup
 from ballen_config.planning import PlanAction
 from ballen_config.runtime import RuntimePaths
 from ballen_config.state import BootstrapState, ManagedRecord, StateStore
 from tests.assistants.fakes import StatefulAssistantFake
 
+_CONCRETE_TARGETS = (
+    pytest.param(AgentName.CURSOR, id="cursor"),
+    pytest.param(AgentName.CLAUDE, id="claude-code"),
+    pytest.param(AgentName.CODEX, id="codex"),
+)
+
 
 def _write_skill(root: Path, name: str, body: str = "body") -> Path:
+    """Write a minimal valid skill tree and return its root."""
     root.mkdir(parents=True, exist_ok=True)
     (root / "SKILL.md").write_text(
         f"---\nname: {name}\ndescription: Example.\n---\n\n# {body}\n",
@@ -50,6 +57,7 @@ def _record(
     digest: str,
     destination: str | None = None,
 ) -> ManagedRecord:
+    """Build a managed-state receipt for one installed skill target."""
     relative = destination or (_SKILL_ROOTS[target] / name).as_posix()
     return ManagedRecord(
         resource_id=f"shared-skill-{name}-{target.value}",
@@ -59,23 +67,46 @@ def _record(
     )
 
 
+@pytest.mark.parametrize("target", _CONCRETE_TARGETS)
 @pytest.mark.parametrize(
-    "target",
-    [AgentName.CURSOR, AgentName.CLAUDE, AgentName.CODEX],
+    ("legacy_present", "record_receipt", "expected_state"),
+    [
+        pytest.param(False, False, LegacyRenameState.CLEAN, id="clean"),
+        pytest.param(True, True, LegacyRenameState.EXACT_LIVE, id="exact-live"),
+        pytest.param(False, True, LegacyRenameState.EXACT_STALE, id="exact-stale"),
+    ],
 )
-def test_classify_clean_when_absent(temporary_home: Path, target: AgentName) -> None:
-    """Classify a genuinely absent legacy path as clean."""
+def test_classify_accepted_legacy_states(
+    temporary_home: Path,
+    target: AgentName,
+    legacy_present: bool,
+    record_receipt: bool,
+    expected_state: LegacyRenameState,
+) -> None:
+    """Classify each accepted legacy state for every concrete target."""
+    legacy = temporary_home / _SKILL_ROOTS[target] / "old-skill"
+    if legacy_present:
+        _write_skill(legacy, "old-skill")
+    record: ManagedRecord | None = None
+    if record_receipt:
+        digest = hash_skill_tree(legacy) if legacy_present else "c" * 64
+        record = _record(name="old-skill", target=target, digest=digest)
+    state = BootstrapState(
+        managed={} if record is None else {record.resource_id: record}
+    )
+
     result = classify_rename_target(
         from_name="old-skill",
         to_name="new-skill",
         target=target,
         home=temporary_home,
-        state=BootstrapState(),
+        state=state,
         successor_digest="a" * 64,
         enabled=True,
     )
-    assert result.legacy_state == LegacyRenameState.CLEAN
-    assert result.legacy_record is None
+
+    assert result.legacy_state is expected_state
+    assert result.legacy_record == record
     assert result.legacy_relative == _SKILL_ROOTS[target] / "old-skill"
     assert result.successor_relative == _SKILL_ROOTS[target] / "new-skill"
 
@@ -109,54 +140,7 @@ def test_classify_legacy_leaf_blocks(temporary_home: Path, leaf_kind: str) -> No
     assert result.legacy_state == LegacyRenameState.BLOCKED_UNMANAGED_OR_AMBIGUOUS
 
 
-@pytest.mark.parametrize(
-    "target",
-    [AgentName.CURSOR, AgentName.CLAUDE, AgentName.CODEX],
-)
-def test_classify_exact_live(temporary_home: Path, target: AgentName) -> None:
-    """Classify a received legacy tree at its recorded digest as exact."""
-    legacy = temporary_home / _SKILL_ROOTS[target] / "old-skill"
-    _write_skill(legacy, "old-skill")
-    digest = hash_skill_tree(legacy)
-    record = _record(name="old-skill", target=target, digest=digest)
-    result = classify_rename_target(
-        from_name="old-skill",
-        to_name="new-skill",
-        target=target,
-        home=temporary_home,
-        state=BootstrapState(managed={record.resource_id: record}),
-        successor_digest="b" * 64,
-        enabled=True,
-    )
-    assert result.legacy_state == LegacyRenameState.EXACT_LIVE
-    assert result.legacy_record == record
-
-
-@pytest.mark.parametrize(
-    "target",
-    [AgentName.CURSOR, AgentName.CLAUDE, AgentName.CODEX],
-)
-def test_classify_exact_stale(temporary_home: Path, target: AgentName) -> None:
-    """Classify an absent legacy tree with an exact receipt as resumable."""
-    digest = "c" * 64
-    record = _record(name="old-skill", target=target, digest=digest)
-    result = classify_rename_target(
-        from_name="old-skill",
-        to_name="new-skill",
-        target=target,
-        home=temporary_home,
-        state=BootstrapState(managed={record.resource_id: record}),
-        successor_digest="d" * 64,
-        enabled=True,
-    )
-    assert result.legacy_state == LegacyRenameState.EXACT_STALE
-    assert result.legacy_record == record
-
-
-@pytest.mark.parametrize(
-    "target",
-    [AgentName.CURSOR, AgentName.CLAUDE, AgentName.CODEX],
-)
+@pytest.mark.parametrize("target", _CONCRETE_TARGETS)
 def test_classify_absent_mismatched_receipt_is_ambiguous(
     temporary_home: Path, target: AgentName
 ) -> None:
@@ -179,10 +163,7 @@ def test_classify_absent_mismatched_receipt_is_ambiguous(
     assert result.legacy_state == LegacyRenameState.BLOCKED_AMBIGUOUS_RECEIPT
 
 
-@pytest.mark.parametrize(
-    "target",
-    [AgentName.CURSOR, AgentName.CLAUDE, AgentName.CODEX],
-)
+@pytest.mark.parametrize("target", _CONCRETE_TARGETS)
 def test_classify_present_without_receipt_is_unmanaged(
     temporary_home: Path, target: AgentName
 ) -> None:
@@ -201,10 +182,7 @@ def test_classify_present_without_receipt_is_unmanaged(
     assert result.legacy_state == LegacyRenameState.BLOCKED_UNMANAGED_OR_AMBIGUOUS
 
 
-@pytest.mark.parametrize(
-    "target",
-    [AgentName.CURSOR, AgentName.CLAUDE, AgentName.CODEX],
-)
+@pytest.mark.parametrize("target", _CONCRETE_TARGETS)
 def test_classify_present_exact_receipt_digest_mismatch_is_drift(
     temporary_home: Path, target: AgentName
 ) -> None:
@@ -224,16 +202,14 @@ def test_classify_present_exact_receipt_digest_mismatch_is_drift(
     assert result.legacy_state == LegacyRenameState.BLOCKED_DRIFT
 
 
-@pytest.mark.parametrize(
-    "target",
-    [AgentName.CURSOR, AgentName.CLAUDE, AgentName.CODEX],
-)
+@pytest.mark.parametrize("target", _CONCRETE_TARGETS)
 def test_classify_skipped_never_inspects_filesystem(
     temporary_home: Path, target: AgentName, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Leave skipped targets entirely outside filesystem classification."""
 
     def fail_home(_home: Path) -> Path:
+        """Fail if skipped classification reaches the home validation boundary."""
         raise AssertionError("skipped targets must not inspect the filesystem")
 
     monkeypatch.setattr("ballen_config.assistants.skills._validated_home", fail_home)
@@ -249,10 +225,7 @@ def test_classify_skipped_never_inspects_filesystem(
     assert result.legacy_state == LegacyRenameState.SKIPPED
 
 
-@pytest.mark.parametrize(
-    "target",
-    [AgentName.CURSOR, AgentName.CLAUDE, AgentName.CODEX],
-)
+@pytest.mark.parametrize("target", _CONCRETE_TARGETS)
 def test_classify_unreceipted_successor_at_exact_digest_blocks(
     temporary_home: Path, target: AgentName
 ) -> None:
@@ -276,6 +249,7 @@ def _resolved_setup(
     *enabled: str,
     profiles: tuple[str, ...] = ("default",),
 ) -> ResolvedSetup:
+    """Build setup resolution with the named concrete agents enabled."""
     components = tuple(
         Component(id=name, manager=Manager.BREW_CASK, package=name) for name in enabled
     )
@@ -293,6 +267,7 @@ def _skill_item(
     targets: tuple[str, ...] = ("cursor",),
     profiles: tuple[str, ...] = ("default",),
 ) -> dict[str, object]:
+    """Build one minimal valid skill declaration."""
     return {
         "name": name,
         "source": f"assistants/shared/skills/{name}",
@@ -307,6 +282,7 @@ def _skill_item(
 def _prepare_rename_repo(
     temporary_home: Path, tmp_path: Path, *, legacy_present: bool = False
 ) -> tuple[RuntimePaths, SkillCatalog, str]:
+    """Create a repository with one declared cursor skill rename."""
     repo = tmp_path / "repo"
     source = repo / "assistants/shared/skills/new-skill"
     _write_skill(source, "new-skill", body="successor")
@@ -326,56 +302,42 @@ def _prepare_rename_repo(
     return paths, catalog, digest
 
 
-def test_plan_clean_target_installs_only(temporary_home: Path, tmp_path: Path) -> None:
-    """Freeze a clean target without a legacy cleanup receipt."""
-    paths, catalog, digest = _prepare_rename_repo(temporary_home, tmp_path)
-    actions = plan_skill_renames(
-        catalog=catalog,
-        setup=_resolved_setup("cursor"),
-        paths=paths,
-        state=BootstrapState(),
-    )
-    assert len(actions) == 1
-    assert actions[0].legacy_state == LegacyRenameState.CLEAN
-    assert actions[0].legacy_record is None
-    assert digest
-
-
-def test_plan_exact_live_sequences_install_then_cleanup(
-    temporary_home: Path, tmp_path: Path
+@pytest.mark.parametrize(
+    ("legacy_present", "record_receipt", "expected_state"),
+    [
+        pytest.param(False, False, LegacyRenameState.CLEAN, id="clean"),
+        pytest.param(True, True, LegacyRenameState.EXACT_LIVE, id="exact-live"),
+        pytest.param(False, True, LegacyRenameState.EXACT_STALE, id="exact-stale"),
+    ],
+)
+def test_plan_accepts_rename_cleanup_states(
+    temporary_home: Path,
+    tmp_path: Path,
+    legacy_present: bool,
+    record_receipt: bool,
+    expected_state: LegacyRenameState,
 ) -> None:
-    """Freeze exact live legacy cleanup after successor installation."""
+    """Plan each accepted legacy state as one successor and cleanup action."""
     paths, catalog, _digest = _prepare_rename_repo(
-        temporary_home, tmp_path, legacy_present=True
+        temporary_home, tmp_path, legacy_present=legacy_present
     )
     legacy = temporary_home / ".cursor/skills/old-skill"
-    digest = hash_skill_tree(legacy)
-    record = _record(name="old-skill", target=AgentName.CURSOR, digest=digest)
+    record: ManagedRecord | None = None
+    if record_receipt:
+        digest = hash_skill_tree(legacy) if legacy_present else "a" * 64
+        record = _record(name="old-skill", target=AgentName.CURSOR, digest=digest)
     actions = plan_skill_renames(
         catalog=catalog,
         setup=_resolved_setup("cursor"),
         paths=paths,
-        state=BootstrapState(managed={record.resource_id: record}),
+        state=BootstrapState(
+            managed={} if record is None else {record.resource_id: record}
+        ),
     )
+
     assert len(actions) == 1
-    assert actions[0].legacy_state == LegacyRenameState.EXACT_LIVE
+    assert actions[0].legacy_state is expected_state
     assert actions[0].legacy_record == record
-
-
-def test_plan_exact_stale_cleanup_without_backup(
-    temporary_home: Path, tmp_path: Path
-) -> None:
-    """Freeze stale legacy receipt cleanup without a live tree."""
-    paths, catalog, _digest = _prepare_rename_repo(temporary_home, tmp_path)
-    record = _record(name="old-skill", target=AgentName.CURSOR, digest="a" * 64)
-    actions = plan_skill_renames(
-        catalog=catalog,
-        setup=_resolved_setup("cursor"),
-        paths=paths,
-        state=BootstrapState(managed={record.resource_id: record}),
-    )
-    assert len(actions) == 1
-    assert actions[0].legacy_state == LegacyRenameState.EXACT_STALE
 
 
 def test_plan_blocks_when_any_target_infeasible(
@@ -395,29 +357,31 @@ def test_plan_blocks_when_any_target_infeasible(
     assert excinfo.value.state == LegacyRenameState.BLOCKED_UNMANAGED_OR_AMBIGUOUS
 
 
-def test_candidate_ignores_profile_exclusion(
-    temporary_home: Path, tmp_path: Path
+def test_profile_excluded_rename_is_not_classified_or_planned(
+    temporary_home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Do not create actions for successor profiles outside this setup."""
+    """Do not inspect or plan a rename excluded by the active profile."""
     repo = tmp_path / "repo"
     source = repo / "assistants/shared/skills/new-skill"
     _write_skill(source, "new-skill")
     catalog = SkillCatalog.model_validate(
         {
             "skills": [_skill_item("new-skill", profiles=("work",))],
-            "renames": [],
+            "renames": [{"from": "old-skill", "to": "new-skill"}],
         }
     )
     paths = RuntimePaths.from_roots(repo_root=repo, home=temporary_home)
-    legacy = temporary_home / ".cursor/skills/old-skill"
-    _write_skill(legacy, "old-skill")
-    digest = hash_skill_tree(legacy)
-    record = _record(name="old-skill", target=AgentName.CURSOR, digest=digest)
+
+    def fail_home(_home: Path) -> Path:
+        """Fail if a profile-excluded rename reaches filesystem classification."""
+        raise AssertionError("excluded rename was classified")
+
+    monkeypatch.setattr("ballen_config.assistants.skills._validated_home", fail_home)
     actions = plan_skill_renames(
         catalog=catalog,
         setup=_resolved_setup("cursor", profiles=("default",)),
         paths=paths,
-        state=BootstrapState(managed={record.resource_id: record}),
+        state=BootstrapState(),
     )
     assert actions == ()
 
@@ -984,6 +948,7 @@ def test_apply_removes_exact_stale_receipt_without_backup(
 def test_compare_and_remove_mismatch_is_noop(
     temporary_home: Path, tmp_path: Path
 ) -> None:
+    """Leave a changed managed receipt intact during compare-and-remove."""
     repo = tmp_path / "repo"
     repo.mkdir()
     paths = RuntimePaths.from_roots(repo_root=repo, home=temporary_home)
@@ -999,6 +964,7 @@ def test_compare_and_remove_mismatch_is_noop(
 def test_crash_between_publish_and_receipt_blocks(
     temporary_home: Path, tmp_path: Path
 ) -> None:
+    """Block cleanup when a successor tree exists without a receipt."""
     paths, catalog, digest = _prepare_rename_repo(
         temporary_home, tmp_path, legacy_present=True
     )
@@ -1021,29 +987,29 @@ def test_crash_between_publish_and_receipt_blocks(
     assert excinfo.value.state == LegacyRenameState.BLOCKED_UNMANAGED_SUCCESSOR
 
 
-def test_doctor_reports_blocked_unmanaged_legacy(
-    temporary_home: Path, tmp_path: Path
-) -> None:
-    paths, _catalog, _digest = _prepare_rename_repo(temporary_home, tmp_path)
-    legacy = temporary_home / ".cursor/skills/old-skill"
-    _write_skill(legacy, "old-skill")
-    catalog_path = paths.repo_root / "assistants/shared/skills/catalog.yaml"
-    catalog_path.write_text(
-        yaml.safe_dump(
-            {
-                "skills": [_skill_item("new-skill")],
-                "renames": [{"from": "old-skill", "to": "new-skill"}],
-            },
-            sort_keys=False,
-        )
-    )
+def _doctor_rename_finding(
+    paths: RuntimePaths,
+    temporary_home: Path,
+    *,
+    enabled: frozenset[str] = frozenset({"cursor"}),
+) -> DoctorFinding:
+    """Run doctor and return the declared cursor rename finding."""
     findings = assistant_checks(
-        enabled=frozenset({"cursor"}),
+        enabled=enabled,
         paths=paths,
         runner=StatefulAssistantFake(temporary_home),
     )
-    report = run_doctor(findings)
-    finding = report.finding("skill-rename.old-skill.cursor")
+    return run_doctor(findings).finding("skill-rename.old-skill.cursor")
+
+
+def test_doctor_reports_blocked_unmanaged_legacy(
+    temporary_home: Path, tmp_path: Path
+) -> None:
+    """Report an unowned legacy tree as a manual-warning rename finding."""
+    paths, _catalog, _digest = _prepare_rename_repo(temporary_home, tmp_path)
+    legacy = temporary_home / ".cursor/skills/old-skill"
+    _write_skill(legacy, "old-skill")
+    finding = _doctor_rename_finding(paths, temporary_home)
     assert finding.status is FindingStatus.MANUAL
     assert finding.severity is CheckSeverity.WARNING
 
@@ -1051,33 +1017,25 @@ def test_doctor_reports_blocked_unmanaged_legacy(
 def test_doctor_reports_unreceipted_successor(
     temporary_home: Path, tmp_path: Path
 ) -> None:
+    """Report an unreceipted successor as a manual-warning rename finding."""
     paths, _catalog, digest = _prepare_rename_repo(temporary_home, tmp_path)
     successor = temporary_home / ".cursor/skills/new-skill"
     shutil.copytree(paths.repo_root / "assistants/shared/skills/new-skill", successor)
     assert hash_skill_tree(successor) == digest
-    findings = assistant_checks(
-        enabled=frozenset({"cursor"}),
-        paths=paths,
-        runner=StatefulAssistantFake(temporary_home),
-    )
-    finding = run_doctor(findings).finding("skill-rename.old-skill.cursor")
+    finding = _doctor_rename_finding(paths, temporary_home)
     assert finding.status is FindingStatus.MANUAL
     assert finding.severity is CheckSeverity.WARNING
 
 
 def test_doctor_reports_legacy_drift(temporary_home: Path, tmp_path: Path) -> None:
+    """Report a drifted legacy tree as an error rename finding."""
     paths, _catalog, _digest = _prepare_rename_repo(
         temporary_home, tmp_path, legacy_present=True
     )
     legacy = temporary_home / ".cursor/skills/old-skill"
     record = _record(name="old-skill", target=AgentName.CURSOR, digest="0" * 64)
     StateStore(paths).write(BootstrapState(managed={record.resource_id: record}))
-    findings = assistant_checks(
-        enabled=frozenset({"cursor"}),
-        paths=paths,
-        runner=StatefulAssistantFake(temporary_home),
-    )
-    finding = run_doctor(findings).finding("skill-rename.old-skill.cursor")
+    finding = _doctor_rename_finding(paths, temporary_home)
     assert finding.status is FindingStatus.DRIFT
     assert finding.severity is CheckSeverity.ERROR
     assert legacy.exists()
@@ -1086,6 +1044,7 @@ def test_doctor_reports_legacy_drift(temporary_home: Path, tmp_path: Path) -> No
 def test_doctor_reports_incomplete_cleanup_when_successor_present(
     temporary_home: Path, tmp_path: Path
 ) -> None:
+    """Report a proven successor with leftover legacy content as drift."""
     paths, _catalog, digest = _prepare_rename_repo(
         temporary_home, tmp_path, legacy_present=True
     )
@@ -1110,12 +1069,7 @@ def test_doctor_reports_incomplete_cleanup_when_successor_present(
             }
         )
     )
-    findings = assistant_checks(
-        enabled=frozenset({"cursor"}),
-        paths=paths,
-        runner=StatefulAssistantFake(temporary_home),
-    )
-    finding = run_doctor(findings).finding("skill-rename.old-skill.cursor")
+    finding = _doctor_rename_finding(paths, temporary_home)
     assert finding.status is FindingStatus.DRIFT
     assert finding.severity is CheckSeverity.ERROR
 
@@ -1123,13 +1077,9 @@ def test_doctor_reports_incomplete_cleanup_when_successor_present(
 def test_doctor_reports_skipped_rename_target(
     temporary_home: Path, tmp_path: Path
 ) -> None:
+    """Report a disabled rename target as informationally skipped."""
     paths, _catalog, _digest = _prepare_rename_repo(temporary_home, tmp_path)
-    findings = assistant_checks(
-        enabled=frozenset(),
-        paths=paths,
-        runner=StatefulAssistantFake(temporary_home),
-    )
-    finding = run_doctor(findings).finding("skill-rename.old-skill.cursor")
+    finding = _doctor_rename_finding(paths, temporary_home, enabled=frozenset())
     assert finding.status is FindingStatus.SKIPPED
     assert finding.severity is CheckSeverity.INFO
 
@@ -1137,6 +1087,7 @@ def test_doctor_reports_skipped_rename_target(
 def test_end_to_end_fixture_rename_plan_configure_doctor_idempotent(
     temporary_home: Path, tmp_path: Path
 ) -> None:
+    """Converge a managed rename and leave the following run unchanged."""
     paths, catalog, _digest = _prepare_rename_repo(
         temporary_home, tmp_path, legacy_present=True
     )
