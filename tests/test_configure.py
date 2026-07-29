@@ -2,8 +2,12 @@
 
 import os
 import stat
+import threading
 from collections.abc import Callable, Mapping, Sequence
+from multiprocessing import Process, Queue
+from multiprocessing.queues import Queue as MultiprocessingQueue
 from pathlib import Path
+from queue import Queue as ThreadQueue
 
 import pytest
 from pydantic import ValidationError
@@ -14,7 +18,6 @@ from ballen_config.configure import (
     ConfigurationEngine,
     ConfigurationPlanContributor,
     ManagedFileSpec,
-    ManagedSpec,
     ManagedTreeSpec,
     Renderer,
     SourceValidator,
@@ -26,7 +29,11 @@ from ballen_config.models import ResolvedSetup
 from ballen_config.planning import PlanAction
 from ballen_config.runner import CommandResult
 from ballen_config.runtime import RuntimePaths
-from ballen_config.state import ManagedRecord, StateStore
+from ballen_config.state import (
+    ManagedRecord,
+    StateMutationContentionError,
+    StateStore,
+)
 
 
 @pytest.fixture
@@ -638,9 +645,22 @@ def test_managed_tree_allows_dotted_ids_and_guards_preflight_digest(
         )
 
 
-def test_apply_holds_mutation_lock_across_validate_backup_publish_record(
-    config_paths: RuntimePaths, monkeypatch: pytest.MonkeyPatch
+def _try_nonblocking_mutation(
+    home: str, repo: str, result: MultiprocessingQueue[str]
 ) -> None:
+    """Report whether a separate process can acquire the state mutation lock."""
+    store = StateStore(RuntimePaths.from_roots(repo_root=Path(repo), home=Path(home)))
+    try:
+        with store.mutation(blocking=False):
+            result.put("acquired")
+    except StateMutationContentionError:
+        result.put("contended")
+
+
+def test_apply_retains_mutation_lock_while_publishing_tree(
+    config_paths: RuntimePaths,
+) -> None:
+    """A concurrent process remains excluded while apply pauses at publication."""
     active = engine(config_paths, timestamp="20260729T000000Z")
     source = config_paths.repo_root / "tree-src"
     source.mkdir()
@@ -651,25 +671,47 @@ def test_apply_holds_mutation_lock_across_validate_backup_publish_record(
         destination=Path(".demo/tree"),
         component="demo",
     )
-    depths: list[int] = []
-    original_validate = active._validate
-    original_backup = active._backup
-    original_record = active._record
+    ready: MultiprocessingQueue[str] = Queue()
+    release: MultiprocessingQueue[str] = Queue()
+    errors: ThreadQueue[BaseException] = ThreadQueue()
 
-    def wrap_validate(spec_arg: ManagedSpec) -> None:
-        depths.append(active.state_store._lock_depth)
-        original_validate(spec_arg)
+    def pause_replace(source_path: Path, destination_path: Path) -> None:
+        """Pause the supported publication boundary before replacing the tree."""
+        ready.put("ready")
+        release.get(timeout=5)
+        os.replace(source_path, destination_path)
 
-    def wrap_backup(destination: Path) -> Path | None:
-        depths.append(active.state_store._lock_depth)
-        return original_backup(destination)
+    def apply_in_thread() -> None:
+        """Run apply and surface any unexpected exception to the test thread."""
+        try:
+            active.replace = pause_replace
+            active.apply(spec)
+        except BaseException as error:
+            errors.put(error)
 
-    def wrap_record(spec_arg: ManagedSpec, destination: Path) -> None:
-        depths.append(active.state_store._lock_depth)
-        original_record(spec_arg, destination)
+    applying = threading.Thread(target=apply_in_thread)
+    applying.start()
+    result: MultiprocessingQueue[str] = Queue()
+    contender: Process | None = None
+    try:
+        assert ready.get(timeout=5) == "ready"
+        contender = Process(
+            target=_try_nonblocking_mutation,
+            args=(str(config_paths.home), str(config_paths.repo_root), result),
+        )
+        contender.start()
+        assert result.get(timeout=5) == "contended"
+    finally:
+        release.put("release")
+        if contender is not None:
+            contender.join(timeout=5)
+            if contender.is_alive():
+                contender.terminate()
+                contender.join(timeout=5)
+        applying.join(timeout=5)
 
-    monkeypatch.setattr(active, "_validate", wrap_validate)
-    monkeypatch.setattr(active, "_backup", wrap_backup)
-    monkeypatch.setattr(active, "_record", wrap_record)
-    active.apply(spec)
-    assert depths and all(depth >= 1 for depth in depths)
+    assert contender is not None
+    assert contender.exitcode == 0
+    assert not applying.is_alive()
+    assert errors.empty()
+    assert (config_paths.home / spec.destination / "file.txt").read_text() == "hello\n"

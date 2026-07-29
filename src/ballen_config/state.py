@@ -77,18 +77,46 @@ class StateStore:
         try:
             metadata = os.lstat(self.path)
         except FileNotFoundError:
+            self._validate_lock_path()
             return
         if stat.S_ISLNK(metadata.st_mode):
             raise ValueError(f"symlinked path component: {self.path}")
         if not stat.S_ISREG(metadata.st_mode):
             raise ValueError(f"state path is not a regular file: {self.path}")
+        self._validate_lock_path()
+
+    def _validate_lock_path(self) -> None:
+        """Reject a lock leaf that is not an ordinary regular file."""
+        assert_contained(self._lock_path, self.paths.state_root)
+        assert_no_symlink_components(
+            self._lock_path, stop=self.paths.state_root, include_leaf=False
+        )
+        try:
+            metadata = os.lstat(self._lock_path)
+        except FileNotFoundError:
+            return
+        if not stat.S_ISREG(metadata.st_mode):
+            raise ValueError(f"mutation lock is not a regular file: {self._lock_path}")
 
     @contextmanager
     def mutation(self, *, blocking: bool = True) -> Iterator[None]:
         """Acquire the exclusive advisory mutation lock.
 
-        Reentrant for the owning thread. Non-blocking acquire raises
-        ``StateMutationContentionError`` instead of waiting.
+        The lock is reentrant only for its owning thread. Other threads and
+        processes block until release, or a non-blocking acquire raises
+        ``StateMutationContentionError``. The context yields with the lock
+        held and releases one reentrant level on exit.
+
+        Args:
+            blocking: Whether to wait for another lock holder to release.
+
+        Yields:
+            None while the calling thread owns the mutation lock.
+
+        Raises:
+            StateMutationContentionError: If a non-blocking acquire contends,
+                or another thread owns this store's lock.
+            ValueError: If the lock path is unsafe.
         """
         self._acquire(blocking=blocking)
         try:
@@ -109,30 +137,51 @@ class StateStore:
             self._validate_paths()
             self.paths.state_root.mkdir(parents=True, mode=0o700, exist_ok=True)
             self.paths.state_root.chmod(0o700)
-            fd = os.open(
-                self._lock_path,
-                os.O_CREAT | os.O_RDWR,
-                0o600,
-            )
-            os.fchmod(fd, 0o600)
+            self._validate_lock_path()
+            nofollow = getattr(os, "O_NOFOLLOW", None)
+            if nofollow is None:
+                raise ValueError("safe mutation lock opening is unsupported")
+            fd: int | None = None
+            acquired = False
             flags = fcntl.LOCK_EX if blocking else fcntl.LOCK_EX | fcntl.LOCK_NB
             try:
+                fd = os.open(
+                    self._lock_path,
+                    os.O_CREAT | os.O_RDWR | nofollow,
+                    0o600,
+                )
+                if not stat.S_ISREG(os.fstat(fd).st_mode):
+                    raise ValueError(
+                        f"mutation lock is not a regular file: {self._lock_path}"
+                    )
+                os.fchmod(fd, 0o600)
                 fcntl.flock(fd, flags)
+                self._lock_fd = fd
+                self._lock_owner = ident
+                self._lock_depth = 1
+                acquired = True
             except OSError as error:
-                os.close(fd)
                 if error.errno in {errno.EACCES, errno.EAGAIN}:
                     raise StateMutationContentionError(
                         "mutation lock contention"
                     ) from error
+                if error.errno == errno.ELOOP:
+                    raise ValueError(
+                        f"mutation lock is not a regular file: {self._lock_path}"
+                    ) from error
                 raise
-            self._lock_fd = fd
-            self._lock_owner = ident
-            self._lock_depth = 1
+            finally:
+                if fd is not None and not acquired:
+                    os.close(fd)
 
     def _release(self) -> None:
         with self._thread_guard:
             if self._lock_depth <= 0 or self._lock_fd is None:
                 raise RuntimeError("mutation lock release without acquire")
+            if self._lock_owner != threading.get_ident():
+                raise StateMutationContentionError(
+                    "mutation lock release attempted by non-owner thread"
+                )
             self._lock_depth -= 1
             if self._lock_depth > 0:
                 return
@@ -180,17 +229,28 @@ class StateStore:
     def compare_and_remove(self, expected: ManagedRecord) -> bool:
         """Delete managed record only if stored value exactly equals expected.
 
-        Must be called while ``mutation()`` is held. Returns True if removed.
-        Returns False and writes nothing on mismatch.
+        The calling thread must own ``mutation()``. Returns True after removal,
+        or False without writing when the stored record differs. Ownership is
+        checked before loading and writing so this method does not deadlock on
+        the non-reentrant thread guard.
 
         Args:
             expected: Exact ownership record that must match the stored value.
 
         Returns:
             True when the record was removed; False when the store differs.
+
+        Raises:
+            RuntimeError: If no mutation lock is held.
+            StateMutationContentionError: If another thread owns the lock.
         """
-        if self._lock_depth <= 0:
-            raise RuntimeError("compare_and_remove requires mutation lock")
+        with self._thread_guard:
+            if self._lock_depth <= 0:
+                raise RuntimeError("compare_and_remove requires mutation lock")
+            if self._lock_owner != threading.get_ident():
+                raise StateMutationContentionError(
+                    "compare_and_remove attempted by non-owner thread"
+                )
         state = self.load()
         current = state.managed.get(expected.resource_id)
         if current != expected:
