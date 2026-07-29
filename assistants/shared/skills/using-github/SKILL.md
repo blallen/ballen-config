@@ -6,8 +6,6 @@ description: >-
   assuming gh, and require explicit user intent before remote writes.
 ---
 
-<!-- markdownlint-disable -->
-
 # Using GitHub
 
 Portable GitHub forge workflow. Keep pull-request vocabulary (`PR`, review
@@ -17,9 +15,13 @@ comments, checks). Do not route through a shared gitforge skill.
 
 Derive repository and remote identity from the current checkout:
 
-- Inspect the configured remotes (`git remote -v` or `jj git remote list` when
-  applicable).
-- Resolve owner/name (and host, for GitHub Enterprise) from the remote URL.
+- Inspect remote configuration locally; never run a command that places raw
+  remote URLs in output or transcripts.
+- Parse remote URLs locally and emit only a sanitized host and namespace/path.
+  Explicitly omit URL userinfo, query strings, and fragments; never reproduce
+  secret-bearing components.
+- Resolve owner/name (and host, for GitHub Enterprise) from the sanitized
+  remote identity.
 - Prefer dynamic lookup over hard-coded numeric repository IDs.
 
 ## Provider discovery
@@ -69,7 +71,13 @@ Separate provider setup from workflow guidance.
 Preview mutations; confirm the canonical remote target.
 
 - Show the exact PR, repository, and host you will write to.
-- Prefer dry-run / preview modes when the tool supports them.
+- Use a provider dry-run / preview as non-mutating only after current primary
+  documentation establishes it has no unapproved side effect. Otherwise,
+  construct a local target/payload preview or obtain explicit approval for all
+  potential side effects.
+- `gh pr create --dry-run` may still push Git changes. It is not a safe preview
+  unless pushing was explicitly approved. Without push approval, preview title,
+  body, head/base, repository, and host locally.
 - Require explicit user intent before remote writes (create/update PR, post
   review comments, merge, re-run checks, change labels/assignees/reviewers).
 - After a write, briefly confirm what changed.

@@ -1258,7 +1258,7 @@ def _assert_shared_skill_synchronized(
         ),
         pytest.param(
             "using-gitlab",
-            "cf2fe8d0c2d4a7e5e36854b6d58226c739dc00b4806266f9c32960ee3ecc311e",  # pragma: allowlist secret
+            "16ab6ed268e5b465e6ae0f22d81be0bc3ebf225f743d881c3f5106e25a4b482e",  # pragma: allowlist secret
             "Rewritten for portability from plato/skills/using-gitlab at commit "
             "f3b91eead0eff7d0c9cada3bc8e689f7610fba55; commit history records the "
             "promotion.",
@@ -1267,7 +1267,7 @@ def _assert_shared_skill_synchronized(
         ),
         pytest.param(
             "using-github",
-            "c836e3bdeb1010d0ecc0f3e98e87de4ae9a82466fe63a32830f7c2e305bd8c6d",  # pragma: allowlist secret
+            "91689f55b9d587a0e5a334fce83cba2ea80a37940fb01355ddc6635b4395640c",  # pragma: allowlist secret
             "Authored for ballen-config as the GitHub counterpart to using-gitlab, "
             "verified against current primary GitHub CLI documentation.",
             (),

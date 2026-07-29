@@ -6,8 +6,6 @@ description: >-
   assuming glab, and require explicit user intent before remote writes.
 ---
 
-<!-- markdownlint-disable -->
-
 # Using GitLab
 
 Portable GitLab forge workflow. Keep merge-request vocabulary (`MR`, discussions,
@@ -17,9 +15,13 @@ pipelines). Do not route through a shared gitforge skill.
 
 Derive repository and remote identity from the current checkout:
 
-- Inspect the configured remotes (`git remote -v` or `jj git remote list` when
-  applicable).
-- Resolve the canonical GitLab project from the remote URL (host + namespace/path).
+- Inspect remote configuration locally; never run a command that places raw
+  remote URLs in output or transcripts.
+- Parse remote URLs locally and emit only a sanitized host and namespace/path.
+  Explicitly omit URL userinfo, query strings, and fragments; never reproduce
+  secret-bearing components.
+- Resolve the canonical GitLab project from the sanitized host and
+  namespace/path.
 - Prefer dynamic lookup over hard-coded project IDs.
 
 ## Provider discovery
@@ -68,7 +70,10 @@ Separate provider setup from workflow guidance.
 Preview mutations; confirm the canonical remote target.
 
 - Show the exact MR, project path, and host you will write to.
-- Prefer dry-run / preview modes when the tool supports them.
+- Use a provider dry-run / preview as non-mutating only after current primary
+  documentation establishes it has no unapproved side effect. Otherwise,
+  construct a local target/payload preview or obtain explicit approval for all
+  potential side effects.
 - Require explicit user intent before remote writes (create/update MR, post
   comments, merge, retry pipelines, change labels/assignees).
 - After a write, briefly confirm what changed.
