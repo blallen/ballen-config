@@ -33,6 +33,14 @@ skills:
       f3b91eead0eff7d0c9cada3bc8e689f7610fba55; commit history records both.
     portability_status: reviewed-generic
 
+  - name: using-uv
+    source: assistants/shared/skills/using-uv
+    targets: [cursor, claude-code, codex]
+    profiles: [default]
+    dependencies: []
+    provenance: Authored for ballen-config against current primary uv documentation.
+    portability_status: reviewed-generic
+
 renames:
   - from: jujutsu-workflow
     to: using-jujutsu

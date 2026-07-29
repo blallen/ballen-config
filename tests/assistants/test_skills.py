@@ -1266,3 +1266,38 @@ def test_review_project_standards_catalog_and_configuration_are_synchronized(
         ),
         dependencies=("discover-project-standards",),
     )
+
+
+def test_using_uv_projection_matches_canonical_standard(repo_root: Path) -> None:
+    """Keep the co-packaged dependency-management projection byte-identical."""
+    canonical = (
+        repo_root / "assistants/shared/standards/dependency-management.md"
+    ).read_bytes()
+    projection = (
+        repo_root
+        / "assistants/shared/skills/using-uv/references/dependency-management.md"
+    ).read_bytes()
+    assert projection == canonical
+
+
+def test_using_uv_skill_points_at_bundled_reference(repo_root: Path) -> None:
+    """Skill must load policy from its installed tree, not the repo standards path."""
+    text = (repo_root / "assistants/shared/skills/using-uv/SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    assert "references/dependency-management.md" in text
+    assert "assistants/shared/standards/dependency-management.md" not in text
+
+
+def test_using_uv_catalog_and_configuration_are_synchronized(
+    repo_root: Path, temporary_home: Path
+) -> None:
+    """Pin using-uv catalog metadata and configuration contribution."""
+    _assert_shared_skill_synchronized(
+        repo_root,
+        temporary_home,
+        name="using-uv",
+        tree_digest=(
+            "3a34c9b01fe08bba8690219381fa6c056d4c580adf7c62820701c3284bcdd363"  # pragma: allowlist secret
+        ),
+    )
