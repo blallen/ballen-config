@@ -885,10 +885,11 @@ def test_jujutsu_workflow_catalog_inventory_and_configuration_are_synchronized(
         ),
         "portability_status": "reviewed-generic",
     }
-    assert catalog == {
-        "skills": [expected_skill],
-        "renames": [{"from": "jujutsu-workflow", "to": "using-jujutsu"}],
-    }
+    entry = next(item for item in catalog["skills"] if item["name"] == "using-jujutsu")
+    assert entry == expected_skill
+    assert catalog.get("renames") == [
+        {"from": "jujutsu-workflow", "to": "using-jujutsu"}
+    ]
     assert isinstance(resource, CatalogResource)
     assert resource.owner is AgentName.SHARED
     assert resource.targets == (
@@ -918,7 +919,12 @@ def test_jujutsu_workflow_catalog_inventory_and_configuration_are_synchronized(
         _catalog(paths),
     )
     assert all(isinstance(spec, ManagedTreeSpec) for spec in contribution.specs)
-    assert [(spec.id, spec.destination) for spec in contribution.specs] == [
+    jujutsu_specs = [
+        (spec.id, spec.destination)
+        for spec in contribution.specs
+        if spec.id.startswith("shared-skill-using-jujutsu-")
+    ]
+    assert jujutsu_specs == [
         (
             "shared-skill-using-jujutsu-codex",
             Path(".agents/skills/using-jujutsu"),
@@ -1149,3 +1155,114 @@ def test_managed_skill_publish_failure_rolls_back(
 
     assert original.read_text().endswith("description: Original.\n---\n")
     assert store.load() == before_state
+_REJECT = (
+    "plato",
+    "/users/",
+    "/home/",
+    "projects/plato",
+    "ami-",
+    "pydantic 2.8",
+    "{{",
+    "sk-",
+    "ghp_",
+    "glpat-",
+)
+
+
+def _assert_skill_tree_portable(root: Path) -> None:
+    """Reject non-portable tokens inside a shared skill tree."""
+    for path in sorted(root.rglob("*")):
+        if not path.is_file():
+            continue
+        text = path.read_text(encoding="utf-8").lower()
+        for token in _REJECT:
+            assert token not in text, f"{token!r} in {path}"
+
+
+def _assert_shared_skill_synchronized(
+    repo_root: Path,
+    temporary_home: Path,
+    *,
+    name: str,
+    tree_digest: str,
+    dependencies: tuple[str, ...] = (),
+) -> None:
+    """Assert catalog metadata, digest pin, and planned managed-tree ids."""
+    catalog = yaml.safe_load(
+        (repo_root / "assistants/shared/skills/catalog.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    entry = next(item for item in catalog["skills"] if item["name"] == name)
+    assert entry["source"] == f"assistants/shared/skills/{name}"
+    assert entry["targets"] == ["cursor", "claude-code", "codex"]
+    assert entry["profiles"] == ["default"]
+    assert entry["dependencies"] == list(dependencies)
+    assert entry["portability_status"] == "reviewed-generic"
+    source = repo_root / entry["source"]
+    assert hash_skill_tree(source) == tree_digest
+    _assert_skill_tree_portable(source)
+    paths = RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home)
+    contribution = configuration(
+        _resolved_setup("cursor", "claude-code", "codex"),
+        paths,
+        SkillCatalog.model_validate(catalog),
+    )
+    expected_ids = {
+        f"shared-skill-{name}-cursor",
+        f"shared-skill-{name}-claude-code",
+        f"shared-skill-{name}-codex",
+    }
+    assert expected_ids.issubset({spec.id for spec in contribution.specs})
+
+
+def test_discover_project_standards_catalog_and_configuration_are_synchronized(
+    repo_root: Path, temporary_home: Path
+) -> None:
+    """Pin discover-project-standards catalog and configuration contribution."""
+    _assert_shared_skill_synchronized(
+        repo_root,
+        temporary_home,
+        name="discover-project-standards",
+        tree_digest=(
+            "8c7819686294b30b6fa668c6e2b00c10c58bd3e5e78c8c8876cc7ec33063a722"  # pragma: allowlist secret
+        ),
+    )
+
+
+def test_standards_pair_catalog_declares_dependency() -> None:
+    """Review standards skill depends on discover by catalog name."""
+    catalog = SkillCatalog.model_validate(
+        yaml.safe_load(
+            Path("assistants/shared/skills/catalog.yaml").read_text(encoding="utf-8")
+        )
+    )
+    by_name = {skill.name: skill for skill in catalog.skills}
+    assert "discover-project-standards" in by_name
+    assert by_name["review-project-standards"].dependencies == (
+        "discover-project-standards",
+    )
+
+
+def test_review_skill_references_discovery_by_name(repo_root: Path) -> None:
+    """Composition uses the portable skill name, not the Plato source name."""
+    text = (
+        repo_root / "assistants/shared/skills/review-project-standards/SKILL.md"
+    ).read_text(encoding="utf-8")
+    assert "discover-project-standards" in text
+    assert "tooling-discover-standards" not in text
+
+
+def test_review_project_standards_catalog_and_configuration_are_synchronized(
+    repo_root: Path, temporary_home: Path
+) -> None:
+    """Pin review-project-standards catalog and configuration contribution."""
+    _assert_shared_skill_synchronized(
+        repo_root,
+        temporary_home,
+        name="review-project-standards",
+        tree_digest=(
+            "d1802e05d6235e19630e0cd1982ec1c9b99a1fae9bcffbfce06252256d7a22c6"  # pragma: allowlist secret
+        ),
+        dependencies=("discover-project-standards",),
+    )
