@@ -21,6 +21,16 @@ skills:
       promotion.
     portability_status: reviewed-generic
 
+  - name: using-github
+    source: assistants/shared/skills/using-github
+    targets: [cursor, claude-code, codex]
+    profiles: [default]
+    dependencies: []
+    provenance: >-
+      Authored for ballen-config as the GitHub counterpart to using-gitlab,
+      verified against current primary GitHub CLI documentation.
+    portability_status: reviewed-generic
+
   - name: using-gitlab
     source: assistants/shared/skills/using-gitlab
     targets: [cursor, claude-code, codex]

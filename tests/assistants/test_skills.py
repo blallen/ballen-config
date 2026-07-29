@@ -1155,6 +1155,8 @@ def test_managed_skill_publish_failure_rolls_back(
 
     assert original.read_text().endswith("description: Original.\n---\n")
     assert store.load() == before_state
+
+
 _REJECT = (
     "plato",
     "/users/",
@@ -1216,20 +1218,6 @@ def _assert_shared_skill_synchronized(
     assert expected_ids.issubset({spec.id for spec in contribution.specs})
 
 
-def test_discover_project_standards_catalog_and_configuration_are_synchronized(
-    repo_root: Path, temporary_home: Path
-) -> None:
-    """Pin discover-project-standards catalog and configuration contribution."""
-    _assert_shared_skill_synchronized(
-        repo_root,
-        temporary_home,
-        name="discover-project-standards",
-        tree_digest=(
-            "8c7819686294b30b6fa668c6e2b00c10c58bd3e5e78c8c8876cc7ec33063a722"  # pragma: allowlist secret
-        ),
-    )
-
-
 def test_standards_pair_catalog_declares_dependency() -> None:
     """Review standards skill depends on discover by catalog name."""
     catalog = SkillCatalog.model_validate(
@@ -1251,6 +1239,20 @@ def test_review_skill_references_discovery_by_name(repo_root: Path) -> None:
     ).read_text(encoding="utf-8")
     assert "discover-project-standards" in text
     assert "tooling-discover-standards" not in text
+
+
+def test_discover_project_standards_catalog_and_configuration_are_synchronized(
+    repo_root: Path, temporary_home: Path
+) -> None:
+    """Pin discover-project-standards catalog and configuration contribution."""
+    _assert_shared_skill_synchronized(
+        repo_root,
+        temporary_home,
+        name="discover-project-standards",
+        tree_digest=(
+            "8c7819686294b30b6fa668c6e2b00c10c58bd3e5e78c8c8876cc7ec33063a722"  # pragma: allowlist secret
+        ),
+    )
 
 
 def test_review_project_standards_catalog_and_configuration_are_synchronized(
@@ -1370,3 +1372,55 @@ def test_using_gitlab_has_shared_forge_protocol_headings(repo_root: Path) -> Non
         "## Authentication boundary",
     ):
         assert heading in text
+
+
+def test_using_github_names_gitlab_counterpart_for_wrong_forge(
+    repo_root: Path,
+) -> None:
+    """GitHub skill must name the GitLab counterpart and gh fallback."""
+    text = (repo_root / "assistants/shared/skills/using-github/SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    assert "using-gitlab" in text
+    assert "gh" in text
+
+
+def test_forge_skills_share_protocol_headings(repo_root: Path) -> None:
+    """Both forge skills share the stable protocol section headings."""
+    gitlab = (repo_root / "assistants/shared/skills/using-gitlab/SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    github = (repo_root / "assistants/shared/skills/using-github/SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    headings = (
+        "## Repository and remote identity",
+        "## Provider discovery",
+        "## Read-only inspection",
+        "## CLI fallback",
+        "## Provider setup vs workflow",
+        "## Mutation safety",
+        "## Forge guard",
+        "## Authentication boundary",
+    )
+    for heading in headings:
+        assert heading in gitlab
+        assert heading in github
+    assert "using-github" in gitlab
+    assert "using-gitlab" in github
+    assert "glab" in gitlab
+    assert "gh" in github
+
+
+def test_using_github_catalog_and_configuration_are_synchronized(
+    repo_root: Path, temporary_home: Path
+) -> None:
+    """Pin using-github catalog metadata and configuration contribution."""
+    _assert_shared_skill_synchronized(
+        repo_root,
+        temporary_home,
+        name="using-github",
+        tree_digest=(
+            "c836e3bdeb1010d0ecc0f3e98e87de4ae9a82466fe63a32830f7c2e305bd8c6d"  # pragma: allowlist secret
+        ),
+    )
