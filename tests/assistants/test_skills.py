@@ -2,7 +2,6 @@
 
 import os
 import shutil
-from hashlib import sha256
 from pathlib import Path
 from typing import Final, cast
 
@@ -10,7 +9,7 @@ import pytest
 import yaml
 
 from ballen_config.assistants.inventory import load_inventory
-from ballen_config.assistants.models import AgentName, CatalogResource, SkillCatalog
+from ballen_config.assistants.models import AgentName, SkillCatalog
 from ballen_config.assistants.skills import (
     SkillCollisionError,
     SkillCopyAction,
@@ -30,6 +29,17 @@ from ballen_config.models import Component, Manager, ResolvedSetup
 from ballen_config.planning import PlanAction
 from ballen_config.runtime import RuntimePaths
 from ballen_config.state import BootstrapState, ManagedRecord, StateStore
+
+_CONTENT_PLAN_SKILL_NAMES: Final[frozenset[str]] = frozenset(
+    {
+        "discover-project-standards",
+        "review-project-standards",
+        "using-uv",
+        "writing-executive-communications",
+        "using-gitlab",
+        "using-github",
+    }
+)
 
 
 @pytest.fixture
@@ -96,6 +106,17 @@ def _catalog(paths: RuntimePaths) -> SkillCatalog:
             (paths.repo_root / "assistants/shared/skills/catalog.yaml").read_text()
         )
     )
+
+
+@pytest.fixture
+def checked_in_skill_catalog(repo_root: Path) -> SkillCatalog:
+    """Load the checked-in shared skill catalog through the inventory loader."""
+    loaded = load_inventory(repo_root / "assistants/inventory.yaml", repo_root)
+    for catalog in loaded.catalogs:
+        if catalog.resource_id == "shared.skills.catalog":
+            assert isinstance(catalog.document, SkillCatalog)
+            return catalog.document
+    raise AssertionError("shared skill catalog is missing from inventory")
 
 
 def _resolved_setup(
@@ -857,96 +878,41 @@ def test_configuration_selects_all_eligible_skills_deterministically(
     assert not (skill_paths.home / ".cursor").exists()
 
 
-def test_using_jujutsu_catalog_inventory_and_configuration_are_synchronized(
+def test_checked_in_using_jujutsu_rename_plans_without_mutation(
     repo_root: Path,
     temporary_home: Path,
+    checked_in_skill_catalog: SkillCatalog,
 ) -> None:
-    """Verify using-jujutsu metadata, digests, renames, and read-only plans."""
-    inventory = load_inventory(
-        repo_root / "assistants/inventory.yaml", repo_root
-    ).inventory
-    catalog = yaml.safe_load(
-        (repo_root / "assistants/shared/skills/catalog.yaml").read_text()
-    )
-    resource = next(
-        item for item in inventory.resources if item.id == "shared.skills.catalog"
-    )
-    expected_skill = {
-        "name": "using-jujutsu",
-        "source": "assistants/shared/skills/using-jujutsu",
-        "targets": ["cursor", "claude-code", "codex"],
-        "profiles": ["default"],
-        "dependencies": [],
-        "provenance": (
-            "Renamed from the promoted jujutsu-workflow skill added in commit "
-            "2d057f673971232e2327924c1a5f846ff9ace48e, itself promoted out of "
-            "plato/skills/jujutsu-workflow at commit "
-            "f3b91eead0eff7d0c9cada3bc8e689f7610fba55; commit history records both."
-        ),
-        "portability_status": "reviewed-generic",
-    }
-    entry = next(item for item in catalog["skills"] if item["name"] == "using-jujutsu")
-    assert entry == expected_skill
-    assert catalog.get("renames") == [
-        {"from": "jujutsu-workflow", "to": "using-jujutsu"}
-    ]
-    assert isinstance(resource, CatalogResource)
-    assert resource.owner is AgentName.SHARED
-    assert resource.targets == (
-        AgentName.CURSOR,
-        AgentName.CLAUDE,
-        AgentName.CODEX,
-    )
-    source = repo_root / "assistants/shared/skills/using-jujutsu"
-    expected_using_jujutsu_tree_digest = "36852753f77034db3513201dbd75318dee30413d90f8262aa723a7523b374cf0"  # pragma: allowlist secret
-    assert hash_skill_tree(source) == expected_using_jujutsu_tree_digest
-    assert (
-        sha256((source / "SKILL.md").read_bytes()).hexdigest()
-        == (
-            "bad8b9e4975e5ecf674a3b226e8a3a01f6269353b8fabccc16cb19212187aef7"  # pragma: allowlist secret
-        )
-    )
-    assert (
-        sha256((source / "reference.md").read_bytes()).hexdigest()
-        == (
-            "5bf5d9320b46672700b4d0d2f063ba90ce7d8fd67ec83f096971f522576b2a93"  # pragma: allowlist secret
-        )
-    )
+    """Plan the checked-in rename and native destinations without mutation."""
+    assert [
+        (rename.from_name, rename.to_name)
+        for rename in checked_in_skill_catalog.renames
+    ] == [("jujutsu-workflow", "using-jujutsu")]
+
     paths = RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home)
     contribution = configuration(
         _resolved_setup("cursor", "claude-code", "codex"),
         paths,
-        _catalog(paths),
+        checked_in_skill_catalog,
     )
-    assert all(isinstance(spec, ManagedTreeSpec) for spec in contribution.specs)
-    jujutsu_specs = [
-        (spec.id, spec.destination)
+    assert {
+        spec.id: spec.destination
         for spec in contribution.specs
         if spec.id.startswith("shared-skill-using-jujutsu-")
-    ]
-    assert jujutsu_specs == [
-        (
-            "shared-skill-using-jujutsu-codex",
-            Path(".agents/skills/using-jujutsu"),
-        ),
-        (
-            "shared-skill-using-jujutsu-claude-code",
-            Path(".claude/skills/using-jujutsu"),
-        ),
-        (
-            "shared-skill-using-jujutsu-cursor",
-            Path(".cursor/skills/using-jujutsu"),
-        ),
-    ]
-    assert contribution.skill_renames
-    assert all(
-        action.from_name == "jujutsu-workflow" and action.to_name == "using-jujutsu"
+    } == {
+        "shared-skill-using-jujutsu-codex": Path(".agents/skills/using-jujutsu"),
+        "shared-skill-using-jujutsu-claude-code": Path(".claude/skills/using-jujutsu"),
+        "shared-skill-using-jujutsu-cursor": Path(".cursor/skills/using-jujutsu"),
+    }
+    assert {
+        (action.from_name, action.to_name, action.target)
         for action in contribution.skill_renames
-    )
+    } == {
+        ("jujutsu-workflow", "using-jujutsu", target)
+        for target in (AgentName.CURSOR, AgentName.CLAUDE, AgentName.CODEX)
+    }
     assert not paths.state_root.exists()
-    assert not (temporary_home / ".cursor/skills/using-jujutsu").exists()
-    assert not (temporary_home / ".claude/skills/using-jujutsu").exists()
-    assert not (temporary_home / ".agents/skills/using-jujutsu").exists()
+    assert not any(temporary_home.iterdir())
 
 
 def test_jujutsu_workflow_rename_converges_managed_install(
@@ -1180,164 +1146,42 @@ def _assert_skill_tree_excludes_blacklisted_tokens(root: Path) -> None:
             assert token not in text, f"{token!r} in {path}"
 
 
-def _assert_shared_skill_synchronized(
+def test_checked_in_skill_catalog_plans_content_workstream_for_all_agents(
     repo_root: Path,
     temporary_home: Path,
-    *,
-    name: str,
-    tree_digest: str,
-    provenance: str,
-    dependencies: tuple[str, ...] = (),
+    checked_in_skill_catalog: SkillCatalog,
 ) -> None:
-    """Assert catalog metadata, digest pin, and planned managed-tree ids."""
-    catalog = yaml.safe_load(
-        (repo_root / "assistants/shared/skills/catalog.yaml").read_text(
-            encoding="utf-8"
-        )
+    """Plan every content-workstream skill across all native agent roots."""
+    skills_by_name = {skill.name: skill for skill in checked_in_skill_catalog.skills}
+    assert _CONTENT_PLAN_SKILL_NAMES.issubset(skills_by_name)
+    assert skills_by_name["review-project-standards"].dependencies == (
+        "discover-project-standards",
     )
-    entry = next(item for item in catalog["skills"] if item["name"] == name)
-    assert entry["source"] == f"assistants/shared/skills/{name}"
-    assert entry["targets"] == ["cursor", "claude-code", "codex"]
-    assert entry["profiles"] == ["default"]
-    assert entry["dependencies"] == list(dependencies)
-    assert entry["provenance"] == provenance
-    assert entry["portability_status"] == "reviewed-generic"
-    source = repo_root / entry["source"]
-    assert hash_skill_tree(source) == tree_digest
-    _assert_skill_tree_excludes_blacklisted_tokens(source)
+
     paths = RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home)
     contribution = configuration(
         _resolved_setup("cursor", "claude-code", "codex"),
         paths,
-        SkillCatalog.model_validate(catalog),
+        checked_in_skill_catalog,
     )
+
     expected_ids = {
-        f"shared-skill-{name}-cursor",
-        f"shared-skill-{name}-claude-code",
-        f"shared-skill-{name}-codex",
+        f"shared-skill-{name}-{agent}"
+        for name in _CONTENT_PLAN_SKILL_NAMES
+        for agent in ("cursor", "claude-code", "codex")
     }
     assert expected_ids.issubset({spec.id for spec in contribution.specs})
+    assert not paths.state_root.exists()
+    assert not any(temporary_home.iterdir())
 
 
-@pytest.mark.parametrize(
-    ("name", "tree_digest", "provenance", "dependencies"),
-    [
-        pytest.param(
-            "discover-project-standards",
-            "c748dc5434c64aef74007c63966e5dfb2bc42914af78145bc70804806c06a08d",  # pragma: allowlist secret
-            "Genericized from plato/skills/tooling-discover-standards at commit "
-            "f3b91eead0eff7d0c9cada3bc8e689f7610fba55; commit history records the "
-            "promotion.",
-            (),
-            id="discover-project-standards",
-        ),
-        pytest.param(
-            "review-project-standards",
-            "9fe8886151b8db6130b0fb3685174fc10ae43531a2a63253cf2cdc5826c430f0",  # pragma: allowlist secret
-            "Genericized from plato/skills/tooling-review-standards at commit "
-            "f3b91eead0eff7d0c9cada3bc8e689f7610fba55; commit history records the "
-            "promotion.",
-            ("discover-project-standards",),
-            id="review-project-standards",
-        ),
-        pytest.param(
-            "using-uv",
-            "b7af2515aea5ca7ccbbfe72f31c498a51a3f1bd1c706bd5942365b050068f2af",  # pragma: allowlist secret
-            "Authored for ballen-config against current primary uv documentation.",
-            (),
-            id="using-uv",
-        ),
-        pytest.param(
-            "writing-executive-communications",
-            "3c824845f43a60ad6af5221d9706e26226e707163afef091b0312fd3a8cd9d6b",  # pragma: allowlist secret
-            "Genericized from plato/skills/reports-consultant-style at commit "
-            "f3b91eead0eff7d0c9cada3bc8e689f7610fba55; commit history records the "
-            "promotion.",
-            (),
-            id="writing-executive-communications",
-        ),
-        pytest.param(
-            "using-gitlab",
-            "16ab6ed268e5b465e6ae0f22d81be0bc3ebf225f743d881c3f5106e25a4b482e",  # pragma: allowlist secret
-            "Rewritten for portability from plato/skills/using-gitlab at commit "
-            "f3b91eead0eff7d0c9cada3bc8e689f7610fba55; commit history records the "
-            "promotion.",
-            (),
-            id="using-gitlab",
-        ),
-        pytest.param(
-            "using-github",
-            "91689f55b9d587a0e5a334fce83cba2ea80a37940fb01355ddc6635b4395640c",  # pragma: allowlist secret
-            "Authored for ballen-config as the GitHub counterpart to using-gitlab, "
-            "verified against current primary GitHub CLI documentation.",
-            (),
-            id="using-github",
-        ),
-    ],
-)
-def test_shared_skill_catalog_and_configuration_are_synchronized(
+def test_checked_in_skill_trees_exclude_blacklisted_tokens(
     repo_root: Path,
-    temporary_home: Path,
-    name: str,
-    tree_digest: str,
-    provenance: str,
-    dependencies: tuple[str, ...],
+    checked_in_skill_catalog: SkillCatalog,
 ) -> None:
-    """Verify each skill's catalog metadata, digest, rejected tokens, and plans."""
-    _assert_shared_skill_synchronized(
-        repo_root,
-        temporary_home,
-        name=name,
-        tree_digest=tree_digest,
-        provenance=provenance,
-        dependencies=dependencies,
-    )
-
-
-def test_standards_pair_discovery_contract_is_stable(repo_root: Path) -> None:
-    """Discovery reports its reusable inventory without reviewing code."""
-    text = (
-        repo_root / "assistants/shared/skills/discover-project-standards/SKILL.md"
-    ).read_text(encoding="utf-8")
-    for field in (
-        "Ordered Instruction Sources",
-        "Applicable Standards",
-        "Repository-Selected Tools",
-        "Conflicts",
-        "Unavailable Sources",
-    ):
-        assert field in text
-    for instruction in (
-        "CLAUDE.md",
-        "AGENTS.md",
-        "GEMINI.md",
-        "COPILOT.md",
-        ".github/copilot-instructions.md",
-    ):
-        assert instruction in text
-    assert "applicable precedence" in text
-    assert "executable tool configuration" in text
-    assert "narrative standards" in text
-    assert "Do not review code or diffs." in text
-
-
-def test_standards_pair_review_uses_neutral_supplied_scope(repo_root: Path) -> None:
-    """Review composes discovery without selecting a VCS change scope."""
-    text = (
-        repo_root / "assistants/shared/skills/review-project-standards/SKILL.md"
-    ).read_text(encoding="utf-8")
-    assert "Invoke `discover-project-standards`" in text
-    assert "tooling-discover-standards" not in text
-    assert "supplied diff or changed-file set" in text
-    assert "A git diff" not in text
-    assert "Git/Jujutsu change-scope resolver" not in text
-    for outcome in (
-        "No applicable standards",
-        "Incomplete discovery",
-        "Clean review",
-        "Actionable findings",
-    ):
-        assert outcome in text
+    """Reject bounded portability and security tokens in every catalog tree."""
+    for skill in checked_in_skill_catalog.skills:
+        _assert_skill_tree_excludes_blacklisted_tokens(repo_root / skill.source)
 
 
 def test_using_uv_projection_matches_canonical_standard(repo_root: Path) -> None:
@@ -1350,117 +1194,3 @@ def test_using_uv_projection_matches_canonical_standard(repo_root: Path) -> None
         / "assistants/shared/skills/using-uv/references/dependency-management.md"
     ).read_bytes()
     assert projection == canonical
-
-
-def test_using_uv_skill_has_distinct_sync_and_policy_handoff_contract(
-    repo_root: Path,
-) -> None:
-    """Keep uv procedure distinct from its single bundled policy handoff."""
-    text = (repo_root / "assistants/shared/skills/using-uv/SKILL.md").read_text(
-        encoding="utf-8"
-    )
-    bundled_reference = "references/dependency-management.md"
-    assert text.count(bundled_reference) == 1
-    assert "assistants/shared/standards/dependency-management.md" not in text
-    assert (
-        "dependency intent, groups, lockfile policy, or workspace policy"
-        in text.lower()
-    )
-    assert "`uv sync`" in text
-    assert "`uv sync --locked`" in text
-    assert "`uv sync --frozen`" in text
-    assert "checks and updates the lockfile as needed" in text
-    assert "errors if the lockfile is not current" in text
-    assert "without checking freshness" in text
-    assert "`uv lock`" in text
-    assert "existing locked versions are preferred" in text
-    refresh_row = "| Create or refresh the lockfile |"
-    upgrade_row = "| Intentionally upgrade broadly |"
-    assert f"{refresh_row} `uv lock`; existing locked versions are preferred" in text
-    assert f"{upgrade_row} `uv lock --upgrade`" in text
-
-
-def test_writing_executive_communications_avoids_placeholder_option_labels(
-    repo_root: Path,
-) -> None:
-    """Keep descriptive options and require evidence-bound quantification."""
-    text = (
-        repo_root / "assistants/shared/skills/writing-executive-communications/SKILL.md"
-    ).read_text(encoding="utf-8")
-    normalized = " ".join(text.split())
-    assert "Incremental refactor" in text
-    assert "Complete rewrite" in text
-    assert "Option A" not in text
-    assert "Option B" not in text
-    assert "reports-consultant-style" not in text
-    assert "sourced or directly observed values" in normalized
-    assert "source, context, timeframe, and denominator" in normalized
-    assert "state the gap or explicitly label a grounded estimate" in normalized
-    assert "never invent measurements or precision" in normalized
-
-
-def test_using_gitlab_names_github_counterpart_for_wrong_forge(
-    repo_root: Path,
-) -> None:
-    """GitLab skill must name the GitHub counterpart and glab fallback."""
-    text = (repo_root / "assistants/shared/skills/using-gitlab/SKILL.md").read_text(
-        encoding="utf-8"
-    )
-    assert "using-github" in text
-    assert "glab" in text
-
-
-def test_using_gitlab_has_shared_forge_protocol_headings(repo_root: Path) -> None:
-    """Stable shared forge protocol headings for parity with using-github."""
-    text = (repo_root / "assistants/shared/skills/using-gitlab/SKILL.md").read_text(
-        encoding="utf-8"
-    )
-    for heading in (
-        "## Repository and remote identity",
-        "## Provider discovery",
-        "## Read-only inspection",
-        "## CLI fallback",
-        "## Provider setup vs workflow",
-        "## Mutation safety",
-        "## Forge guard",
-        "## Authentication boundary",
-    ):
-        assert heading in text
-
-
-def test_using_github_names_gitlab_counterpart_for_wrong_forge(
-    repo_root: Path,
-) -> None:
-    """GitHub skill must name the GitLab counterpart and gh fallback."""
-    text = (repo_root / "assistants/shared/skills/using-github/SKILL.md").read_text(
-        encoding="utf-8"
-    )
-    assert "using-gitlab" in text
-    assert "gh" in text
-
-
-def test_forge_skills_share_protocol_headings(repo_root: Path) -> None:
-    """Both forge skills share the stable protocol section headings."""
-    gitlab = (repo_root / "assistants/shared/skills/using-gitlab/SKILL.md").read_text(
-        encoding="utf-8"
-    )
-    github = (repo_root / "assistants/shared/skills/using-github/SKILL.md").read_text(
-        encoding="utf-8"
-    )
-    headings = (
-        "## Repository and remote identity",
-        "## Provider discovery",
-        "## Read-only inspection",
-        "## CLI fallback",
-        "## Provider setup vs workflow",
-        "## Mutation safety",
-        "## Forge guard",
-        "## Authentication boundary",
-    )
-    for heading in headings:
-        assert heading in gitlab
-        assert heading in github
-    assert "using-github" in gitlab
-    assert "using-gitlab" in github
-    assert "glab" in gitlab
-    assert "gh" in github

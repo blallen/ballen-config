@@ -87,3 +87,9 @@ Reject test theatre: do not re-test framework guarantees, assert configuration
 that existing behavior tests already cover, or create mocks whose assertions
 can pass without exercising production control flow. Every test should be able
 to fail for a meaningful regression in code the repository owns.
+
+Do not pin human-authored documentation, instructions, or prompt prose with
+substring assertions or opaque digests unless production code consumes that
+exact structure. Use the repository's applicable schema, frontmatter, Markdown,
+or link validation for machine-checkable structure; use native invocation or
+opt-in evaluation for instruction behavior.
