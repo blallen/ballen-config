@@ -6,15 +6,10 @@ description: >-
   dependency edits, or running project tools via `uv run`.
 ---
 
-<!-- markdownlint-disable -->
-
 # Using uv
 
-Procedural companion for repositories that selected uv. Dependency *policy*
-lives in the bundled projection at
-[references/dependency-management.md](references/dependency-management.md) —
-read that file when intent, lockfile, or workspace rules are needed. Do not
-treat this skill as a second dependency-management standard.
+Procedural companion for repositories that selected uv. Do not treat this skill
+as a second dependency-management standard.
 
 ## Preconditions
 
@@ -33,12 +28,15 @@ Prefer these shapes; verify flags against current primary uv documentation when
 behavior is version-sensitive.
 
 | Intent | Command pattern |
-|--------|-----------------|
+| --- | --- |
 | Run a project tool / script | `uv run …` (prefer over activating a venv by hand) |
 | Add a dependency | `uv add …` (use the appropriate dependency group) |
 | Remove a dependency | `uv remove …` |
-| Sync the environment to the lockfile | `uv sync` |
-| Refresh / rewrite the lockfile | `uv lock` (after intentional declaration changes) |
+| Sync the environment | `uv sync` checks and updates the lockfile as needed, then exactly syncs the environment by default |
+| Sync with a current lockfile required | `uv sync --locked` disables automatic lock updates and errors if the lockfile is not current |
+| Sync without checking lockfile freshness | `uv sync --frozen` uses the existing lockfile without checking freshness |
+| Create or refresh the lockfile | `uv lock`; existing locked versions are preferred |
+| Intentionally upgrade broadly | `uv lock --upgrade` |
 | Workspace-aware work | Use uv workspace commands implied by the repo’s workspace members |
 
 Recognize workspaces from executable configuration (for example workspace
@@ -46,14 +44,13 @@ member tables in `pyproject.toml`), not from directory guesswork.
 
 ## Policy handoff
 
-When deciding *whether* to add a dependency, which group it belongs in, whether
-to commit lockfile churn, or how workspaces should behave, open
-`references/dependency-management.md` in this skill tree and apply it. Keep
-local activation trivia and cache repair out of normative answers unless the
-user asked for troubleshooting.
+For dependency intent, groups, lockfile policy, or workspace policy, read the
+installed-tree [dependency-management reference][dependency-management].
 
 ## Boundaries
 
 - Do not restate the dependency-management standard inline.
 - Do not mix package managers in one change.
 - Do not migrate auth, tokens, or secrets as part of environment setup.
+
+[dependency-management]: references/dependency-management.md

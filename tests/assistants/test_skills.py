@@ -1242,7 +1242,7 @@ def _assert_shared_skill_synchronized(
         ),
         pytest.param(
             "using-uv",
-            "3a34c9b01fe08bba8690219381fa6c056d4c580adf7c62820701c3284bcdd363",  # pragma: allowlist secret
+            "b7af2515aea5ca7ccbbfe72f31c498a51a3f1bd1c706bd5942365b050068f2af",  # pragma: allowlist secret
             "Authored for ballen-config against current primary uv documentation.",
             (),
             id="using-uv",
@@ -1352,13 +1352,32 @@ def test_using_uv_projection_matches_canonical_standard(repo_root: Path) -> None
     assert projection == canonical
 
 
-def test_using_uv_skill_points_at_bundled_reference(repo_root: Path) -> None:
-    """Skill must load policy from its installed tree, not the repo standards path."""
+def test_using_uv_skill_has_distinct_sync_and_policy_handoff_contract(
+    repo_root: Path,
+) -> None:
+    """Keep uv procedure distinct from its single bundled policy handoff."""
     text = (repo_root / "assistants/shared/skills/using-uv/SKILL.md").read_text(
         encoding="utf-8"
     )
-    assert "references/dependency-management.md" in text
+    bundled_reference = "references/dependency-management.md"
+    assert text.count(bundled_reference) == 1
     assert "assistants/shared/standards/dependency-management.md" not in text
+    assert (
+        "dependency intent, groups, lockfile policy, or workspace policy"
+        in text.lower()
+    )
+    assert "`uv sync`" in text
+    assert "`uv sync --locked`" in text
+    assert "`uv sync --frozen`" in text
+    assert "checks and updates the lockfile as needed" in text
+    assert "errors if the lockfile is not current" in text
+    assert "without checking freshness" in text
+    assert "`uv lock`" in text
+    assert "existing locked versions are preferred" in text
+    refresh_row = "| Create or refresh the lockfile |"
+    upgrade_row = "| Intentionally upgrade broadly |"
+    assert f"{refresh_row} `uv lock`; existing locked versions are preferred" in text
+    assert f"{upgrade_row} `uv lock --upgrade`" in text
 
 
 def test_writing_executive_communications_avoids_placeholder_option_labels(
