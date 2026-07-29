@@ -4,7 +4,7 @@ import os
 import shutil
 from hashlib import sha256
 from pathlib import Path
-from typing import cast
+from typing import Final, cast
 
 import pytest
 import yaml
@@ -857,11 +857,11 @@ def test_configuration_selects_all_eligible_skills_deterministically(
     assert not (skill_paths.home / ".cursor").exists()
 
 
-def test_jujutsu_workflow_catalog_inventory_and_configuration_are_synchronized(
+def test_using_jujutsu_catalog_inventory_and_configuration_are_synchronized(
     repo_root: Path,
     temporary_home: Path,
 ) -> None:
-    """Declare and plan the first reviewed shared skill without mutation."""
+    """Verify using-jujutsu metadata, digests, renames, and read-only plans."""
     inventory = load_inventory(
         repo_root / "assistants/inventory.yaml", repo_root
     ).inventory
@@ -1157,11 +1157,10 @@ def test_managed_skill_publish_failure_rolls_back(
     assert store.load() == before_state
 
 
-_REJECT = (
+_REJECT: Final[tuple[str, ...]] = (
     "plato",
     "/users/",
     "/home/",
-    "projects/plato",
     "ami-",
     "pydantic 2.8",
     "{{",
@@ -1171,8 +1170,8 @@ _REJECT = (
 )
 
 
-def _assert_skill_tree_portable(root: Path) -> None:
-    """Reject non-portable tokens inside a shared skill tree."""
+def _assert_skill_tree_excludes_blacklisted_tokens(root: Path) -> None:
+    """Reject tokens from a bounded blacklist in shared-skill text files."""
     for path in sorted(root.rglob("*")):
         if not path.is_file():
             continue
@@ -1203,7 +1202,7 @@ def _assert_shared_skill_synchronized(
     assert entry["portability_status"] == "reviewed-generic"
     source = repo_root / entry["source"]
     assert hash_skill_tree(source) == tree_digest
-    _assert_skill_tree_portable(source)
+    _assert_skill_tree_excludes_blacklisted_tokens(source)
     paths = RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home)
     contribution = configuration(
         _resolved_setup("cursor", "claude-code", "codex"),
@@ -1218,17 +1217,61 @@ def _assert_shared_skill_synchronized(
     assert expected_ids.issubset({spec.id for spec in contribution.specs})
 
 
-def test_standards_pair_catalog_declares_dependency() -> None:
-    """Review standards skill depends on discover by catalog name."""
-    catalog = SkillCatalog.model_validate(
-        yaml.safe_load(
-            Path("assistants/shared/skills/catalog.yaml").read_text(encoding="utf-8")
-        )
-    )
-    by_name = {skill.name: skill for skill in catalog.skills}
-    assert "discover-project-standards" in by_name
-    assert by_name["review-project-standards"].dependencies == (
-        "discover-project-standards",
+@pytest.mark.parametrize(
+    ("name", "tree_digest", "dependencies"),
+    [
+        pytest.param(
+            "discover-project-standards",
+            "8c7819686294b30b6fa668c6e2b00c10c58bd3e5e78c8c8876cc7ec33063a722",  # pragma: allowlist secret
+            (),
+            id="discover-project-standards",
+        ),
+        pytest.param(
+            "review-project-standards",
+            "d1802e05d6235e19630e0cd1982ec1c9b99a1fae9bcffbfce06252256d7a22c6",  # pragma: allowlist secret
+            ("discover-project-standards",),
+            id="review-project-standards",
+        ),
+        pytest.param(
+            "using-uv",
+            "3a34c9b01fe08bba8690219381fa6c056d4c580adf7c62820701c3284bcdd363",  # pragma: allowlist secret
+            (),
+            id="using-uv",
+        ),
+        pytest.param(
+            "writing-executive-communications",
+            "d9ed78b2ad36585bb9467d1265a462cee33b5c65e52fb6fc58edadbb7b1a50a6",  # pragma: allowlist secret
+            (),
+            id="writing-executive-communications",
+        ),
+        pytest.param(
+            "using-gitlab",
+            "cf2fe8d0c2d4a7e5e36854b6d58226c739dc00b4806266f9c32960ee3ecc311e",  # pragma: allowlist secret
+            (),
+            id="using-gitlab",
+        ),
+        pytest.param(
+            "using-github",
+            "c836e3bdeb1010d0ecc0f3e98e87de4ae9a82466fe63a32830f7c2e305bd8c6d",  # pragma: allowlist secret
+            (),
+            id="using-github",
+        ),
+    ],
+)
+def test_shared_skill_catalog_and_configuration_are_synchronized(
+    repo_root: Path,
+    temporary_home: Path,
+    name: str,
+    tree_digest: str,
+    dependencies: tuple[str, ...],
+) -> None:
+    """Verify each skill's catalog metadata, digest, rejected tokens, and plans."""
+    _assert_shared_skill_synchronized(
+        repo_root,
+        temporary_home,
+        name=name,
+        tree_digest=tree_digest,
+        dependencies=dependencies,
     )
 
 
@@ -1239,35 +1282,6 @@ def test_review_skill_references_discovery_by_name(repo_root: Path) -> None:
     ).read_text(encoding="utf-8")
     assert "discover-project-standards" in text
     assert "tooling-discover-standards" not in text
-
-
-def test_discover_project_standards_catalog_and_configuration_are_synchronized(
-    repo_root: Path, temporary_home: Path
-) -> None:
-    """Pin discover-project-standards catalog and configuration contribution."""
-    _assert_shared_skill_synchronized(
-        repo_root,
-        temporary_home,
-        name="discover-project-standards",
-        tree_digest=(
-            "8c7819686294b30b6fa668c6e2b00c10c58bd3e5e78c8c8876cc7ec33063a722"  # pragma: allowlist secret
-        ),
-    )
-
-
-def test_review_project_standards_catalog_and_configuration_are_synchronized(
-    repo_root: Path, temporary_home: Path
-) -> None:
-    """Pin review-project-standards catalog and configuration contribution."""
-    _assert_shared_skill_synchronized(
-        repo_root,
-        temporary_home,
-        name="review-project-standards",
-        tree_digest=(
-            "d1802e05d6235e19630e0cd1982ec1c9b99a1fae9bcffbfce06252256d7a22c6"  # pragma: allowlist secret
-        ),
-        dependencies=("discover-project-standards",),
-    )
 
 
 def test_using_uv_projection_matches_canonical_standard(repo_root: Path) -> None:
@@ -1291,20 +1305,6 @@ def test_using_uv_skill_points_at_bundled_reference(repo_root: Path) -> None:
     assert "assistants/shared/standards/dependency-management.md" not in text
 
 
-def test_using_uv_catalog_and_configuration_are_synchronized(
-    repo_root: Path, temporary_home: Path
-) -> None:
-    """Pin using-uv catalog metadata and configuration contribution."""
-    _assert_shared_skill_synchronized(
-        repo_root,
-        temporary_home,
-        name="using-uv",
-        tree_digest=(
-            "3a34c9b01fe08bba8690219381fa6c056d4c580adf7c62820701c3284bcdd363"  # pragma: allowlist secret
-        ),
-    )
-
-
 def test_writing_executive_communications_avoids_placeholder_option_labels(
     repo_root: Path,
 ) -> None:
@@ -1317,20 +1317,6 @@ def test_writing_executive_communications_avoids_placeholder_option_labels(
     assert "reports-consultant-style" not in text
 
 
-def test_writing_executive_communications_catalog_and_configuration_are_synchronized(
-    repo_root: Path, temporary_home: Path
-) -> None:
-    """Pin writing-executive-communications catalog and configuration."""
-    _assert_shared_skill_synchronized(
-        repo_root,
-        temporary_home,
-        name="writing-executive-communications",
-        tree_digest=(
-            "d9ed78b2ad36585bb9467d1265a462cee33b5c65e52fb6fc58edadbb7b1a50a6"  # pragma: allowlist secret
-        ),
-    )
-
-
 def test_using_gitlab_names_github_counterpart_for_wrong_forge(
     repo_root: Path,
 ) -> None:
@@ -1340,20 +1326,6 @@ def test_using_gitlab_names_github_counterpart_for_wrong_forge(
     )
     assert "using-github" in text
     assert "glab" in text
-
-
-def test_using_gitlab_catalog_and_configuration_are_synchronized(
-    repo_root: Path, temporary_home: Path
-) -> None:
-    """Pin using-gitlab catalog metadata and configuration contribution."""
-    _assert_shared_skill_synchronized(
-        repo_root,
-        temporary_home,
-        name="using-gitlab",
-        tree_digest=(
-            "cf2fe8d0c2d4a7e5e36854b6d58226c739dc00b4806266f9c32960ee3ecc311e"  # pragma: allowlist secret
-        ),
-    )
 
 
 def test_using_gitlab_has_shared_forge_protocol_headings(repo_root: Path) -> None:
@@ -1410,17 +1382,3 @@ def test_forge_skills_share_protocol_headings(repo_root: Path) -> None:
     assert "using-gitlab" in github
     assert "glab" in gitlab
     assert "gh" in github
-
-
-def test_using_github_catalog_and_configuration_are_synchronized(
-    repo_root: Path, temporary_home: Path
-) -> None:
-    """Pin using-github catalog metadata and configuration contribution."""
-    _assert_shared_skill_synchronized(
-        repo_root,
-        temporary_home,
-        name="using-github",
-        tree_digest=(
-            "c836e3bdeb1010d0ecc0f3e98e87de4ae9a82466fe63a32830f7c2e305bd8c6d"  # pragma: allowlist secret
-        ),
-    )
