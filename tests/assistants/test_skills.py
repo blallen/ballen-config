@@ -1186,6 +1186,7 @@ def _assert_shared_skill_synchronized(
     *,
     name: str,
     tree_digest: str,
+    provenance: str,
     dependencies: tuple[str, ...] = (),
 ) -> None:
     """Assert catalog metadata, digest pin, and planned managed-tree ids."""
@@ -1199,6 +1200,7 @@ def _assert_shared_skill_synchronized(
     assert entry["targets"] == ["cursor", "claude-code", "codex"]
     assert entry["profiles"] == ["default"]
     assert entry["dependencies"] == list(dependencies)
+    assert entry["provenance"] == provenance
     assert entry["portability_status"] == "reviewed-generic"
     source = repo_root / entry["source"]
     assert hash_skill_tree(source) == tree_digest
@@ -1218,41 +1220,56 @@ def _assert_shared_skill_synchronized(
 
 
 @pytest.mark.parametrize(
-    ("name", "tree_digest", "dependencies"),
+    ("name", "tree_digest", "provenance", "dependencies"),
     [
         pytest.param(
             "discover-project-standards",
             "8c7819686294b30b6fa668c6e2b00c10c58bd3e5e78c8c8876cc7ec33063a722",  # pragma: allowlist secret
+            "Genericized from plato/skills/tooling-discover-standards at commit "
+            "f3b91eead0eff7d0c9cada3bc8e689f7610fba55; commit history records the "
+            "promotion.",
             (),
             id="discover-project-standards",
         ),
         pytest.param(
             "review-project-standards",
             "d1802e05d6235e19630e0cd1982ec1c9b99a1fae9bcffbfce06252256d7a22c6",  # pragma: allowlist secret
+            "Genericized from plato/skills/tooling-review-standards at commit "
+            "f3b91eead0eff7d0c9cada3bc8e689f7610fba55; commit history records the "
+            "promotion.",
             ("discover-project-standards",),
             id="review-project-standards",
         ),
         pytest.param(
             "using-uv",
             "3a34c9b01fe08bba8690219381fa6c056d4c580adf7c62820701c3284bcdd363",  # pragma: allowlist secret
+            "Authored for ballen-config against current primary uv documentation.",
             (),
             id="using-uv",
         ),
         pytest.param(
             "writing-executive-communications",
             "d9ed78b2ad36585bb9467d1265a462cee33b5c65e52fb6fc58edadbb7b1a50a6",  # pragma: allowlist secret
+            "Genericized from plato/skills/reports-consultant-style at commit "
+            "f3b91eead0eff7d0c9cada3bc8e689f7610fba55; commit history records the "
+            "promotion.",
             (),
             id="writing-executive-communications",
         ),
         pytest.param(
             "using-gitlab",
             "cf2fe8d0c2d4a7e5e36854b6d58226c739dc00b4806266f9c32960ee3ecc311e",  # pragma: allowlist secret
+            "Rewritten for portability from plato/skills/using-gitlab at commit "
+            "f3b91eead0eff7d0c9cada3bc8e689f7610fba55; commit history records the "
+            "promotion.",
             (),
             id="using-gitlab",
         ),
         pytest.param(
             "using-github",
             "c836e3bdeb1010d0ecc0f3e98e87de4ae9a82466fe63a32830f7c2e305bd8c6d",  # pragma: allowlist secret
+            "Authored for ballen-config as the GitHub counterpart to using-gitlab, "
+            "verified against current primary GitHub CLI documentation.",
             (),
             id="using-github",
         ),
@@ -1263,6 +1280,7 @@ def test_shared_skill_catalog_and_configuration_are_synchronized(
     temporary_home: Path,
     name: str,
     tree_digest: str,
+    provenance: str,
     dependencies: tuple[str, ...],
 ) -> None:
     """Verify each skill's catalog metadata, digest, rejected tokens, and plans."""
@@ -1271,6 +1289,7 @@ def test_shared_skill_catalog_and_configuration_are_synchronized(
         temporary_home,
         name=name,
         tree_digest=tree_digest,
+        provenance=provenance,
         dependencies=dependencies,
     )
 
