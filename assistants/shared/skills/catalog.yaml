@@ -21,6 +21,17 @@ skills:
       promotion.
     portability_status: reviewed-generic
 
+  - name: using-gitlab
+    source: assistants/shared/skills/using-gitlab
+    targets: [cursor, claude-code, codex]
+    profiles: [default]
+    dependencies: []
+    provenance: >-
+      Rewritten for portability based on plato/skills/using-gitlab at commit
+      f3b91eead0eff7d0c9cada3bc8e689f7610fba55; commit history records the
+      promotion.
+    portability_status: reviewed-generic
+
   - name: using-jujutsu
     source: assistants/shared/skills/using-jujutsu
     targets: [cursor, claude-code, codex]

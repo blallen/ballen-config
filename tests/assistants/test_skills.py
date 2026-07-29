@@ -1327,3 +1327,46 @@ def test_writing_executive_communications_catalog_and_configuration_are_synchron
             "d9ed78b2ad36585bb9467d1265a462cee33b5c65e52fb6fc58edadbb7b1a50a6"  # pragma: allowlist secret
         ),
     )
+
+
+def test_using_gitlab_names_github_counterpart_for_wrong_forge(
+    repo_root: Path,
+) -> None:
+    """GitLab skill must name the GitHub counterpart and glab fallback."""
+    text = (repo_root / "assistants/shared/skills/using-gitlab/SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    assert "using-github" in text
+    assert "glab" in text
+
+
+def test_using_gitlab_catalog_and_configuration_are_synchronized(
+    repo_root: Path, temporary_home: Path
+) -> None:
+    """Pin using-gitlab catalog metadata and configuration contribution."""
+    _assert_shared_skill_synchronized(
+        repo_root,
+        temporary_home,
+        name="using-gitlab",
+        tree_digest=(
+            "cf2fe8d0c2d4a7e5e36854b6d58226c739dc00b4806266f9c32960ee3ecc311e"  # pragma: allowlist secret
+        ),
+    )
+
+
+def test_using_gitlab_has_shared_forge_protocol_headings(repo_root: Path) -> None:
+    """Stable shared forge protocol headings for parity with using-github."""
+    text = (repo_root / "assistants/shared/skills/using-gitlab/SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    for heading in (
+        "## Repository and remote identity",
+        "## Provider discovery",
+        "## Read-only inspection",
+        "## CLI fallback",
+        "## Provider setup vs workflow",
+        "## Mutation safety",
+        "## Forge guard",
+        "## Authentication boundary",
+    ):
+        assert heading in text
