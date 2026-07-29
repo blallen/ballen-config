@@ -84,6 +84,7 @@ from ballen_config.assistants.models import (
     AssistantInventory,
     CatalogKind,
     CatalogResource,
+    ConcreteAgentName,
     ExtensionCatalog,
     ExtensionSpec,
     FileResource,
@@ -95,6 +96,7 @@ from ballen_config.assistants.models import (
     PortableResource,
     ResourceBase,
     SkillCatalog,
+    SkillRenameSpec,
     SkillSpec,
 )
 from ballen_config.assistants.orchestrator import AssistantOrchestrator
@@ -128,6 +130,7 @@ __all__ = [
     "CodexPluginInspectionError",
     "CodexSettingsError",
     "CodexStableSettings",
+    "ConcreteAgentName",
     "CursorExtensionInspectionError",
     "CursorExtensionPackage",
     "CursorPluginManifest",
@@ -153,6 +156,7 @@ __all__ = [
     "SkillCopyAction",
     "SkillRenameAction",
     "SkillRenameBlockedError",
+    "SkillRenameSpec",
     "SkillSpec",
     "ValidatedCursorLocalPlugin",
     "classify_rename_target",

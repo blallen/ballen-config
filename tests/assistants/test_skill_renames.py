@@ -1,7 +1,5 @@
 """Tests for declared skill rename classification."""
 
-from __future__ import annotations
-
 import os
 import shutil
 from pathlib import Path
@@ -109,6 +107,20 @@ def test_classify_accepted_legacy_states(
     assert result.legacy_record == record
     assert result.legacy_relative == _SKILL_ROOTS[target] / "old-skill"
     assert result.successor_relative == _SKILL_ROOTS[target] / "new-skill"
+
+
+def test_classify_rejects_shared_target(temporary_home: Path) -> None:
+    """Reject the non-concrete shared target before resolving skill paths."""
+    with pytest.raises(ValueError, match="shared is not a concrete skill target"):
+        classify_rename_target(
+            from_name="old-skill",
+            to_name="new-skill",
+            target=AgentName.SHARED,
+            home=temporary_home,
+            state=BootstrapState(),
+            successor_digest="a" * 64,
+            enabled=True,
+        )
 
 
 @pytest.mark.parametrize(

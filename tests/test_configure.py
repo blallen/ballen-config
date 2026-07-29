@@ -117,6 +117,23 @@ def test_second_apply_is_unchanged_without_backup(config_paths: RuntimePaths) ->
     assert not (config_paths.backup_root / "two").exists()
 
 
+def test_public_destination_backup_and_restore_preserve_transactional_rollback(
+    config_paths: RuntimePaths,
+) -> None:
+    """Public cleanup methods restore a moved managed destination after failure."""
+    destination = config_paths.home / ".config" / "tree"
+    destination.mkdir(parents=True)
+    (destination / "payload").write_text("original", encoding="utf-8")
+    subject = engine(config_paths, timestamp="rollback")
+
+    backup = subject.backup_managed_destination(destination)
+
+    assert backup is not None
+    assert not destination.exists()
+    subject.restore_managed_destination(backup, destination)
+    assert (destination / "payload").read_text(encoding="utf-8") == "original"
+
+
 @pytest.mark.parametrize(
     "method",
     [

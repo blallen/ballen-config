@@ -1,7 +1,5 @@
 """Safe, declarative management of portable user configuration."""
 
-from __future__ import annotations
-
 import hashlib
 import json
 import os
@@ -13,7 +11,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Literal, Protocol
+from typing import TYPE_CHECKING, Literal, Protocol
 
 import tomlkit
 import yaml
@@ -26,6 +24,7 @@ from ballen_config.runtime import RuntimePaths
 from ballen_config.state import ManagedRecord, StateStore
 
 if TYPE_CHECKING:
+    from ballen_config.assistants.skills import SkillRenameAction
     from ballen_config.planning import PlanAction
 
 
@@ -106,7 +105,7 @@ class ConfigurationContribution:
     plan_action_overrides: Mapping[str, Literal["update", "repair"]] = field(
         default_factory=lambda: MappingProxyType({})
     )
-    skill_renames: tuple[Any, ...] = ()
+    skill_renames: tuple["SkillRenameAction", ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "renderers", MappingProxyType(dict(self.renderers)))
@@ -364,7 +363,15 @@ class ConfigurationEngine:
         assert_no_symlink_components(path, stop=self.paths.home, include_leaf=True)
         path.chmod(0o700)
 
-    def _backup(self, destination: Path) -> Path | None:
+    def backup_managed_destination(self, destination: Path) -> Path | None:
+        """Preserve one managed destination before its transactional replacement.
+
+        Returns:
+            The backup path, or ``None`` when the destination was absent.
+
+        Raises:
+            ValueError: If the destination type or backup path is unsafe.
+        """
         try:
             metadata = os.lstat(destination)
         except FileNotFoundError:
@@ -387,7 +394,15 @@ class ConfigurationEngine:
             raise ValueError(f"unsupported destination type: {destination}")
         return backup
 
-    def _restore(self, backup: Path | None, destination: Path) -> None:
+    def restore_managed_destination(
+        self, backup: Path | None, destination: Path
+    ) -> None:
+        """Restore a transactional backup when its destination remains absent.
+
+        Args:
+            backup: Path returned by ``backup_managed_destination``, or ``None``.
+            destination: Managed destination that must still be absent.
+        """
         if backup is not None and not os.path.lexists(destination):
             self.replace(backup, destination)
 
@@ -422,7 +437,7 @@ class ConfigurationEngine:
             return action
         destination = self._destination(spec)
         self._private_parent(destination.parent)
-        backup = self._backup(destination)
+        backup = self.backup_managed_destination(destination)
         temporary = destination.with_name(f".{destination.name}.ballen-config.tmp")
         if os.path.lexists(temporary):
             raise ValueError(f"stale temporary sibling: {temporary.name}")
@@ -445,7 +460,7 @@ class ConfigurationEngine:
             self.replace(temporary, destination)
         except Exception:
             temporary.unlink(missing_ok=True)
-            self._restore(backup, destination)
+            self.restore_managed_destination(backup, destination)
             raise
         self._record(spec, destination)
         return action
@@ -481,7 +496,7 @@ class ConfigurationEngine:
         stage.chmod(0o700)
         try:
             self._copy_tree(spec.source, stage)
-            backup = self._backup(destination)
+            backup = self.backup_managed_destination(destination)
             published = False
             try:
                 self.replace(stage, destination)
@@ -495,7 +510,7 @@ class ConfigurationEngine:
                     ):
                         raise ValueError("published tree has unsafe type") from None
                     shutil.rmtree(destination)
-                self._restore(backup, destination)
+                self.restore_managed_destination(backup, destination)
                 raise
         finally:
             if stage.exists():
@@ -594,9 +609,32 @@ def run_configure(
     engine: ConfigurationEngine,
     specs: Sequence[ManagedSpec],
     *,
-    skill_renames: Sequence[Any] = (),
+    skill_renames: Sequence["SkillRenameAction"] = (),
 ) -> ConfigureStageReport:
-    """Plan, apply specs, then apply rename cleanups under one mutation lock."""
+    """Converge managed specs and their frozen skill-rename cleanups atomically.
+
+    Under the state-store mutation lock, work proceeds in this exact order:
+    (1) validate/plan all managed specs, (2) globally preflight frozen rename
+    actions, (3) apply managed specs, (4) globally verify all successors, and
+    (5) clean legacy actions. Reentrant acquisition by the owning thread is
+    supported; a competing non-blocking caller fails before mutation.
+
+    Args:
+        engine: Configuration engine that owns paths, state, and the mutation lock.
+        specs: Managed file and tree specifications to validate and apply.
+        skill_renames: Accepted, frozen rename actions from read-only planning.
+            Actions must be in clean, exact-live, or exact-stale legacy states.
+
+    Returns:
+        Deterministic applied-spec actions and their changed count. Rename cleanup
+        actions are intentionally not included.
+
+    Raises:
+        StateMutationContentionError: If the outer mutation lock cannot be acquired.
+        ValueError: If a spec is unsafe, invalid, or cannot be safely applied.
+        SkillRenameBlockedError: If frozen legacy state or successor ownership
+            proof changes before cleanup.
+    """
     from ballen_config.assistants.skills import (
         apply_skill_rename_cleanups,
         preflight_skill_rename_cleanups,
@@ -629,7 +667,7 @@ class ConfigurationPlanContributor:
         self.engine = engine
         self.supplier = supplier
 
-    def actions(self, resolved: ResolvedSetup) -> tuple[PlanAction, ...]:
+    def actions(self, resolved: ResolvedSetup) -> tuple["PlanAction", ...]:
         """Return configuration actions and portable-path diagnostics."""
         from ballen_config.planning import PlanAction
 

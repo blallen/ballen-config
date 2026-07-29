@@ -1,7 +1,5 @@
 """Tests for StateStore coarse mutation locking."""
 
-from __future__ import annotations
-
 import os
 import stat
 import threading

@@ -14,7 +14,12 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from yaml import YAMLError
 
-from ballen_config.assistants.models import AgentName, SkillCatalog, SkillSpec
+from ballen_config.assistants.models import (
+    AgentName,
+    ConcreteAgentName,
+    SkillCatalog,
+    SkillSpec,
+)
 from ballen_config.configure import (
     ConfigurationContribution,
     ConfigurationEngine,
@@ -230,7 +235,7 @@ class LegacyRenameState(StrEnum):
 class RenameTargetClassification:
     """Per-target rename classification with relative destinations."""
 
-    target: AgentName
+    target: ConcreteAgentName
     legacy_state: LegacyRenameState
     legacy_record: ManagedRecord | None
     legacy_relative: Path
@@ -247,12 +252,13 @@ def classify_rename_target(
     successor_digest: str,
     enabled: bool,
 ) -> RenameTargetClassification:
-    """Classify one enabled or skipped target for a declared rename.
+    """Classify one enabled or skipped concrete target for a declared rename.
 
     Args:
         from_name: Retired skill directory name.
         to_name: Successor skill directory name declared in the catalog.
-        target: Concrete coding-agent target under consideration.
+        target: Concrete coding-agent target under consideration; ``shared`` is
+            rejected because it has no native skill root.
         home: Existing user home root.
         state: Read-only managed-resource ownership snapshot.
         successor_digest: Expected digest of the successor source tree.
@@ -260,12 +266,19 @@ def classify_rename_target(
 
     Returns:
         Classification including relative legacy and successor paths.
+
+    Raises:
+        ValueError: If ``target`` is ``AgentName.SHARED``, or if ``home`` or a
+            resolved destination path is invalid or unsafe.
     """
-    legacy_relative = _SKILL_ROOTS[target] / from_name
-    successor_relative = _SKILL_ROOTS[target] / to_name
+    if target is AgentName.SHARED:
+        raise ValueError("shared is not a concrete skill target")
+    concrete_target = target
+    legacy_relative = _SKILL_ROOTS[concrete_target] / from_name
+    successor_relative = _SKILL_ROOTS[concrete_target] / to_name
     if not enabled:
         return RenameTargetClassification(
-            target=target,
+            target=concrete_target,
             legacy_state=LegacyRenameState.SKIPPED,
             legacy_record=None,
             legacy_relative=legacy_relative,
@@ -350,7 +363,7 @@ def classify_rename_target(
                 legacy_state = LegacyRenameState.BLOCKED_UNMANAGED_SUCCESSOR
 
     return RenameTargetClassification(
-        target=target,
+        target=concrete_target,
         legacy_state=legacy_state,
         legacy_record=record,
         legacy_relative=legacy_relative,
@@ -386,11 +399,19 @@ class SkillRenameBlockedError(ValueError):
 
 @dataclass(frozen=True)
 class SkillRenameAction:
-    """Frozen accepted rename cleanup for one enabled target."""
+    """Frozen accepted rename cleanup for one enabled concrete target.
+
+    ``plan_skill_renames`` constructs actions only for ``clean``,
+    ``exact_live``, or ``exact_stale`` legacy states; that accepted-state set
+    is a construction-time invariant, not a restriction of
+    ``LegacyRenameState`` itself. Fields also freeze receipt identity, native
+    relative paths, and successor digests so apply can re-prove them before
+    cleanup.
+    """
 
     from_name: str
     to_name: str
-    target: AgentName
+    target: ConcreteAgentName
     legacy_state: LegacyRenameState
     legacy_record: ManagedRecord | None
     legacy_relative: Path
@@ -464,12 +485,12 @@ def plan_skill_renames(
                 SkillRenameAction(
                     from_name=rename.from_name,
                     to_name=rename.to_name,
-                    target=target,
+                    target=classification.target,
                     legacy_state=classification.legacy_state,
                     legacy_record=classification.legacy_record,
                     legacy_relative=classification.legacy_relative,
                     successor_resource_id=(
-                        f"shared-skill-{rename.to_name}-{target.value}"
+                        f"shared-skill-{rename.to_name}-{classification.target.value}"
                     ),
                     successor_relative=classification.successor_relative,
                     successor_source_digest=successor_digest,
@@ -674,7 +695,7 @@ def apply_skill_rename_cleanups(
             legacy_destination = _candidate(engine.paths.home, action.legacy_relative)
             backup: Path | None = None
             try:
-                backup = engine._backup(legacy_destination)
+                backup = engine.backup_managed_destination(legacy_destination)
                 if not engine.state_store.compare_and_remove(action.legacy_record):
                     raise SkillRenameBlockedError(
                         action.from_name,
@@ -683,7 +704,7 @@ def apply_skill_rename_cleanups(
                         LegacyRenameState.BLOCKED_AMBIGUOUS_RECEIPT,
                     )
             except Exception:
-                engine._restore(backup, legacy_destination)
+                engine.restore_managed_destination(backup, legacy_destination)
                 raise
             continue
         raise SkillRenameBlockedError(
