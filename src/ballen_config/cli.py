@@ -17,6 +17,7 @@ from ballen_config.assistants import (
     CodexPluginInspectionError,
     CursorExtensionInspectionError,
     SkillCollisionError,
+    SkillRenameBlockedError,
 )
 from ballen_config.assistants.desired_state import AssistantDesiredStateError
 from ballen_config.assistants.orchestrator import AssistantOrchestrator
@@ -323,6 +324,11 @@ def run(
             exit_code=2,
             report=StageReport(outcomes=(error.outcome(),)),
         )
+    except SkillRenameBlockedError as error:
+        return RunResult(
+            exit_code=2,
+            report=StageReport(outcomes=(error.outcome(),)),
+        )
     except (OSError, ValidationError, ValueError, YAMLError):
         return RunResult(
             exit_code=2,
@@ -398,7 +404,11 @@ def run(
         )
 
     def configure_stage() -> RunResult:
-        report = run_configure(engine, configuration.specs)
+        report = run_configure(
+            engine,
+            configuration.specs,
+            skill_renames=configuration.skill_renames,
+        )
         return RunResult(
             exit_code=0,
             report=StageReport(

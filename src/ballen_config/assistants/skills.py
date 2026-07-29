@@ -17,6 +17,7 @@ from yaml import YAMLError
 from ballen_config.assistants.models import AgentName, SkillCatalog, SkillSpec
 from ballen_config.configure import (
     ConfigurationContribution,
+    ConfigurationEngine,
     ManagedTreeSpec,
     digest_tree,
     merge_configuration_contributions,
@@ -364,6 +365,218 @@ def classify_rename_target(
     )
 
 
+
+class SkillRenameBlockedError(ValueError):
+    """Raised when a declared rename cannot proceed on an enabled target."""
+
+    def __init__(
+        self,
+        from_name: str,
+        to_name: str,
+        target: AgentName,
+        state: LegacyRenameState,
+    ) -> None:
+        self.from_name = from_name
+        self.to_name = to_name
+        self.target = target
+        self.state = state
+        super().__init__(
+            f"skill rename blocked: {from_name} -> {to_name} on {target.value} ({state})"
+        )
+
+    def outcome(self) -> str:
+        """Return a redacted CLI outcome without absolute paths or digests."""
+        return (
+            f"shared skill rename blocked: {self.from_name} -> {self.to_name} "
+            f"on {self.target.value}"
+        )
+
+
+@dataclass(frozen=True)
+class SkillRenameAction:
+    """Frozen accepted rename cleanup for one enabled target."""
+
+    from_name: str
+    to_name: str
+    target: AgentName
+    legacy_state: LegacyRenameState
+    legacy_record: ManagedRecord | None
+    legacy_relative: Path
+    successor_resource_id: str
+    successor_relative: Path
+
+
+_ACCEPTED_RENAME_STATES: Final[frozenset[LegacyRenameState]] = frozenset(
+    {
+        LegacyRenameState.CLEAN,
+        LegacyRenameState.EXACT_LIVE,
+        LegacyRenameState.EXACT_STALE,
+    }
+)
+
+
+def plan_skill_renames(
+    *,
+    catalog: SkillCatalog,
+    setup: ResolvedSetup,
+    paths: RuntimePaths,
+    state: BootstrapState,
+) -> tuple[SkillRenameAction, ...]:
+    """Plan renames from the complete catalog before selection filtering.
+
+    Args:
+        catalog: Validated skill catalog including optional rename declarations.
+        setup: Resolved profiles and component selection.
+        paths: Approved checkout and home roots.
+        state: Read-only managed-resource ownership snapshot.
+
+    Returns:
+        Deterministically ordered accepted rename actions.
+
+    Raises:
+        SkillRenameBlockedError: If any enabled target is not an accepted state
+            or successor install cannot produce a receipt.
+    """
+    by_name = {skill.name: skill for skill in catalog.skills}
+    actions: list[SkillRenameAction] = []
+    for rename in catalog.renames:
+        to_skill = by_name[rename.to_name]
+        successor_source = _canonical_source(to_skill, paths)
+        successor_digest = hash_skill_tree(successor_source)
+        for target in to_skill.targets:
+            enabled = bool(
+                set(to_skill.profiles).intersection(setup.profiles)
+                and setup.is_enabled(target.value)
+            )
+            classification = classify_rename_target(
+                from_name=rename.from_name,
+                to_name=rename.to_name,
+                target=target,
+                home=paths.home,
+                state=state,
+                successor_digest=successor_digest,
+                enabled=enabled,
+            )
+            if classification.legacy_state == LegacyRenameState.SKIPPED:
+                continue
+            if classification.legacy_state not in _ACCEPTED_RENAME_STATES:
+                raise SkillRenameBlockedError(
+                    rename.from_name,
+                    rename.to_name,
+                    target,
+                    classification.legacy_state,
+                )
+            actions.append(
+                SkillRenameAction(
+                    from_name=rename.from_name,
+                    to_name=rename.to_name,
+                    target=target,
+                    legacy_state=classification.legacy_state,
+                    legacy_record=classification.legacy_record,
+                    legacy_relative=classification.legacy_relative,
+                    successor_resource_id=(
+                        f"shared-skill-{rename.to_name}-{target.value}"
+                    ),
+                    successor_relative=classification.successor_relative,
+                )
+            )
+    return tuple(
+        sorted(
+            actions,
+            key=lambda item: (item.from_name, item.to_name, item.target.value),
+        )
+    )
+
+
+def apply_skill_rename_cleanups(
+    engine: ConfigurationEngine,
+    actions: tuple[SkillRenameAction, ...],
+) -> None:
+    """Revalidate and remove exact legacy state. Caller holds mutation lock.
+
+    Args:
+        engine: Configuration engine whose state store holds the mutation lock.
+        actions: Frozen accepted rename actions from planning.
+
+    Raises:
+        SkillRenameBlockedError: If live state no longer matches the frozen plan
+            or the successor receipt is missing.
+    """
+    for action in sorted(
+        actions, key=lambda item: (item.from_name, item.to_name, item.target.value)
+    ):
+        state = engine.state_store.load()
+        successor_record = state.managed.get(action.successor_resource_id)
+        if successor_record is None:
+            raise SkillRenameBlockedError(
+                action.from_name,
+                action.to_name,
+                action.target,
+                LegacyRenameState.BLOCKED_UNMANAGED_SUCCESSOR,
+            )
+        classification = classify_rename_target(
+            from_name=action.from_name,
+            to_name=action.to_name,
+            target=action.target,
+            home=engine.paths.home,
+            state=state,
+            successor_digest=successor_record.destination_digest,
+            enabled=True,
+        )
+        if (
+            classification.legacy_state != action.legacy_state
+            or classification.legacy_record != action.legacy_record
+        ):
+            raise SkillRenameBlockedError(
+                action.from_name,
+                action.to_name,
+                action.target,
+                classification.legacy_state,
+            )
+        if action.legacy_state == LegacyRenameState.CLEAN:
+            continue
+        if action.legacy_record is None:
+            raise SkillRenameBlockedError(
+                action.from_name,
+                action.to_name,
+                action.target,
+                classification.legacy_state,
+            )
+        if action.legacy_state == LegacyRenameState.EXACT_STALE:
+            if not engine.state_store.compare_and_remove(action.legacy_record):
+                raise SkillRenameBlockedError(
+                    action.from_name,
+                    action.to_name,
+                    action.target,
+                    LegacyRenameState.BLOCKED_AMBIGUOUS_RECEIPT,
+                )
+            continue
+        if action.legacy_state == LegacyRenameState.EXACT_LIVE:
+            legacy_destination = _candidate(
+                engine.paths.home, action.legacy_relative
+            )
+            backup: Path | None = None
+            try:
+                backup = engine._backup(legacy_destination)
+                if not engine.state_store.compare_and_remove(action.legacy_record):
+                    raise SkillRenameBlockedError(
+                        action.from_name,
+                        action.to_name,
+                        action.target,
+                        LegacyRenameState.BLOCKED_AMBIGUOUS_RECEIPT,
+                    )
+            except Exception:
+                engine._restore(backup, legacy_destination)
+                raise
+            continue
+        raise SkillRenameBlockedError(
+            action.from_name,
+            action.to_name,
+            action.target,
+            action.legacy_state,
+        )
+
+
 def plan_skill_copies(
     *,
     source: Path,
@@ -530,8 +743,17 @@ def configuration(
         for skill in sorted(catalog.skills, key=lambda item: item.name)
         if (targets := _eligible_targets(skill, setup))
     )
-    if not selected:
+    if not selected and not catalog.renames:
         return ConfigurationContribution()
+    state = StateStore(paths).load()
+    skill_renames = plan_skill_renames(
+        catalog=catalog,
+        setup=setup,
+        paths=paths,
+        state=state,
+    )
+    if not selected:
+        return ConfigurationContribution(skill_renames=skill_renames)
     selected_targets = {skill.name: frozenset(targets) for skill, targets in selected}
     for skill, targets in selected:
         consumer_targets = frozenset(targets)
@@ -544,8 +766,9 @@ def configuration(
                     f"skill dependency target coverage is incomplete: {skill.name}"
                 )
 
-    state = StateStore(paths).load()
-    contributions: list[ConfigurationContribution] = []
+    contributions: list[ConfigurationContribution] = [
+        ConfigurationContribution(skill_renames=skill_renames)
+    ]
     for skill, targets in selected:
         source = _canonical_source(skill, paths)
         actions = plan_skill_copies(

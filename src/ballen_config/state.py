@@ -177,6 +177,32 @@ class StateStore:
         finally:
             temporary.unlink(missing_ok=True)
 
+    def compare_and_remove(self, expected: ManagedRecord) -> bool:
+        """Delete managed record only if stored value exactly equals expected.
+
+        Must be called while ``mutation()`` is held. Returns True if removed.
+        Returns False and writes nothing on mismatch.
+
+        Args:
+            expected: Exact ownership record that must match the stored value.
+
+        Returns:
+            True when the record was removed; False when the store differs.
+        """
+        if self._lock_depth <= 0:
+            raise RuntimeError("compare_and_remove requires mutation lock")
+        state = self.load()
+        current = state.managed.get(expected.resource_id)
+        if current != expected:
+            return False
+        managed = {
+            key: value
+            for key, value in state.managed.items()
+            if key != expected.resource_id
+        }
+        self.write(state.model_copy(update={"managed": managed}))
+        return True
+
     def record_install(self, record: InstallRecord) -> None:
         """Record a normalized install result without command output.
 

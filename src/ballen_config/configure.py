@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Safe, declarative management of portable user configuration."""
 
 import hashlib
@@ -11,7 +13,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Literal, Protocol
+from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 import tomlkit
 import yaml
@@ -104,6 +106,7 @@ class ConfigurationContribution:
     plan_action_overrides: Mapping[str, Literal["update", "repair"]] = field(
         default_factory=lambda: MappingProxyType({})
     )
+    skill_renames: tuple[Any, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "renderers", MappingProxyType(dict(self.renderers)))
@@ -113,6 +116,7 @@ class ConfigurationContribution:
             "plan_action_overrides",
             MappingProxyType(dict(self.plan_action_overrides)),
         )
+        object.__setattr__(self, "skill_renames", tuple(self.skill_renames))
 
 
 class ConfigurationSupplier(Protocol):
@@ -568,6 +572,9 @@ def merge_configuration_contributions(
     unknown_overrides = {key for key, _value in override_items if key not in spec_ids}
     if unknown_overrides:
         raise ValueError(f"unknown plan-action override: {sorted(unknown_overrides)}")
+    renames = tuple(
+        rename for contribution in contributions for rename in contribution.skill_renames
+    )
     return ConfigurationContribution(
         specs=specs,
         renderers={
@@ -577,18 +584,26 @@ def merge_configuration_contributions(
             key: value for c in contributions for key, value in c.validators.items()
         },
         plan_action_overrides=dict(override_items),
+        skill_renames=renames,
     )
 
 
 def run_configure(
-    engine: ConfigurationEngine, specs: Sequence[ManagedSpec]
+    engine: ConfigurationEngine,
+    specs: Sequence[ManagedSpec],
+    *,
+    skill_renames: Sequence[Any] = (),
 ) -> ConfigureStageReport:
-    """Plan every spec before applying the matching deterministic actions."""
-    actions = engine.plan(specs)
-    ordered = tuple(sorted(specs, key=lambda spec: spec.id))
-    applied = tuple(
-        engine.apply(spec) for spec, _ in zip(ordered, actions, strict=True)
-    )
+    """Plan, apply specs, then apply rename cleanups under one mutation lock."""
+    from ballen_config.assistants.skills import apply_skill_rename_cleanups
+
+    with engine.state_store.mutation():
+        planned = engine.plan(specs)
+        ordered = tuple(sorted(specs, key=lambda spec: spec.id))
+        applied = tuple(
+            engine.apply(spec) for spec, _ in zip(ordered, planned, strict=True)
+        )
+        apply_skill_rename_cleanups(engine, tuple(skill_renames))
     return ConfigureStageReport(
         actions=applied,
         changed_count=sum(action.outcome != "unchanged" for action in applied),
@@ -645,5 +660,24 @@ class ConfigurationPlanContributor:
             for spec in contribution.specs
             if isinstance(spec, ManagedFileSpec)
             and b"/Users/" in spec.source.read_bytes()
+        )
+        from ballen_config.assistants.skills import LegacyRenameState
+
+        actions.extend(
+            PlanAction(
+                component_id=(
+                    f"skill-rename-{rename.from_name}-{rename.target.value}"
+                ),
+                category="configure",
+                action="skill-rename-cleanup",
+                owner="bootstrap",
+                path=rename.legacy_relative.as_posix(),
+            )
+            for rename in contribution.skill_renames
+            if rename.legacy_state
+            in {
+                LegacyRenameState.EXACT_LIVE,
+                LegacyRenameState.EXACT_STALE,
+            }
         )
         return tuple(actions)

@@ -99,12 +99,17 @@ from ballen_config.assistants.models import (
 )
 from ballen_config.assistants.orchestrator import AssistantOrchestrator
 from ballen_config.assistants.skills import (
+    LegacyRenameState,
     SkillCollisionError,
     SkillCopyAction,
+    SkillRenameAction,
+    SkillRenameBlockedError,
+    classify_rename_target,
     declared_skill_name,
     hash_skill_tree,
     managed_tree_spec,
     plan_skill_copies,
+    plan_skill_renames,
 )
 
 __all__ = [
@@ -142,9 +147,13 @@ __all__ = [
     "ResourceBase",
     "SkillCatalog",
     "SkillCollisionError",
+    "SkillRenameBlockedError",
+    "SkillRenameAction",
+    "LegacyRenameState",
     "SkillCopyAction",
     "SkillSpec",
     "ValidatedCursorLocalPlugin",
+    "classify_rename_target",
     "claude_configuration",
     "claude_hook_fragment",
     "claude_install_actions",
@@ -177,6 +186,7 @@ __all__ = [
     "plan_codex_plugins",
     "plan_cursor_extension_actions",
     "plan_skill_copies",
+    "plan_skill_renames",
     "project_plugin_catalog",
     "read_bundled_extensions",
     "render_native_instructions",
