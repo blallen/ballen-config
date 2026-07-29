@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from multiprocessing import Process, Queue
 from pathlib import Path
 
@@ -31,13 +30,10 @@ def test_mutation_context_creates_private_lock_file(
         assert lock.stat().st_mode & 0o777 == 0o600
 
 
-def test_mutation_is_reentrant_on_same_store(
-    repo_root: Path, fake_home: Path
-) -> None:
+def test_mutation_is_reentrant_on_same_store(repo_root: Path, fake_home: Path) -> None:
     store = StateStore(_paths(repo_root, fake_home))
-    with store.mutation():
-        with store.mutation():
-            store.write(BootstrapState())
+    with store.mutation(), store.mutation():
+        store.write(BootstrapState())
     assert store.load() == BootstrapState()
 
 
@@ -84,9 +80,11 @@ def test_contention_raises_and_mutates_nothing(
     )
     holder.start()
     assert ready.get(timeout=5) == "ready"
-    with pytest.raises(StateMutationContentionError):
-        with store.mutation(blocking=False):
-            store.write(BootstrapState())
+    with (
+        pytest.raises(StateMutationContentionError),
+        store.mutation(blocking=False),
+    ):
+        store.write(BootstrapState())
     release.put("done")
     holder.join(timeout=5)
     assert not (fake_home / ".local/state/ballen-config/state.json").exists()

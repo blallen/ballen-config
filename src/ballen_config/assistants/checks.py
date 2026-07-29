@@ -8,8 +8,12 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Final
 
+import yaml
+from pydantic import ValidationError
+from yaml import YAMLError
+
 from ballen_config.assistants.cursor_mcp import is_approved_atlassian_mcp
-from ballen_config.assistants.models import AgentName, SkillCatalog
+from ballen_config.assistants.models import SkillCatalog
 from ballen_config.assistants.skills import (
     LegacyRenameState,
     _canonical_source,
@@ -27,9 +31,6 @@ from ballen_config.paths import assert_contained
 from ballen_config.runner import Runner
 from ballen_config.runtime import RuntimePaths
 from ballen_config.state import BootstrapState, StateStore
-import yaml
-from yaml import YAMLError
-from pydantic import ValidationError
 
 _AGENT_ROOTS: Final[Mapping[str, tuple[Path, ...]]] = MappingProxyType(
     {
@@ -388,7 +389,6 @@ def _skill_rename_findings(
                     )
                 )
     return findings
-
 
 
 def assistant_checks(

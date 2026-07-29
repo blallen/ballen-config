@@ -2,18 +2,29 @@
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 import pytest
+import yaml
 
-from ballen_config.assistants.models import AgentName
+from ballen_config.assistants.checks import assistant_checks
+from ballen_config.assistants.models import AgentName, SkillCatalog
 from ballen_config.assistants.skills import (
-    LegacyRenameState,
     _SKILL_ROOTS,
+    LegacyRenameState,
+    SkillRenameBlockedError,
     classify_rename_target,
+    configuration,
     hash_skill_tree,
+    plan_skill_renames,
 )
-from ballen_config.state import BootstrapState, ManagedRecord
+from ballen_config.configure import ConfigurationEngine, run_configure
+from ballen_config.doctor import CheckSeverity, FindingStatus, run_doctor
+from ballen_config.models import Component, Manager, ResolvedSetup
+from ballen_config.runtime import RuntimePaths
+from ballen_config.state import BootstrapState, ManagedRecord, StateStore
+from tests.assistants.fakes import StatefulAssistantFake
 
 
 def _write_skill(root: Path, name: str, body: str = "body") -> Path:
@@ -45,9 +56,7 @@ def _record(
     "target",
     [AgentName.CURSOR, AgentName.CLAUDE, AgentName.CODEX],
 )
-def test_classify_clean_when_absent(
-    temporary_home: Path, target: AgentName
-) -> None:
+def test_classify_clean_when_absent(temporary_home: Path, target: AgentName) -> None:
     result = classify_rename_target(
         from_name="old-skill",
         to_name="new-skill",
@@ -67,9 +76,7 @@ def test_classify_clean_when_absent(
     "target",
     [AgentName.CURSOR, AgentName.CLAUDE, AgentName.CODEX],
 )
-def test_classify_exact_live(
-    temporary_home: Path, target: AgentName
-) -> None:
+def test_classify_exact_live(temporary_home: Path, target: AgentName) -> None:
     legacy = temporary_home / _SKILL_ROOTS[target] / "old-skill"
     _write_skill(legacy, "old-skill")
     digest = hash_skill_tree(legacy)
@@ -91,9 +98,7 @@ def test_classify_exact_live(
     "target",
     [AgentName.CURSOR, AgentName.CLAUDE, AgentName.CODEX],
 )
-def test_classify_exact_stale(
-    temporary_home: Path, target: AgentName
-) -> None:
+def test_classify_exact_stale(temporary_home: Path, target: AgentName) -> None:
     digest = "c" * 64
     record = _record(name="old-skill", target=target, digest=digest)
     result = classify_rename_target(
@@ -152,9 +157,7 @@ def test_classify_present_without_receipt_is_unmanaged(
         successor_digest="a" * 64,
         enabled=True,
     )
-    assert (
-        result.legacy_state == LegacyRenameState.BLOCKED_UNMANAGED_OR_AMBIGUOUS
-    )
+    assert result.legacy_state == LegacyRenameState.BLOCKED_UNMANAGED_OR_AMBIGUOUS
 
 
 @pytest.mark.parametrize(
@@ -189,9 +192,7 @@ def test_classify_skipped_never_inspects_filesystem(
     def fail_home(_home: Path) -> Path:
         raise AssertionError("skipped targets must not inspect the filesystem")
 
-    monkeypatch.setattr(
-        "ballen_config.assistants.skills._validated_home", fail_home
-    )
+    monkeypatch.setattr("ballen_config.assistants.skills._validated_home", fail_home)
     result = classify_rename_target(
         from_name="old-skill",
         to_name="new-skill",
@@ -226,28 +227,12 @@ def test_classify_unreceipted_successor_at_exact_digest_blocks(
     assert result.legacy_state == LegacyRenameState.BLOCKED_UNMANAGED_SUCCESSOR
 
 
-import shutil
-import yaml
-
-from ballen_config.assistants.skills import (
-    SkillRenameBlockedError,
-    configuration,
-    plan_skill_renames,
-)
-from ballen_config.assistants.models import SkillCatalog
-from ballen_config.configure import ConfigurationEngine, run_configure
-from ballen_config.models import Component, Manager, ResolvedSetup
-from ballen_config.runtime import RuntimePaths
-from ballen_config.state import StateStore
-
-
 def _resolved_setup(
     *enabled: str,
     profiles: tuple[str, ...] = ("default",),
 ) -> ResolvedSetup:
     components = tuple(
-        Component(id=name, manager=Manager.BREW_CASK, package=name)
-        for name in enabled
+        Component(id=name, manager=Manager.BREW_CASK, package=name) for name in enabled
     )
     all_agents = {"cursor", "claude-code", "codex"}
     return ResolvedSetup(
@@ -296,9 +281,7 @@ def _prepare_rename_repo(
     return paths, catalog, digest
 
 
-def test_plan_clean_target_installs_only(
-    temporary_home: Path, tmp_path: Path
-) -> None:
+def test_plan_clean_target_installs_only(temporary_home: Path, tmp_path: Path) -> None:
     paths, catalog, digest = _prepare_rename_repo(temporary_home, tmp_path)
     actions = plan_skill_renames(
         catalog=catalog,
@@ -408,9 +391,7 @@ def test_undeclared_orphan_record_is_not_cleaned(
     assert state.managed[record.resource_id] == record
 
 
-def test_apply_removes_exact_live_legacy(
-    temporary_home: Path, tmp_path: Path
-) -> None:
+def test_apply_removes_exact_live_legacy(temporary_home: Path, tmp_path: Path) -> None:
     paths, catalog, _digest = _prepare_rename_repo(
         temporary_home, tmp_path, legacy_present=True
     )
@@ -432,9 +413,7 @@ def test_apply_removes_exact_live_legacy(
     assert backup.is_dir()
 
 
-def test_apply_idempotent_second_run(
-    temporary_home: Path, tmp_path: Path
-) -> None:
+def test_apply_idempotent_second_run(temporary_home: Path, tmp_path: Path) -> None:
     paths, catalog, _digest = _prepare_rename_repo(
         temporary_home, tmp_path, legacy_present=True
     )
@@ -448,7 +427,9 @@ def test_apply_idempotent_second_run(
         paths=paths, state_store=store, timestamp="20260729T120000Z"
     )
     run_configure(engine, contribution.specs, skill_renames=contribution.skill_renames)
-    before_backups = list((paths.backup_root).rglob("*")) if paths.backup_root.exists() else []
+    before_backups = (
+        list((paths.backup_root).rglob("*")) if paths.backup_root.exists() else []
+    )
     contribution2 = configuration(_resolved_setup("cursor"), paths, catalog)
     engine2 = ConfigurationEngine(
         paths=paths, state_store=store, timestamp="20260729T130000Z"
@@ -534,15 +515,10 @@ def test_crash_between_publish_and_receipt_blocks(
     assert excinfo.value.state == LegacyRenameState.BLOCKED_UNMANAGED_SUCCESSOR
 
 
-from ballen_config.assistants.checks import assistant_checks
-from ballen_config.doctor import CheckSeverity, FindingStatus, run_doctor
-from tests.assistants.fakes import StatefulAssistantFake
-
-
 def test_doctor_reports_blocked_unmanaged_legacy(
     temporary_home: Path, tmp_path: Path
 ) -> None:
-    paths, catalog, _digest = _prepare_rename_repo(temporary_home, tmp_path)
+    paths, _catalog, _digest = _prepare_rename_repo(temporary_home, tmp_path)
     legacy = temporary_home / ".cursor/skills/old-skill"
     _write_skill(legacy, "old-skill")
     catalog_path = paths.repo_root / "assistants/shared/skills/catalog.yaml"
@@ -569,7 +545,7 @@ def test_doctor_reports_blocked_unmanaged_legacy(
 def test_doctor_reports_unreceipted_successor(
     temporary_home: Path, tmp_path: Path
 ) -> None:
-    paths, catalog, digest = _prepare_rename_repo(temporary_home, tmp_path)
+    paths, _catalog, digest = _prepare_rename_repo(temporary_home, tmp_path)
     successor = temporary_home / ".cursor/skills/new-skill"
     shutil.copytree(paths.repo_root / "assistants/shared/skills/new-skill", successor)
     assert hash_skill_tree(successor) == digest
@@ -583,10 +559,8 @@ def test_doctor_reports_unreceipted_successor(
     assert finding.severity is CheckSeverity.WARNING
 
 
-def test_doctor_reports_legacy_drift(
-    temporary_home: Path, tmp_path: Path
-) -> None:
-    paths, catalog, _digest = _prepare_rename_repo(
+def test_doctor_reports_legacy_drift(temporary_home: Path, tmp_path: Path) -> None:
+    paths, _catalog, _digest = _prepare_rename_repo(
         temporary_home, tmp_path, legacy_present=True
     )
     legacy = temporary_home / ".cursor/skills/old-skill"
@@ -606,7 +580,7 @@ def test_doctor_reports_legacy_drift(
 def test_doctor_reports_incomplete_cleanup_when_successor_present(
     temporary_home: Path, tmp_path: Path
 ) -> None:
-    paths, catalog, digest = _prepare_rename_repo(
+    paths, _catalog, digest = _prepare_rename_repo(
         temporary_home, tmp_path, legacy_present=True
     )
     legacy = temporary_home / ".cursor/skills/old-skill"
@@ -643,7 +617,7 @@ def test_doctor_reports_incomplete_cleanup_when_successor_present(
 def test_doctor_reports_skipped_rename_target(
     temporary_home: Path, tmp_path: Path
 ) -> None:
-    paths, catalog, _digest = _prepare_rename_repo(temporary_home, tmp_path)
+    paths, _catalog, _digest = _prepare_rename_repo(temporary_home, tmp_path)
     findings = assistant_checks(
         enabled=frozenset(),
         paths=paths,

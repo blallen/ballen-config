@@ -220,8 +220,7 @@ def test_shared_skill_collision_reports_a_redacted_actionable_outcome(
         exit_code=2,
         report=StageReport(
             outcomes=(
-                "shared skill collision: using-jujutsu at "
-                ".cursor/skills/using-jujutsu",
+                "shared skill collision: using-jujutsu at .cursor/skills/using-jujutsu",
             )
         ),
     )

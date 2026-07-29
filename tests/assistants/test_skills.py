@@ -934,8 +934,7 @@ def test_jujutsu_workflow_catalog_inventory_and_configuration_are_synchronized(
     ]
     assert contribution.skill_renames
     assert all(
-        action.from_name == "jujutsu-workflow"
-        and action.to_name == "using-jujutsu"
+        action.from_name == "jujutsu-workflow" and action.to_name == "using-jujutsu"
         for action in contribution.skill_renames
     )
     assert not paths.state_root.exists()

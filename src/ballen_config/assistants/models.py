@@ -428,9 +428,7 @@ class SkillRenameSpec(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True, populate_by_name=True)
 
-    from_name: str = Field(
-        alias="from", pattern=r"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$"
-    )
+    from_name: str = Field(alias="from", pattern=r"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$")
     to_name: str = Field(alias="to", pattern=r"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$")
 
 

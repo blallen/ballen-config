@@ -1,6 +1,6 @@
-from __future__ import annotations
-
 """Safe, declarative management of portable user configuration."""
+
+from __future__ import annotations
 
 import hashlib
 import json
@@ -573,7 +573,9 @@ def merge_configuration_contributions(
     if unknown_overrides:
         raise ValueError(f"unknown plan-action override: {sorted(unknown_overrides)}")
     renames = tuple(
-        rename for contribution in contributions for rename in contribution.skill_renames
+        rename
+        for contribution in contributions
+        for rename in contribution.skill_renames
     )
     return ConfigurationContribution(
         specs=specs,
@@ -620,7 +622,7 @@ class ConfigurationPlanContributor:
         self.engine = engine
         self.supplier = supplier
 
-    def actions(self, resolved: ResolvedSetup) -> tuple["PlanAction", ...]:
+    def actions(self, resolved: ResolvedSetup) -> tuple[PlanAction, ...]:
         """Return configuration actions and portable-path diagnostics."""
         from ballen_config.planning import PlanAction
 
@@ -665,9 +667,7 @@ class ConfigurationPlanContributor:
 
         actions.extend(
             PlanAction(
-                component_id=(
-                    f"skill-rename-{rename.from_name}-{rename.target.value}"
-                ),
+                component_id=(f"skill-rename-{rename.from_name}-{rename.target.value}"),
                 category="configure",
                 action="skill-rename-cleanup",
                 owner="bootstrap",

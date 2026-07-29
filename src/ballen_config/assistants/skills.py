@@ -312,9 +312,7 @@ def classify_rename_target(
         legacy_state = LegacyRenameState.EXACT_LIVE
     elif not tree_present and record is not None:
         legacy_state = LegacyRenameState.EXACT_STALE
-    elif tree_present and (
-        record is None or live_digest is None
-    ):
+    elif tree_present and (record is None or live_digest is None):
         legacy_state = LegacyRenameState.BLOCKED_UNMANAGED_OR_AMBIGUOUS
     elif (
         tree_present
@@ -333,10 +331,7 @@ def classify_rename_target(
     }:
         successor_destination = _candidate(home, successor_relative)
         successor_metadata = _metadata(successor_destination)
-        if (
-            successor_metadata is not None
-            and stat.S_ISDIR(successor_metadata.st_mode)
-        ):
+        if successor_metadata is not None and stat.S_ISDIR(successor_metadata.st_mode):
             try:
                 successor_live = hash_skill_tree(successor_destination)
             except ValueError:
@@ -350,10 +345,7 @@ def classify_rename_target(
                 )
             except ValueError:
                 successor_record = None
-            if (
-                successor_live == successor_digest
-                and successor_record is None
-            ):
+            if successor_live == successor_digest and successor_record is None:
                 legacy_state = LegacyRenameState.BLOCKED_UNMANAGED_SUCCESSOR
 
     return RenameTargetClassification(
@@ -363,7 +355,6 @@ def classify_rename_target(
         legacy_relative=legacy_relative,
         successor_relative=successor_relative,
     )
-
 
 
 class SkillRenameBlockedError(ValueError):
@@ -552,9 +543,7 @@ def apply_skill_rename_cleanups(
                 )
             continue
         if action.legacy_state == LegacyRenameState.EXACT_LIVE:
-            legacy_destination = _candidate(
-                engine.paths.home, action.legacy_relative
-            )
+            legacy_destination = _candidate(engine.paths.home, action.legacy_relative)
             backup: Path | None = None
             try:
                 backup = engine._backup(legacy_destination)
