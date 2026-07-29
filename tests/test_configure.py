@@ -14,6 +14,7 @@ from ballen_config.configure import (
     ConfigurationEngine,
     ConfigurationPlanContributor,
     ManagedFileSpec,
+    ManagedSpec,
     ManagedTreeSpec,
     Renderer,
     SourceValidator,
@@ -635,3 +636,40 @@ def test_managed_tree_allows_dotted_ids_and_guards_preflight_digest(
             destination=Path(".tree"),
             component="cursor",
         )
+
+
+def test_apply_holds_mutation_lock_across_validate_backup_publish_record(
+    config_paths: RuntimePaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    active = engine(config_paths, timestamp="20260729T000000Z")
+    source = config_paths.repo_root / "tree-src"
+    source.mkdir()
+    (source / "file.txt").write_text("hello\n", encoding="utf-8")
+    spec = ManagedTreeSpec(
+        id="demo-tree",
+        source=source,
+        destination=Path(".demo/tree"),
+        component="demo",
+    )
+    depths: list[int] = []
+    original_validate = active._validate
+    original_backup = active._backup
+    original_record = active._record
+
+    def wrap_validate(spec_arg: ManagedSpec) -> None:
+        depths.append(active.state_store._lock_depth)
+        original_validate(spec_arg)
+
+    def wrap_backup(destination: Path) -> Path | None:
+        depths.append(active.state_store._lock_depth)
+        return original_backup(destination)
+
+    def wrap_record(spec_arg: ManagedSpec, destination: Path) -> None:
+        depths.append(active.state_store._lock_depth)
+        original_record(spec_arg, destination)
+
+    monkeypatch.setattr(active, "_validate", wrap_validate)
+    monkeypatch.setattr(active, "_backup", wrap_backup)
+    monkeypatch.setattr(active, "_record", wrap_record)
+    active.apply(spec)
+    assert depths and all(depth >= 1 for depth in depths)

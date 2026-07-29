@@ -500,12 +500,13 @@ class ConfigurationEngine:
 
     def apply(self, spec: ManagedSpec) -> ConfigAction:
         """Revalidate and apply a single spec after a safe comparison."""
-        self._validate(spec)
-        if isinstance(spec, ManagedFileSpec):
-            destination = self._destination(spec)
-            desired = self._file_bytes(spec, destination)
-            return self._apply_file(spec, self._action(spec, desired), desired)
-        return self._apply_tree(spec, self._action(spec))
+        with self.state_store.mutation():
+            self._validate(spec)
+            if isinstance(spec, ManagedFileSpec):
+                destination = self._destination(spec)
+                desired = self._file_bytes(spec, destination)
+                return self._apply_file(spec, self._action(spec, desired), desired)
+            return self._apply_tree(spec, self._action(spec))
 
 
 def configuration_specs(
