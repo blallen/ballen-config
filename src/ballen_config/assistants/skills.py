@@ -381,6 +381,16 @@ class SkillRenameBlockedError(ValueError):
         target: AgentName,
         state: LegacyRenameState,
     ) -> None:
+        """Record which rename was blocked and the state that blocked it.
+
+        Args:
+            from_name: Retired predecessor skill name.
+            to_name: Catalog successor skill name.
+            target: Concrete agent whose native skill root is affected.
+            state: Legacy classification that made cleanup unsafe. The message
+                built here may name the state; use ``outcome()`` for text shown
+                to the user.
+        """
         self.from_name = from_name
         self.to_name = to_name
         self.target = target
@@ -404,9 +414,8 @@ class SkillRenameAction:
     ``plan_skill_renames`` constructs actions only for ``clean``,
     ``exact_live``, or ``exact_stale`` legacy states; that accepted-state set
     is a construction-time invariant, not a restriction of
-    ``LegacyRenameState`` itself. Fields also freeze receipt identity, native
-    relative paths, and successor digests so apply can re-prove them before
-    cleanup.
+    ``LegacyRenameState`` itself. Apply re-proves every frozen field before
+    touching the filesystem.
     """
 
     from_name: str
@@ -594,7 +603,18 @@ def preflight_skill_rename_cleanups(
     """Prove every frozen legacy cleanup remains safe before any apply.
 
     Caller holds the outer state mutation lock. Managed-spec planning has already
-    validated each successor source and destination feasibility.
+    validated each successor source and destination feasibility. Every action is
+    checked before the caller mutates anything, so one unsafe target blocks the
+    whole stage.
+
+    Args:
+        engine: Configuration engine that owns paths and the locked state store.
+        actions: Frozen accepted rename actions from read-only planning.
+
+    Raises:
+        SkillRenameBlockedError: If any legacy target no longer matches its
+            frozen classification, or an already present successor tree matches
+            the frozen digest without exact receipt proof.
     """
     state = engine.state_store.load()
     for action in sorted(
@@ -623,6 +643,15 @@ def verify_skill_rename_successors(
     """Prove every successor tree and receipt before any legacy cleanup.
 
     Caller holds the outer state mutation lock after all managed specs apply.
+    Verifying every action first keeps cleanup all-or-nothing.
+
+    Args:
+        engine: Configuration engine that owns paths and the locked state store.
+        actions: Frozen accepted rename actions from read-only planning.
+
+    Raises:
+        SkillRenameBlockedError: If any successor tree or receipt is missing or
+            does not match the frozen digests.
     """
     state = engine.state_store.load()
     for action in sorted(
@@ -859,9 +888,14 @@ def configuration(
     Args:
         setup: Fully resolved core component and profile selection.
         paths: Approved checkout, home, state, and backup roots.
+        catalog: Validated shared-skill catalog, including rename declarations.
+        include_rename_actions: Whether to plan declared rename cleanups. Pass
+            ``False`` for diagnostic callers, which then receive no rename
+            actions even when the catalog declares them.
 
     Returns:
-        Merged managed-tree specs and structural update/repair plan labels.
+        Merged managed-tree specs and structural update/repair plan labels,
+        with planned rename cleanups when ``include_rename_actions`` is set.
 
     Raises:
         ValueError: If a selected dependency is ineligible or a source is not

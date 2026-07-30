@@ -279,7 +279,18 @@ def _skill_findings(paths: RuntimePaths, enabled: Collection[str]) -> list[Docto
 def _skill_rename_findings(
     paths: RuntimePaths, enabled: Collection[str]
 ) -> list[DoctorCheck]:
-    """Report declared rename blocks and interrupted cleanup states."""
+    """Report declared rename blocks and interrupted cleanup states.
+
+    Args:
+        paths: Approved checkout, home, and state roots.
+        enabled: Component identifiers selected for this run.
+
+    Returns:
+        One finding per enabled target whose rename is blocked, skipped, or
+        incompletely cleaned up. Targets already converged produce no finding.
+        An unreadable catalog yields no findings, and unreadable state is
+        treated as owning nothing, which reports legacy trees as unmanaged.
+    """
     catalog_path = paths.repo_root / "assistants/shared/skills/catalog.yaml"
     if not catalog_path.is_file():
         return []

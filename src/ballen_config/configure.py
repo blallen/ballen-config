@@ -611,13 +611,16 @@ def run_configure(
     *,
     skill_renames: Sequence["SkillRenameAction"] = (),
 ) -> ConfigureStageReport:
-    """Converge managed specs and their frozen skill-rename cleanups atomically.
+    """Converge managed specs and their frozen skill-rename cleanups.
 
     Under the state-store mutation lock, work proceeds in this exact order:
     (1) validate/plan all managed specs, (2) globally preflight frozen rename
     actions, (3) apply managed specs, (4) globally verify all successors, and
-    (5) clean legacy actions. Reentrant acquisition by the owning thread is
-    supported; a competing non-blocking caller fails before mutation.
+    (5) clean legacy actions. Steps 2, 4, and 5 span every action, so rename
+    cleanup is all-or-nothing. Managed specs are not: each spec rolls its own
+    destination back on failure, and a spec that fails leaves the specs already
+    applied in place. The lock is acquired blocking and reentrantly, so a
+    competing process waits rather than failing.
 
     Args:
         engine: Configuration engine that owns paths, state, and the mutation lock.
@@ -630,7 +633,8 @@ def run_configure(
         actions are intentionally not included.
 
     Raises:
-        StateMutationContentionError: If the outer mutation lock cannot be acquired.
+        StateMutationContentionError: If another thread of this process already
+            owns the store's mutation lock.
         ValueError: If a spec is unsafe, invalid, or cannot be safely applied.
         SkillRenameBlockedError: If frozen legacy state or successor ownership
             proof changes before cleanup.
