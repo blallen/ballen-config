@@ -1,0 +1,254 @@
+{
+  "contract_version": "v1",
+  "canonicalization": {
+    "encoding": "utf-8",
+    "ensure_ascii": false,
+    "sort_keys": true,
+    "separators": [
+      ",",
+      ":"
+    ],
+    "path_normalization": "NFC repository-relative POSIX",
+    "digest": "sha256-lowercase-hex"
+  },
+  "vectors": [
+    {
+      "name": "jujutsu_multi_parent_workspace",
+      "purpose": "workspace_fingerprint",
+      "material": {
+        "base_identities": [
+          "1111111111111111111111111111111111111111111111111111111111111111",
+          "2222222222222222222222222222222222222222222222222222222222222222"
+        ],
+        "changes": [
+          {
+            "change_type": "modify",
+            "content_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "content_kind": "binary",
+            "diff_state": "binary-marker",
+            "path": "fixtures/model.bin",
+            "previous_path": null
+          },
+          {
+            "change_type": "modify",
+            "content_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "content_kind": "text",
+            "diff_state": "complete",
+            "path": "src/model.py",
+            "previous_path": null
+          }
+        ],
+        "diff_coverage": {
+          "entries": "complete",
+          "overall": "partial",
+          "textual_diff": "partial",
+          "unreviewable_paths": [
+            "fixtures/model.bin"
+          ]
+        },
+        "mode": "current",
+        "source": "jujutsu"
+      },
+      "expected_sha256": "\u0036220e642\u00379c444c5\u00398061efa\u00617dcd4a5\u0064094c093\u0036f913891\u00663c3eba2\u0037ba268ab"
+    },
+    {
+      "name": "unicode_path_normalization",
+      "purpose": "workspace_fingerprint",
+      "material": {
+        "base_identities": [
+          "1111111111111111111111111111111111111111111111111111111111111111"
+        ],
+        "changes": [
+          {
+            "change_type": "modify",
+            "content_digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "content_kind": "text",
+            "diff_state": "complete",
+            "path": "docs/Cafe\u0301.md",
+            "previous_path": null
+          }
+        ],
+        "diff_coverage": {
+          "entries": "complete",
+          "overall": "complete",
+          "textual_diff": "complete",
+          "unreviewable_paths": []
+        },
+        "mode": "current",
+        "source": "git"
+      },
+      "expected_sha256": "\u006298c170e\u006185f567c\u00310623307\u003385c68b0\u00352df57a8\u00629146f25\u00311b61ca4\u0035503ae91"
+    },
+    {
+      "name": "jujutsu_multi_parent_scope",
+      "purpose": "scope_identity",
+      "material": {
+        "comparison": {
+          "base_identities": [
+            {
+              "state": "resolved",
+              "value": "1111111111111111111111111111111111111111111111111111111111111111"
+            },
+            {
+              "state": "resolved",
+              "value": "2222222222222222222222222222222222222222222222222222222222222222"
+            }
+          ],
+          "kind": "jujutsu-merged-parents-to-working-copy",
+          "resolved_selector": null,
+          "target_identity": {
+            "state": "resolved",
+            "value": "3333333333333333333333333333333333333333333333333333333333333333"
+          }
+        },
+        "contract_version": "v1",
+        "coverage": {
+          "entries": "complete",
+          "overall": "partial",
+          "textual_diff": "partial",
+          "unreviewable_paths": [
+            "fixtures/model.bin"
+          ]
+        },
+        "diff_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "mode": "current",
+        "repository_identity": {
+          "state": "complete",
+          "value": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+        },
+        "source": "jujutsu",
+        "workspace_fingerprint": "\u0036220e642\u00379c444c5\u00398061efa\u00617dcd4a5\u0064094c093\u0036f913891\u00663c3eba2\u0037ba268ab"
+      },
+      "expected_sha256": "\u00650c5fcdb\u00330047b64\u0063c9a7f64\u0034dea0cc4\u00627c6ab98\u00379e469e3\u0061fdfa81a\u006637f39a6"
+    }
+  ],
+  "existing_scope_ids": [
+    "\u00650c5fcdb\u00330047b64\u0063c9a7f64\u0034dea0cc4\u00627c6ab98\u00379e469e3\u0061fdfa81a\u006637f39a6",
+    "e0c5fcdb3004f000000000000000000000000000000000000000000000000000"
+  ],
+  "expected_filename_prefix": "\u00650c5fcdb\u00330047",
+  "repository_identity_cases": [
+    {
+      "name": "single_remote",
+      "remotes": [
+        {
+          "name": "upstream",
+          "url": "https://Example.COM:443/Acme/Scope.git"
+        }
+      ],
+      "tracked_remote_candidates": [],
+      "expected_selected_name": "upstream",
+      "expected_state": "complete",
+      "expected_material": {
+        "host": "example.com",
+        "namespace": "Acme/Scope",
+        "vcs": "git"
+      },
+      "expected_identity_digest": "\u00385968316\u003988764b5\u00632eb7aae\u00397ed759b\u00669a2b2e4\u003008177ec\u0030e5e2e5d\u0063693d134",
+      "diagnostic_code": null
+    },
+    {
+      "name": "tracked_upstream",
+      "remotes": [
+        {
+          "name": "origin",
+          "url": "https://git.example/Acme/Fork.git"
+        },
+        {
+          "name": "upstream",
+          "url": "ssh://code.example:22/Team/Scope.git"
+        }
+      ],
+      "tracked_remote_candidates": [
+        "upstream"
+      ],
+      "expected_selected_name": "upstream",
+      "expected_state": "complete",
+      "expected_material": {
+        "host": "code.example",
+        "namespace": "Team/Scope",
+        "vcs": "git"
+      },
+      "expected_identity_digest": "\u0034fc0f1fc\u006389fe79d\u003345e5742\u0036fedc22d\u003060097d6\u0066bc475cb\u00369439f1f\u003412653be",
+      "diagnostic_code": null
+    },
+    {
+      "name": "origin_fallback",
+      "remotes": [
+        {
+          "name": "mirror",
+          "url": "https://mirror.example/Acme/Scope.git"
+        },
+        {
+          "name": "origin",
+          "url": "https://Git.Example:443/Acme/Scope.git"
+        }
+      ],
+      "tracked_remote_candidates": [],
+      "expected_selected_name": "origin",
+      "expected_state": "complete",
+      "expected_material": {
+        "host": "git.example",
+        "namespace": "Acme/Scope",
+        "vcs": "git"
+      },
+      "expected_identity_digest": "\u0062b856b6e\u00325d09f59\u0038287e7e5\u0031352661c\u00333979014\u0036559d3b1\u003197fd005\u0033c9eb5d9",
+      "diagnostic_code": null
+    },
+    {
+      "name": "ambiguous_multi_remote",
+      "remotes": [
+        {
+          "name": "alpha",
+          "url": "https://alpha.example/Acme/Scope.git"
+        },
+        {
+          "name": "beta",
+          "url": "https://beta.example/Acme/Scope.git"
+        }
+      ],
+      "tracked_remote_candidates": [],
+      "expected_selected_name": null,
+      "expected_state": "unavailable",
+      "expected_material": null,
+      "expected_identity_digest": null,
+      "diagnostic_code": "repository_identity_ambiguous"
+    },
+    {
+      "name": "ambiguous_tracked_remotes",
+      "remotes": [
+        {
+          "name": "alpha",
+          "url": "https://alpha.example/Acme/Scope.git"
+        },
+        {
+          "name": "beta",
+          "url": "https://beta.example/Acme/Scope.git"
+        },
+        {
+          "name": "origin",
+          "url": "https://origin.example/Acme/Scope.git"
+        }
+      ],
+      "tracked_remote_candidates": [
+        "alpha",
+        "beta"
+      ],
+      "expected_selected_name": null,
+      "expected_state": "unavailable",
+      "expected_material": null,
+      "expected_identity_digest": null,
+      "diagnostic_code": "repository_identity_ambiguous"
+    },
+    {
+      "name": "no_remote",
+      "remotes": [],
+      "tracked_remote_candidates": [],
+      "expected_selected_name": null,
+      "expected_state": "unavailable",
+      "expected_material": null,
+      "expected_identity_digest": null,
+      "diagnostic_code": "repository_identity_no_remote"
+    }
+  ]
+}

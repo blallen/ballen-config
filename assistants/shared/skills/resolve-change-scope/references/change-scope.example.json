@@ -1,0 +1,77 @@
+{
+  "contract_version": "v1",
+  "status": "partial",
+  "source": "jujutsu",
+  "request": {
+    "mode": "current",
+    "selector": null
+  },
+  "repository_identity": {
+    "state": "complete",
+    "vcs": "jujutsu",
+    "value": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "code": null
+  },
+  "comparison": {
+    "kind": "jujutsu-merged-parents-to-working-copy",
+    "base_identities": [
+      {
+        "state": "resolved",
+        "value": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      {
+        "state": "resolved",
+        "value": "2222222222222222222222222222222222222222222222222222222222222222"
+      }
+    ],
+    "target_identity": {
+      "state": "resolved",
+      "value": "3333333333333333333333333333333333333333333333333333333333333333"
+    },
+    "resolved_selector": null
+  },
+  "workspace_fingerprint": "\u0036220e642\u00379c444c5\u00398061efa\u00617dcd4a5\u0064094c093\u0036f913891\u00663c3eba2\u0037ba268ab",
+  "changes": [
+    {
+      "path": "fixtures/model.bin",
+      "change_type": "modify",
+      "previous_path": null,
+      "content_kind": "binary",
+      "diff_state": "binary-marker",
+      "content_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "path": "src/model.py",
+      "change_type": "modify",
+      "previous_path": null,
+      "content_kind": "text",
+      "diff_state": "complete",
+      "content_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+  ],
+  "reviewable_diff": {
+    "state": "partial",
+    "format": "unified",
+    "content": null,
+    "digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "unavailable_paths": [
+      "fixtures/model.bin"
+    ]
+  },
+  "coverage": {
+    "entries": "complete",
+    "textual_diff": "partial",
+    "overall": "partial",
+    "unreviewable_paths": [
+      "fixtures/model.bin"
+    ]
+  },
+  "diagnostics": [
+    {
+      "code": "binary_diff_unreviewable",
+      "path": "fixtures/model.bin",
+      "detail": "Binary content has a stable digest but no textual patch."
+    }
+  ],
+  "scope_identity": "\u00650c5fcdb\u00330047b64\u0063c9a7f64\u0034dea0cc4\u00627c6ab98\u00379e469e3\u0061fdfa81a\u006637f39a6"
+}

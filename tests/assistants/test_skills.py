@@ -34,6 +34,7 @@ from ballen_config.state import BootstrapState, ManagedRecord, StateStore
 _CONTENT_PLAN_SKILL_NAMES: Final[frozenset[str]] = frozenset(
     {
         "discover-project-standards",
+        "resolve-change-scope",
         "review-project-standards",
         "using-uv",
         "writing-executive-communications",
@@ -41,6 +42,10 @@ _CONTENT_PLAN_SKILL_NAMES: Final[frozenset[str]] = frozenset(
         "using-github",
     }
 )
+
+_REVIEW_FOUNDATION_DEPENDENCIES: Final[dict[str, tuple[str, ...]]] = {
+    "resolve-change-scope": (),
+}
 
 
 @pytest.fixture
@@ -1119,6 +1124,18 @@ def test_managed_skill_publish_failure_rolls_back(
 
     assert original.read_text().endswith("description: Original.\n---\n")
     assert store.load() == before_state
+
+
+def test_checked_in_review_foundation_has_expected_dependency_graph(
+    checked_in_skill_catalog: SkillCatalog,
+) -> None:
+    """Keep direct review-foundation dependencies explicit and exact."""
+    skills_by_name = {skill.name: skill for skill in checked_in_skill_catalog.skills}
+
+    assert {
+        name: skills_by_name[name].dependencies
+        for name in _REVIEW_FOUNDATION_DEPENDENCIES
+    } == _REVIEW_FOUNDATION_DEPENDENCIES
 
 
 def test_checked_in_skill_catalog_plans_content_workstream_for_all_agents(

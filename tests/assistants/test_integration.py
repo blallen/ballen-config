@@ -737,49 +737,46 @@ def test_work_all_is_idempotent_for_agent_managed_state(
     )
 
 
-def test_aggregate_configure_copies_and_tracks_shared_jujutsu_workflow_skill(
+def test_aggregate_configure_copies_and_tracks_shared_skill_trees(
     repo_root: Path,
     temporary_home: Path,
     fake_runner: StatefulAssistantFake,
 ) -> None:
-    """Copy the reviewed skill to native roots and converge it idempotently."""
+    """Copy nested shared skill trees to native roots and converge idempotently."""
     first = run_with_assistants(
         ("configure",),
         repo_root=repo_root,
         home=temporary_home,
         runner=fake_runner,
     )
-    source = repo_root / "assistants/shared/skills/using-jujutsu"
-    destinations = {
-        "cursor": temporary_home / ".cursor/skills/using-jujutsu",
-        "claude-code": temporary_home / ".claude/skills/using-jujutsu",
-        "codex": temporary_home / ".agents/skills/using-jujutsu",
+    skill_names = ("using-jujutsu", "resolve-change-scope")
+    native_roots = {
+        "cursor": temporary_home / ".cursor/skills",
+        "claude-code": temporary_home / ".claude/skills",
+        "codex": temporary_home / ".agents/skills",
     }
 
     assert first.exit_code == 0
-    for destination in destinations.values():
-        assert (destination / "SKILL.md").read_bytes() == (
-            source / "SKILL.md"
-        ).read_bytes()
-        assert (destination / "reference.md").read_bytes() == (
-            source / "reference.md"
-        ).read_bytes()
     records = (
         StateStore(RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home))
         .load()
         .managed
     )
-    assert set(records) >= {
-        "shared-skill-using-jujutsu-cursor",
-        "shared-skill-using-jujutsu-claude-code",
-        "shared-skill-using-jujutsu-codex",
-    }
-    for target, destination in destinations.items():
-        resource_id = f"shared-skill-using-jujutsu-{target}"
-        receipt = records[resource_id]
-        assert receipt.resource_id == resource_id
-        assert receipt.destination == str(destination.relative_to(temporary_home))
-        assert receipt.source_digest == receipt.destination_digest
+    for skill_name in skill_names:
+        source = repo_root / "assistants/shared/skills" / skill_name
+        source_files = tuple(
+            sorted(path for path in source.rglob("*") if path.is_file())
+        )
+        for target, native_root in native_roots.items():
+            destination = native_root / skill_name
+            for source_file in source_files:
+                relative = source_file.relative_to(source)
+                assert (destination / relative).read_bytes() == source_file.read_bytes()
+            resource_id = f"shared-skill-{skill_name}-{target}"
+            receipt = records[resource_id]
+            assert receipt.resource_id == resource_id
+            assert receipt.destination == str(destination.relative_to(temporary_home))
+            assert receipt.source_digest == receipt.destination_digest
 
     second = run_with_assistants(
         ("configure",),
@@ -790,13 +787,16 @@ def test_aggregate_configure_copies_and_tracks_shared_jujutsu_workflow_skill(
 
     assert second.exit_code == 0
     assert second.report.changed_count == 0
-    for destination in destinations.values():
-        assert (destination / "SKILL.md").read_bytes() == (
-            source / "SKILL.md"
-        ).read_bytes()
-        assert (destination / "reference.md").read_bytes() == (
-            source / "reference.md"
-        ).read_bytes()
+    for skill_name in skill_names:
+        source = repo_root / "assistants/shared/skills" / skill_name
+        source_files = tuple(
+            sorted(path for path in source.rglob("*") if path.is_file())
+        )
+        for native_root in native_roots.values():
+            destination = native_root / skill_name
+            for source_file in source_files:
+                relative = source_file.relative_to(source)
+                assert (destination / relative).read_bytes() == source_file.read_bytes()
 
 
 def test_aggregate_plan_skips_divergent_cursor_shared_skill_when_cursor_skipped(
