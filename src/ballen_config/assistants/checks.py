@@ -362,9 +362,7 @@ def _skill_rename_findings(
     findings: list[DoctorCheck] = []
     by_name = {skill.name: skill for skill in catalog.skills}
     for rename in catalog.renames:
-        to_skill = by_name.get(rename.to_name)
-        if to_skill is None:
-            continue
+        to_skill = by_name[rename.to_name]
         try:
             successor_digest = hash_skill_tree(_canonical_source(to_skill, paths))
         except (OSError, ValueError):

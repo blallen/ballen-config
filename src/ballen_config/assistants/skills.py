@@ -283,12 +283,11 @@ def classify_rename_target(
     """
     if target is AgentName.SHARED:
         raise ValueError("shared is not a concrete skill target")
-    concrete_target = target
-    legacy_relative = _SKILL_ROOTS[concrete_target] / from_name
-    successor_relative = _SKILL_ROOTS[concrete_target] / to_name
+    legacy_relative = _SKILL_ROOTS[target] / from_name
+    successor_relative = _SKILL_ROOTS[target] / to_name
     if not enabled:
         return RenameTargetClassification(
-            target=concrete_target,
+            target=target,
             legacy_state=LegacyRenameState.SKIPPED,
             legacy_record=None,
             legacy_relative=legacy_relative,
@@ -373,7 +372,7 @@ def classify_rename_target(
                 legacy_state = LegacyRenameState.BLOCKED_UNMANAGED_SUCCESSOR
 
     return RenameTargetClassification(
-        target=concrete_target,
+        target=target,
         legacy_state=legacy_state,
         legacy_record=record,
         legacy_relative=legacy_relative,
@@ -524,32 +523,33 @@ def plan_skill_renames(
     )
 
 
-def _has_exact_successor_proof(
-    *,
-    action: SkillRenameAction,
-    state: BootstrapState,
-    home: Path,
-) -> bool:
-    """Return whether the frozen successor receipt and tree agree exactly."""
-    record = state.managed.get(action.successor_resource_id)
-    if record is None or (
-        record.resource_id != action.successor_resource_id
-        or record.destination != action.successor_relative.as_posix()
-        or record.source_digest != action.successor_source_digest
-        or record.destination_digest != action.successor_destination_digest
-    ):
-        return False
-    return _existing_successor_matches_frozen_tree(action=action, home=home)
-
-
 def _require_exact_successor_proof(
     *,
     action: SkillRenameAction,
     state: BootstrapState,
     home: Path,
 ) -> None:
-    """Raise when one frozen successor tree and receipt are not exact."""
-    if not _has_exact_successor_proof(action=action, state=state, home=home):
+    """Raise when one frozen successor tree and receipt are not exact.
+
+    Args:
+        action: Frozen rename action whose successor must be re-proven.
+        state: Ownership snapshot read under the mutation lock.
+        home: Validated home root containing the native skill trees.
+
+    Raises:
+        SkillRenameBlockedError: If the receipt is missing or any frozen field
+            or the on-disk tree disagrees.
+    """
+    record = state.managed.get(action.successor_resource_id)
+    receipt_is_exact = record is not None and (
+        record.resource_id == action.successor_resource_id
+        and record.destination == action.successor_relative.as_posix()
+        and record.source_digest == action.successor_source_digest
+        and record.destination_digest == action.successor_destination_digest
+    )
+    if not receipt_is_exact or not _existing_successor_matches_frozen_tree(
+        action=action, home=home
+    ):
         raise SkillRenameBlockedError(
             action.from_name,
             action.to_name,
