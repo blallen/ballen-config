@@ -896,6 +896,88 @@ def test_apply_removes_exact_stale_receipt_without_backup(
     assert not paths.backup_root.exists()
 
 
+def test_apply_keeps_live_legacy_tree_when_backup_fails(
+    temporary_home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Keep the received legacy tree and receipt when its backup cannot be made."""
+    paths, catalog, _digest = _prepare_rename_repo(
+        temporary_home, tmp_path, legacy_present=True
+    )
+    legacy = temporary_home / ".cursor/skills/old-skill"
+    legacy_digest = hash_skill_tree(legacy)
+    legacy_record = _record(
+        name="old-skill", target=AgentName.CURSOR, digest=legacy_digest
+    )
+    store = StateStore(paths)
+    store.record_managed(legacy_record)
+    contribution = configuration(_resolved_setup("cursor"), paths, catalog)
+
+    original_backup = ConfigurationEngine.backup_managed_destination
+
+    def fail_legacy_backup(engine: ConfigurationEngine, destination: Path) -> Path:
+        """Fail only the legacy backup taken just before receipt removal."""
+        if destination == legacy:
+            raise OSError("backup failed")
+        return original_backup(engine, destination)
+
+    monkeypatch.setattr(
+        ConfigurationEngine, "backup_managed_destination", fail_legacy_backup
+    )
+
+    with pytest.raises(OSError, match="backup failed"):
+        run_configure(
+            ConfigurationEngine(paths=paths, state_store=store, timestamp="apply"),
+            contribution.specs,
+            skill_renames=contribution.skill_renames,
+        )
+
+    assert (temporary_home / ".cursor/skills/new-skill").is_dir()
+    assert hash_skill_tree(legacy) == legacy_digest
+    assert store.load().managed[legacy_record.resource_id] == legacy_record
+
+
+def test_apply_blocks_when_legacy_tree_becomes_a_file(
+    temporary_home: Path, tmp_path: Path
+) -> None:
+    """Block cleanup when the frozen legacy tree is replaced by a regular file."""
+    paths, catalog, _digest = _prepare_rename_repo(
+        temporary_home, tmp_path, legacy_present=True
+    )
+    legacy = temporary_home / ".cursor/skills/old-skill"
+    legacy_record = _record(
+        name="old-skill", target=AgentName.CURSOR, digest=hash_skill_tree(legacy)
+    )
+    store = StateStore(paths)
+    store.record_managed(legacy_record)
+    contribution = configuration(_resolved_setup("cursor"), paths, catalog)
+    shutil.rmtree(legacy)
+    legacy.write_text("no longer a skill tree", encoding="utf-8")
+
+    with pytest.raises(SkillRenameBlockedError):
+        run_configure(
+            ConfigurationEngine(paths=paths, state_store=store, timestamp="apply"),
+            contribution.specs,
+            skill_renames=contribution.skill_renames,
+        )
+
+    assert legacy.is_file()
+    assert store.load().managed[legacy_record.resource_id] == legacy_record
+
+
+def test_blocked_rename_outcome_omits_paths_digests_and_states() -> None:
+    """Report a blocked rename without leaking local paths or internal states."""
+    error = SkillRenameBlockedError(
+        "old-skill",
+        "new-skill",
+        AgentName.CURSOR,
+        LegacyRenameState.BLOCKED_DRIFT,
+    )
+    outcome = error.outcome()
+    assert outcome == "shared skill rename blocked: old-skill -> new-skill on cursor"
+    assert LegacyRenameState.BLOCKED_DRIFT.value in str(error)
+    assert LegacyRenameState.BLOCKED_DRIFT.value not in outcome
+
+
 def test_compare_and_remove_mismatch_is_noop(
     temporary_home: Path, tmp_path: Path
 ) -> None:

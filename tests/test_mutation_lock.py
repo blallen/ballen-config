@@ -355,6 +355,32 @@ def test_compare_and_remove_rejects_non_owner_thread(
         assert store.load().managed[record.resource_id] == record
 
 
+def test_write_outside_mutation_is_refused(repo_root: Path, fake_home: Path) -> None:
+    """Refuse a whole-state write that no mutation lock protects."""
+    store = StateStore(_paths(repo_root, fake_home))
+    with pytest.raises(RuntimeError, match="write requires mutation lock"):
+        store._write(BootstrapState())
+    assert not store.path.exists()
+
+
+def test_mutation_releases_lock_when_the_body_raises(
+    repo_root: Path, fake_home: Path
+) -> None:
+    """Release the advisory lock for other processes after a failed mutation."""
+    store = StateStore(_paths(repo_root, fake_home))
+    result: MultiprocessingQueue[str] = Queue()
+
+    with pytest.raises(RuntimeError, match="mutation body failed"), store.mutation():
+        raise RuntimeError("mutation body failed")
+
+    with _started_process(
+        _try_nonblocking_lock,
+        (str(fake_home), str(repo_root), result),
+    ) as released:
+        assert result.get(timeout=5) == "acquired"
+    assert released.exitcode == 0
+
+
 def test_release_rejects_non_owner_thread(repo_root: Path, fake_home: Path) -> None:
     """A non-owner cannot release the outer mutation lock."""
     store = StateStore(_paths(repo_root, fake_home))
