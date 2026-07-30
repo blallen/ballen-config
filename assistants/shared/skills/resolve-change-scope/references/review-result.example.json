@@ -1,0 +1,59 @@
+{
+  "contract_version": "v1",
+  "reviewer": "review-project-quality",
+  "scope_identity": "\u00650c5fcdb\u00330047b64\u0063c9a7f64\u0034dea0cc4\u00627c6ab98\u00379e469e3\u0061fdfa81a\u006637f39a6",
+  "standards_inventory_ref": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "applicability": "applicable",
+  "outcome": "completed",
+  "coverage": {
+    "scope": "complete",
+    "inputs": "complete",
+    "checks": [
+      {
+        "check": "repository-lint",
+        "required": true,
+        "selected_scope": "full",
+        "completion": "completed"
+      }
+    ]
+  },
+  "findings": [
+    {
+      "finding_id": "\u0032b46ec8e\u00399eb8a91\u00639960844\u0066db9342b\u00323bcbc06\u00645e890ee\u00342ef656d\u00399c528f7",
+      "category": "lint",
+      "severity": "actionable",
+      "source_severity": "error",
+      "path": "src/model.py",
+      "location": {
+        "start_line": 12,
+        "end_line": 12
+      },
+      "rule": "E501",
+      "evidence": "Configured lint reported E501 in the selected change.",
+      "remediation": "Wrap the affected expression using the project style.",
+      "contributors": [
+        "review-project-quality"
+      ]
+    }
+  ],
+  "skips": [],
+  "commands": [
+    {
+      "invocation_id": "\u0037a3f4acb\u003459bee54\u0032eb5276e\u006484fe83d\u00651db2bf5\u0039a408752\u00315b582c8\u00642e4b8ac",
+      "provenance": "pyproject.toml:[tool.ruff]",
+      "selected_scope": "full",
+      "completion": "completed",
+      "exit_status": 1,
+      "evidence": "One in-scope violation; three unrelated diagnostics excluded.",
+      "unrun_reason": null
+    }
+  ],
+  "summary": {
+    "counts": {
+      "blocker": 0,
+      "actionable": 1,
+      "advisory": 0
+    },
+    "verdict": "needs_attention"
+  }
+}

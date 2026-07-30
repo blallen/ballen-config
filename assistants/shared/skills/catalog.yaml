@@ -20,6 +20,17 @@ skills:
       commit history records the implementation.
     portability_status: reviewed-generic
 
+  - name: review-project-quality
+    source: assistants/shared/skills/review-project-quality
+    targets: [cursor, claude-code, codex]
+    profiles: [default]
+    dependencies: [resolve-change-scope, discover-project-standards]
+    provenance: >-
+      Genericized from plato/skills/tooling-review-quality at commit
+      f3b91eead0eff7d0c9cada3bc8e689f7610fba55; commit history records the
+      promotion.
+    portability_status: reviewed-generic
+
   - name: review-project-standards
     source: assistants/shared/skills/review-project-standards
     targets: [cursor, claude-code, codex]
