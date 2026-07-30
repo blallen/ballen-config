@@ -273,13 +273,27 @@ def test_shared_skill_collision_reports_a_redacted_actionable_outcome(
     )
 
 
-def test_configure_normalizes_apply_time_skill_rename_block(
-    repo_root: Path,
-    fake_home: Path,
+_RENAME_BLOCKED_RESULT = RunResult(
+    exit_code=2,
+    report=StageReport(
+        outcomes=(
+            "shared skill rename blocked: jujutsu-workflow -> using-jujutsu on cursor",
+        )
+    ),
+)
+"""Normalized redacted result for a rename blocked at the apply boundary."""
+
+
+def _drift_legacy_during_apply(
+    legacy: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Configure returns a redacted exit-2 result for an apply-time block."""
-    paths, legacy, record = _prepare_legacy_skill_rename(repo_root, fake_home)
+    """Drift the received legacy skill tree during the first spec application.
+
+    Args:
+        legacy: Received legacy skill tree that gains an extra file.
+        monkeypatch: Fixture used to wrap the configuration apply boundary.
+    """
     original_apply = cli.ConfigurationEngine.apply
     injected = False
 
@@ -298,6 +312,16 @@ def test_configure_normalizes_apply_time_skill_rename_block(
         return result
 
     monkeypatch.setattr(cli.ConfigurationEngine, "apply", apply_with_legacy_drift)
+
+
+def test_configure_normalizes_apply_time_skill_rename_block(
+    repo_root: Path,
+    fake_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Configure returns a redacted exit-2 result for an apply-time block."""
+    paths, legacy, record = _prepare_legacy_skill_rename(repo_root, fake_home)
+    _drift_legacy_during_apply(legacy, monkeypatch)
     output: list[str] = []
 
     result = run(
@@ -312,15 +336,7 @@ def test_configure_normalizes_apply_time_skill_rename_block(
         configuration_suppliers=(_shared_skill_configuration(repo_root),),
     )
 
-    assert result == RunResult(
-        exit_code=2,
-        report=StageReport(
-            outcomes=(
-                "shared skill rename blocked: jujutsu-workflow -> using-jujutsu "
-                "on cursor",
-            )
-        ),
-    )
+    assert result == _RENAME_BLOCKED_RESULT
     assert legacy.exists()
     assert "blocked-at-apply-boundary" in {path.name for path in legacy.iterdir()}
     assert record.resource_id in StateStore(paths).load().managed
@@ -334,26 +350,9 @@ def test_all_stops_before_doctor_on_apply_time_skill_rename_block(
 ) -> None:
     """All stops after a blocked configure stage without running doctor."""
     _paths, legacy, _record = _prepare_legacy_skill_rename(repo_root, fake_home)
-    original_apply = cli.ConfigurationEngine.apply
-    injected = False
     doctor_calls: list[str] = []
     rendered: list[str] = []
-
-    def apply_with_legacy_drift(
-        engine: cli.ConfigurationEngine,
-        spec: object,
-    ) -> ConfigAction:
-        """Change the received legacy tree after configuration begins."""
-        nonlocal injected
-        result = original_apply(engine, spec)  # type: ignore[arg-type]
-        if not injected:
-            injected = True
-            (legacy / "blocked-at-apply-boundary").write_text(
-                "changed", encoding="utf-8"
-            )
-        return result
-
-    monkeypatch.setattr(cli.ConfigurationEngine, "apply", apply_with_legacy_drift)
+    _drift_legacy_during_apply(legacy, monkeypatch)
     monkeypatch.setattr(
         "ballen_config.cli.run_install",
         lambda **_kwargs: InstallStageReport(exit_code=0, outcomes=()),
@@ -375,108 +374,109 @@ def test_all_stops_before_doctor_on_apply_time_skill_rename_block(
         configuration_suppliers=(_shared_skill_configuration(repo_root),),
     )
 
-    assert result == RunResult(
-        exit_code=2,
-        report=StageReport(
-            outcomes=(
-                "shared skill rename blocked: jujutsu-workflow -> using-jujutsu "
-                "on cursor",
-            )
-        ),
-    )
+    assert result == _RENAME_BLOCKED_RESULT
     assert doctor_calls == []
     assert len(rendered) == 1
 
 
-def test_doctor_cli_reports_blocked_declared_rename(
+def _doctor_rename_finding(
+    paths: RuntimePaths,
     repo_root: Path,
     fake_home: Path,
     monkeypatch: pytest.MonkeyPatch,
+) -> tuple[DoctorFinding, RunResult]:
+    """Run the doctor CLI for cursor only and return the rename finding.
+
+    Args:
+        paths: Approved checkout and home roots for the scenario.
+        repo_root: Repository checkout passed to the CLI.
+        fake_home: Isolated home root passed to the CLI.
+        monkeypatch: Fixture used to observe the structured doctor input.
+
+    Returns:
+        The declared cursor rename finding and the full CLI result.
+    """
+    orchestrator = AssistantOrchestrator(paths)
+    observed: list[DoctorFinding] = []
+    original_run_doctor = cli.run_doctor
+
+    def capture_doctor(checks: Sequence[DoctorFinding]) -> object:
+        """Capture the structured checks passed to the real doctor runner."""
+        observed.extend(checks)
+        return original_run_doctor(checks)
+
+    monkeypatch.setattr("ballen_config.cli.run_doctor", capture_doctor)
+    rendered: list[str] = []
+    result = run(
+        ("doctor", "--skip", "claude-code", "--skip", "codex"),
+        repo_root=repo_root,
+        home=fake_home,
+        runner=FakeRunner(),
+        downloader=FakeDownloader(),
+        confirm=lambda _prompt: pytest.fail("doctor must not confirm"),
+        output=rendered.append,
+        timestamp=lambda: "fixed",
+        preflight_suppliers=(orchestrator.preflight,),
+        configuration_suppliers=(orchestrator.configuration,),
+        doctor_configuration_suppliers=(orchestrator.diagnostic_configuration,),
+        doctor_check_suppliers=(orchestrator.doctor_checks,),
+    )
+    assert rendered, "doctor must render its report"
+    finding = next(
+        item for item in observed if item.id == "skill-rename.jujutsu-workflow.cursor"
+    )
+    return finding, result
+
+
+@pytest.mark.parametrize(
+    ("drift_legacy", "install_successor", "status", "severity", "outcome"),
+    [
+        pytest.param(
+            True,
+            False,
+            FindingStatus.DRIFT,
+            CheckSeverity.ERROR,
+            "drift",
+            id="managed-legacy-drift",
+        ),
+        pytest.param(
+            False,
+            True,
+            FindingStatus.MANUAL,
+            CheckSeverity.WARNING,
+            "manual",
+            id="unreceipted-successor",
+        ),
+    ],
+)
+def test_doctor_cli_reports_declared_rename_state(
+    repo_root: Path,
+    fake_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    drift_legacy: bool,
+    install_successor: bool,
+    status: FindingStatus,
+    severity: CheckSeverity,
+    outcome: str,
 ) -> None:
-    """Doctor renders structured findings even when configure would block."""
+    """Doctor renders structured rename findings even when configure blocks."""
     paths, legacy, _record = _prepare_legacy_skill_rename(repo_root, fake_home)
-    (legacy / "drift").write_text("changed", encoding="utf-8")
-    orchestrator = AssistantOrchestrator(paths)
-    observed: list[DoctorFinding] = []
-    original_run_doctor = cli.run_doctor
+    if drift_legacy:
+        (legacy / "drift").write_text("changed", encoding="utf-8")
+    if install_successor:
+        shutil.copytree(
+            repo_root / "assistants/shared/skills/using-jujutsu",
+            fake_home / ".cursor/skills/using-jujutsu",
+        )
 
-    def capture_doctor(checks: Sequence[DoctorFinding]) -> object:
-        """Capture the structured checks passed to the real doctor runner."""
-        observed.extend(checks)
-        return original_run_doctor(checks)
+    finding, result = _doctor_rename_finding(paths, repo_root, fake_home, monkeypatch)
 
-    monkeypatch.setattr("ballen_config.cli.run_doctor", capture_doctor)
-    output: list[str] = []
-
-    result = run(
-        ("doctor", "--skip", "claude-code", "--skip", "codex"),
-        repo_root=repo_root,
-        home=fake_home,
-        runner=FakeRunner(),
-        downloader=FakeDownloader(),
-        confirm=lambda _prompt: pytest.fail("doctor must not confirm"),
-        output=output.append,
-        timestamp=lambda: "fixed",
-        preflight_suppliers=(orchestrator.preflight,),
-        configuration_suppliers=(orchestrator.configuration,),
-        doctor_configuration_suppliers=(orchestrator.diagnostic_configuration,),
-        doctor_check_suppliers=(orchestrator.doctor_checks,),
-    )
-
-    finding = next(
-        item for item in observed if item.id == "skill-rename.jujutsu-workflow.cursor"
-    )
-    assert finding.status is FindingStatus.DRIFT
-    assert finding.severity is CheckSeverity.ERROR
+    assert finding.status is status
+    assert finding.severity is severity
     assert (
-        result.report.outcomes.count("skill-rename.jujutsu-workflow.cursor: drift") == 1
+        result.report.outcomes.count(f"skill-rename.jujutsu-workflow.cursor: {outcome}")
+        == 1
     )
-    assert output
-
-
-def test_doctor_cli_reports_unreceipted_declared_rename_successor(
-    repo_root: Path,
-    fake_home: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Doctor reports an unmanaged successor without rename planning failure."""
-    paths, _legacy, _record = _prepare_legacy_skill_rename(repo_root, fake_home)
-    shutil.copytree(
-        repo_root / "assistants/shared/skills/using-jujutsu",
-        fake_home / ".cursor/skills/using-jujutsu",
-    )
-    orchestrator = AssistantOrchestrator(paths)
-    observed: list[DoctorFinding] = []
-    original_run_doctor = cli.run_doctor
-
-    def capture_doctor(checks: Sequence[DoctorFinding]) -> object:
-        """Capture the structured checks passed to the real doctor runner."""
-        observed.extend(checks)
-        return original_run_doctor(checks)
-
-    monkeypatch.setattr("ballen_config.cli.run_doctor", capture_doctor)
-
-    result = run(
-        ("doctor", "--skip", "claude-code", "--skip", "codex"),
-        repo_root=repo_root,
-        home=fake_home,
-        runner=FakeRunner(),
-        downloader=FakeDownloader(),
-        confirm=lambda _prompt: pytest.fail("doctor must not confirm"),
-        output=lambda _message: None,
-        timestamp=lambda: "fixed",
-        preflight_suppliers=(orchestrator.preflight,),
-        configuration_suppliers=(orchestrator.configuration,),
-        doctor_configuration_suppliers=(orchestrator.diagnostic_configuration,),
-        doctor_check_suppliers=(orchestrator.doctor_checks,),
-    )
-
-    finding = next(
-        item for item in observed if item.id == "skill-rename.jujutsu-workflow.cursor"
-    )
-    assert finding.status is FindingStatus.MANUAL
-    assert finding.severity is CheckSeverity.WARNING
-    assert "skill-rename.jujutsu-workflow.cursor: manual" in result.report.outcomes
 
 
 def test_successful_all_orders_every_cli_seam(
