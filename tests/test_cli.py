@@ -1,4 +1,5 @@
 import os
+import shutil
 import stat
 from collections.abc import Sequence
 from pathlib import Path
@@ -11,7 +12,9 @@ from ballen_config.assistants.desired_state import (
     AssistantDesiredStateError,
     load_desired_state,
 )
+from ballen_config.assistants.orchestrator import AssistantOrchestrator
 from ballen_config.assistants.skills import configuration as shared_skills_configuration
+from ballen_config.assistants.skills import hash_skill_tree
 from ballen_config.cli import (
     STAGES,
     RunResult,
@@ -34,6 +37,7 @@ from ballen_config.models import ResolvedSetup
 from ballen_config.planning import PlanAction
 from ballen_config.runner import CommandResult
 from ballen_config.runtime import RuntimePaths
+from ballen_config.state import BootstrapState, ManagedRecord, StateStore
 
 
 @pytest.fixture
@@ -136,6 +140,49 @@ class FakeDownloader:
         raise AssertionError("no download expected")
 
 
+def _prepare_legacy_skill_rename(
+    repo_root: Path,
+    fake_home: Path,
+) -> tuple[RuntimePaths, Path, ManagedRecord]:
+    """Create a received legacy skill ready for a rename cleanup."""
+    paths = RuntimePaths.from_roots(repo_root=repo_root, home=fake_home)
+    legacy = fake_home / ".cursor/skills/jujutsu-workflow"
+    legacy.mkdir(parents=True)
+    (legacy / "SKILL.md").write_text(
+        "---\nname: jujutsu-workflow\ndescription: Example.\n---\n",
+        encoding="utf-8",
+    )
+    digest = hash_skill_tree(legacy)
+    record = ManagedRecord(
+        resource_id="shared-skill-jujutsu-workflow-cursor",
+        source_digest=digest,
+        destination_digest=digest,
+        destination=".cursor/skills/jujutsu-workflow",
+    )
+    StateStore(paths).write(BootstrapState(managed={record.resource_id: record}))
+    return paths, legacy, record
+
+
+def _shared_skill_configuration(
+    repo_root: Path,
+) -> ConfigurationSupplier:
+    """Return the production shared-skill configuration supplier."""
+
+    def supplier(
+        setup: ResolvedSetup,
+        paths: RuntimePaths,
+    ) -> ConfigurationContribution:
+        """Load the checked-in skill catalog through production code."""
+        desired = load_desired_state(
+            repo_root,
+            setup.profiles,
+            frozenset(setup.skipped),
+        )
+        return shared_skills_configuration(setup, paths, desired.skill_catalog)
+
+    return supplier
+
+
 def test_preflight_runs_before_all_supplier_and_state_boundaries(
     repo_root: Path,
     fake_home: Path,
@@ -184,10 +231,10 @@ def test_shared_skill_collision_reports_a_redacted_actionable_outcome(
     fake_home: Path,
 ) -> None:
     """Map a real managed-skill collision to its stable relative-path report."""
-    collision = fake_home / ".cursor/skills/jujutsu-workflow"
+    collision = fake_home / ".cursor/skills/using-jujutsu"
     collision.mkdir(parents=True)
     (collision / "SKILL.md").write_text(
-        "---\nname: jujutsu-workflow\ndescription: Different.\n---\n"
+        "---\nname: using-jujutsu\ndescription: Different.\n---\n"
     )
 
     def shared_skill_configuration(
@@ -220,11 +267,216 @@ def test_shared_skill_collision_reports_a_redacted_actionable_outcome(
         exit_code=2,
         report=StageReport(
             outcomes=(
-                "shared skill collision: jujutsu-workflow at "
-                ".cursor/skills/jujutsu-workflow",
+                "shared skill collision: using-jujutsu at .cursor/skills/using-jujutsu",
             )
         ),
     )
+
+
+def test_configure_normalizes_apply_time_skill_rename_block(
+    repo_root: Path,
+    fake_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Configure returns a redacted exit-2 result for an apply-time block."""
+    paths, legacy, record = _prepare_legacy_skill_rename(repo_root, fake_home)
+    original_apply = cli.ConfigurationEngine.apply
+    injected = False
+
+    def apply_with_legacy_drift(
+        engine: cli.ConfigurationEngine,
+        spec: object,
+    ) -> ConfigAction:
+        """Change the received legacy tree after configuration begins."""
+        nonlocal injected
+        result = original_apply(engine, spec)  # type: ignore[arg-type]
+        if not injected:
+            injected = True
+            (legacy / "blocked-at-apply-boundary").write_text(
+                "changed", encoding="utf-8"
+            )
+        return result
+
+    monkeypatch.setattr(cli.ConfigurationEngine, "apply", apply_with_legacy_drift)
+    output: list[str] = []
+
+    result = run(
+        ("configure", "--skip", "claude-code", "--skip", "codex"),
+        repo_root=repo_root,
+        home=fake_home,
+        runner=FakeRunner(),
+        downloader=FakeDownloader(),
+        confirm=lambda _prompt: True,
+        output=output.append,
+        timestamp=lambda: "fixed",
+        configuration_suppliers=(_shared_skill_configuration(repo_root),),
+    )
+
+    assert result == RunResult(
+        exit_code=2,
+        report=StageReport(
+            outcomes=(
+                "shared skill rename blocked: jujutsu-workflow -> using-jujutsu "
+                "on cursor",
+            )
+        ),
+    )
+    assert legacy.exists()
+    assert "blocked-at-apply-boundary" in {path.name for path in legacy.iterdir()}
+    assert record.resource_id in StateStore(paths).load().managed
+    assert str(fake_home) not in "\n".join((*output, *result.report.outcomes))
+
+
+def test_all_stops_before_doctor_on_apply_time_skill_rename_block(
+    repo_root: Path,
+    fake_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """All stops after a blocked configure stage without running doctor."""
+    _paths, legacy, _record = _prepare_legacy_skill_rename(repo_root, fake_home)
+    original_apply = cli.ConfigurationEngine.apply
+    injected = False
+    doctor_calls: list[str] = []
+    rendered: list[str] = []
+
+    def apply_with_legacy_drift(
+        engine: cli.ConfigurationEngine,
+        spec: object,
+    ) -> ConfigAction:
+        """Change the received legacy tree after configuration begins."""
+        nonlocal injected
+        result = original_apply(engine, spec)  # type: ignore[arg-type]
+        if not injected:
+            injected = True
+            (legacy / "blocked-at-apply-boundary").write_text(
+                "changed", encoding="utf-8"
+            )
+        return result
+
+    monkeypatch.setattr(cli.ConfigurationEngine, "apply", apply_with_legacy_drift)
+    monkeypatch.setattr(
+        "ballen_config.cli.run_install",
+        lambda **_kwargs: InstallStageReport(exit_code=0, outcomes=()),
+    )
+    monkeypatch.setattr(
+        "ballen_config.cli.core_doctor_checks",
+        lambda *_args, **_kwargs: doctor_calls.append("doctor") or (),
+    )
+
+    result = run(
+        ("all", "--skip", "claude-code", "--skip", "codex"),
+        repo_root=repo_root,
+        home=fake_home,
+        runner=FakeRunner(),
+        downloader=FakeDownloader(),
+        confirm=lambda _prompt: True,
+        output=rendered.append,
+        timestamp=lambda: "fixed",
+        configuration_suppliers=(_shared_skill_configuration(repo_root),),
+    )
+
+    assert result == RunResult(
+        exit_code=2,
+        report=StageReport(
+            outcomes=(
+                "shared skill rename blocked: jujutsu-workflow -> using-jujutsu "
+                "on cursor",
+            )
+        ),
+    )
+    assert doctor_calls == []
+    assert len(rendered) == 1
+
+
+def test_doctor_cli_reports_blocked_declared_rename(
+    repo_root: Path,
+    fake_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Doctor renders structured findings even when configure would block."""
+    paths, legacy, _record = _prepare_legacy_skill_rename(repo_root, fake_home)
+    (legacy / "drift").write_text("changed", encoding="utf-8")
+    orchestrator = AssistantOrchestrator(paths)
+    observed: list[DoctorFinding] = []
+    original_run_doctor = cli.run_doctor
+
+    def capture_doctor(checks: Sequence[DoctorFinding]) -> object:
+        """Capture the structured checks passed to the real doctor runner."""
+        observed.extend(checks)
+        return original_run_doctor(checks)
+
+    monkeypatch.setattr("ballen_config.cli.run_doctor", capture_doctor)
+    output: list[str] = []
+
+    result = run(
+        ("doctor", "--skip", "claude-code", "--skip", "codex"),
+        repo_root=repo_root,
+        home=fake_home,
+        runner=FakeRunner(),
+        downloader=FakeDownloader(),
+        confirm=lambda _prompt: pytest.fail("doctor must not confirm"),
+        output=output.append,
+        timestamp=lambda: "fixed",
+        preflight_suppliers=(orchestrator.preflight,),
+        configuration_suppliers=(orchestrator.configuration,),
+        doctor_configuration_suppliers=(orchestrator.diagnostic_configuration,),
+        doctor_check_suppliers=(orchestrator.doctor_checks,),
+    )
+
+    finding = next(
+        item for item in observed if item.id == "skill-rename.jujutsu-workflow.cursor"
+    )
+    assert finding.status is FindingStatus.DRIFT
+    assert finding.severity is CheckSeverity.ERROR
+    assert (
+        result.report.outcomes.count("skill-rename.jujutsu-workflow.cursor: drift") == 1
+    )
+    assert output
+
+
+def test_doctor_cli_reports_unreceipted_declared_rename_successor(
+    repo_root: Path,
+    fake_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Doctor reports an unmanaged successor without rename planning failure."""
+    paths, _legacy, _record = _prepare_legacy_skill_rename(repo_root, fake_home)
+    shutil.copytree(
+        repo_root / "assistants/shared/skills/using-jujutsu",
+        fake_home / ".cursor/skills/using-jujutsu",
+    )
+    orchestrator = AssistantOrchestrator(paths)
+    observed: list[DoctorFinding] = []
+    original_run_doctor = cli.run_doctor
+
+    def capture_doctor(checks: Sequence[DoctorFinding]) -> object:
+        """Capture the structured checks passed to the real doctor runner."""
+        observed.extend(checks)
+        return original_run_doctor(checks)
+
+    monkeypatch.setattr("ballen_config.cli.run_doctor", capture_doctor)
+
+    result = run(
+        ("doctor", "--skip", "claude-code", "--skip", "codex"),
+        repo_root=repo_root,
+        home=fake_home,
+        runner=FakeRunner(),
+        downloader=FakeDownloader(),
+        confirm=lambda _prompt: pytest.fail("doctor must not confirm"),
+        output=lambda _message: None,
+        timestamp=lambda: "fixed",
+        preflight_suppliers=(orchestrator.preflight,),
+        configuration_suppliers=(orchestrator.configuration,),
+        doctor_configuration_suppliers=(orchestrator.diagnostic_configuration,),
+        doctor_check_suppliers=(orchestrator.doctor_checks,),
+    )
+
+    finding = next(
+        item for item in observed if item.id == "skill-rename.jujutsu-workflow.cursor"
+    )
+    assert finding.status is FindingStatus.MANUAL
+    assert finding.severity is CheckSeverity.WARNING
+    assert "skill-rename.jujutsu-workflow.cursor: manual" in result.report.outcomes
 
 
 def test_successful_all_orders_every_cli_seam(
@@ -289,7 +541,7 @@ def test_successful_all_orders_every_cli_seam(
     monkeypatch.setattr("ballen_config.cli.run_install", install)
     monkeypatch.setattr(
         "ballen_config.cli.run_configure",
-        lambda *_args: (
+        lambda *_args, **_kwargs: (
             events.append("configure")
             or ConfigureStageReport(actions=(), changed_count=0)
         ),

@@ -1,5 +1,7 @@
 """Tests for strict coding-agent inventory models."""
 
+from collections.abc import Callable
+
 import pytest
 from pydantic import ValidationError
 
@@ -15,6 +17,30 @@ from ballen_config.assistants.models import (
     PluginCatalog,
     SkillCatalog,
 )
+
+
+@pytest.fixture
+def skill_catalog_payload() -> Callable[[], dict[str, object]]:
+    """Build independent valid catalog payloads with one successor skill."""
+
+    def build() -> dict[str, object]:
+        """Return one valid catalog payload ready for a rename declaration."""
+        return {
+            "skills": [
+                {
+                    "name": "using-jujutsu",
+                    "source": "assistants/shared/skills/using-jujutsu",
+                    "targets": ["cursor"],
+                    "profiles": ["default"],
+                    "dependencies": [],
+                    "provenance": "renamed",
+                    "portability_status": "reviewed-generic",
+                }
+            ],
+            "renames": [{"from": "jujutsu-workflow", "to": "using-jujutsu"}],
+        }
+
+    return build
 
 
 @pytest.mark.parametrize(
@@ -858,3 +884,65 @@ def test_skill_catalog_rejects_invalid_dependency_graphs(
     """Reject ambiguous or incomplete skill dependency graphs."""
     with pytest.raises(ValidationError, match=message):
         SkillCatalog.model_validate({"skills": skills})
+
+
+def test_skill_rename_requires_successor_absent_from_and_present_to(
+    skill_catalog_payload: Callable[[], dict[str, object]],
+) -> None:
+    """Accept a rename only when its successor is the declared skill."""
+    catalog = SkillCatalog.model_validate(skill_catalog_payload())
+    assert catalog.renames[0].from_name == "jujutsu-workflow"
+    assert catalog.renames[0].to_name == "using-jujutsu"
+
+
+@pytest.mark.parametrize(
+    ("include_legacy_skill", "renames", "match"),
+    [
+        pytest.param(
+            True,
+            [{"from": "jujutsu-workflow", "to": "using-jujutsu"}],
+            "rename from still present in skills",
+            id="from-still-present",
+        ),
+        pytest.param(
+            False,
+            [
+                {"from": "old-a", "to": "using-jujutsu"},
+                {"from": "old-a", "to": "using-jujutsu"},
+            ],
+            "duplicate rename from",
+            id="duplicate-from",
+        ),
+        pytest.param(
+            False,
+            [{"from": "jujutsu-workflow", "to": "missing-skill"}],
+            "rename to absent from skills",
+            id="missing-successor",
+        ),
+    ],
+)
+def test_skill_rename_validation_rejects_invalid_declarations(
+    skill_catalog_payload: Callable[[], dict[str, object]],
+    include_legacy_skill: bool,
+    renames: list[dict[str, str]],
+    match: str,
+) -> None:
+    """Reject rename declarations that violate catalog identity constraints."""
+    payload = skill_catalog_payload()
+    if include_legacy_skill:
+        payload["skills"] = [
+            {
+                "name": "jujutsu-workflow",
+                "source": "assistants/shared/skills/jujutsu-workflow",
+                "targets": ["cursor"],
+                "profiles": ["default"],
+                "dependencies": [],
+                "provenance": "renamed",
+                "portability_status": "reviewed-generic",
+            },
+            *payload["skills"],
+        ]
+    payload["renames"] = renames
+
+    with pytest.raises(ValidationError, match=match):
+        SkillCatalog.model_validate(payload)

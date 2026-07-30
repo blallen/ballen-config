@@ -95,7 +95,7 @@ the destination machine, and no token is stored here. Any additional server,
 field, or endpoint remains unmanaged drift. Playwright and GitLab MCP servers
 remain excluded.
 
-`jujutsu-workflow` is the first reviewed shared skill. It is stored once in
+`using-jujutsu` is the first reviewed shared skill. It is stored once in
 this desired-state repository and independently copied into each selected
 agent's native skill root. Cursor cross-tool import is neither configured nor
 required: disabling **Include Third-Party Plugins, Skills, and Other Configs**

@@ -8,7 +8,18 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Final
 
+import yaml
+from pydantic import ValidationError
+from yaml import YAMLError
+
 from ballen_config.assistants.cursor_mcp import is_approved_atlassian_mcp
+from ballen_config.assistants.models import SkillCatalog
+from ballen_config.assistants.skills import (
+    LegacyRenameState,
+    _canonical_source,
+    classify_rename_target,
+    hash_skill_tree,
+)
 from ballen_config.doctor import (
     CheckSeverity,
     DoctorCheck,
@@ -19,7 +30,7 @@ from ballen_config.install import InstallAction
 from ballen_config.paths import assert_contained
 from ballen_config.runner import Runner
 from ballen_config.runtime import RuntimePaths
-from ballen_config.state import StateStore
+from ballen_config.state import BootstrapState, StateStore
 
 _AGENT_ROOTS: Final[Mapping[str, tuple[Path, ...]]] = MappingProxyType(
     {
@@ -265,6 +276,121 @@ def _skill_findings(paths: RuntimePaths, enabled: Collection[str]) -> list[Docto
     return findings
 
 
+def _skill_rename_findings(
+    paths: RuntimePaths, enabled: Collection[str]
+) -> list[DoctorCheck]:
+    """Report declared rename blocks and interrupted cleanup states."""
+    catalog_path = paths.repo_root / "assistants/shared/skills/catalog.yaml"
+    if not catalog_path.is_file():
+        return []
+    try:
+        payload = yaml.safe_load(catalog_path.read_text(encoding="utf-8"))
+        catalog = SkillCatalog.model_validate(payload)
+    except (OSError, YAMLError, ValidationError, TypeError, ValueError):
+        return []
+    if not catalog.renames:
+        return []
+    try:
+        state = StateStore(paths).load()
+    except (OSError, ValueError):
+        state = BootstrapState()
+
+    findings: list[DoctorCheck] = []
+    by_name = {skill.name: skill for skill in catalog.skills}
+    for rename in catalog.renames:
+        to_skill = by_name.get(rename.to_name)
+        if to_skill is None:
+            continue
+        try:
+            successor_digest = hash_skill_tree(_canonical_source(to_skill, paths))
+        except (OSError, ValueError):
+            continue
+        for target in to_skill.targets:
+            enabled_flag = _enabled(enabled, target.value)
+            classification = classify_rename_target(
+                from_name=rename.from_name,
+                to_name=rename.to_name,
+                target=target,
+                home=paths.home,
+                state=state,
+                successor_digest=successor_digest,
+                enabled=enabled_flag,
+            )
+            finding_id = f"skill-rename.{rename.from_name}.{target.value}"
+            state_name = classification.legacy_state
+            successor_id = f"shared-skill-{rename.to_name}-{target.value}"
+            has_successor = successor_id in state.managed
+
+            if state_name == LegacyRenameState.SKIPPED:
+                findings.append(
+                    _finding(
+                        finding_id,
+                        FindingStatus.SKIPPED,
+                        CheckSeverity.INFO,
+                        (
+                            f"Skill rename {rename.from_name} -> {rename.to_name} "
+                            f"skipped on {target.value}"
+                        ),
+                    )
+                )
+            elif state_name == LegacyRenameState.CLEAN:
+                continue
+            elif state_name == LegacyRenameState.BLOCKED_DRIFT:
+                findings.append(
+                    _finding(
+                        finding_id,
+                        FindingStatus.DRIFT,
+                        CheckSeverity.ERROR,
+                        (
+                            f"Managed legacy skill {rename.from_name} drifted on "
+                            f"{target.value}; rename blocked"
+                        ),
+                    )
+                )
+            elif state_name == LegacyRenameState.BLOCKED_UNMANAGED_SUCCESSOR:
+                findings.append(
+                    _finding(
+                        finding_id,
+                        FindingStatus.MANUAL,
+                        CheckSeverity.WARNING,
+                        (
+                            f"Unreceipted successor {rename.to_name} blocks rename "
+                            f"on {target.value}"
+                        ),
+                    )
+                )
+            elif state_name in {
+                LegacyRenameState.BLOCKED_AMBIGUOUS_RECEIPT,
+                LegacyRenameState.BLOCKED_UNMANAGED_OR_AMBIGUOUS,
+            }:
+                findings.append(
+                    _finding(
+                        finding_id,
+                        FindingStatus.MANUAL,
+                        CheckSeverity.WARNING,
+                        (
+                            f"Legacy skill {rename.from_name} is unmanaged or "
+                            f"ambiguous on {target.value}; rename blocked"
+                        ),
+                    )
+                )
+            elif state_name == LegacyRenameState.EXACT_STALE or (
+                state_name == LegacyRenameState.EXACT_LIVE and has_successor
+            ):
+                findings.append(
+                    _finding(
+                        finding_id,
+                        FindingStatus.DRIFT,
+                        CheckSeverity.ERROR,
+                        (
+                            f"Rename cleanup incomplete for {rename.from_name} -> "
+                            f"{rename.to_name} on {target.value}"
+                        ),
+                    )
+                )
+    return findings
+
+
 def assistant_checks(
     *,
     enabled: Collection[str],
@@ -451,5 +577,7 @@ def assistant_checks(
         )
 
     for finding in _skill_findings(paths, enabled):
+        add(finding)
+    for finding in _skill_rename_findings(paths, enabled):
         add(finding)
     return tuple(sorted(findings, key=lambda finding: finding.id))

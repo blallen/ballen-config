@@ -2,8 +2,12 @@
 
 import os
 import stat
+import threading
 from collections.abc import Callable, Mapping, Sequence
+from multiprocessing import Process, Queue
+from multiprocessing.queues import Queue as MultiprocessingQueue
 from pathlib import Path
+from queue import Queue as ThreadQueue
 
 import pytest
 from pydantic import ValidationError
@@ -25,7 +29,11 @@ from ballen_config.models import ResolvedSetup
 from ballen_config.planning import PlanAction
 from ballen_config.runner import CommandResult
 from ballen_config.runtime import RuntimePaths
-from ballen_config.state import ManagedRecord, StateStore
+from ballen_config.state import (
+    ManagedRecord,
+    StateMutationContentionError,
+    StateStore,
+)
 
 
 @pytest.fixture
@@ -107,6 +115,23 @@ def test_second_apply_is_unchanged_without_backup(config_paths: RuntimePaths) ->
     report = engine(config_paths, timestamp="two").apply(spec)
     assert report.outcome == "unchanged"
     assert not (config_paths.backup_root / "two").exists()
+
+
+def test_public_destination_backup_and_restore_preserve_transactional_rollback(
+    config_paths: RuntimePaths,
+) -> None:
+    """Public cleanup methods restore a moved managed destination after failure."""
+    destination = config_paths.home / ".config" / "tree"
+    destination.mkdir(parents=True)
+    (destination / "payload").write_text("original", encoding="utf-8")
+    subject = engine(config_paths, timestamp="rollback")
+
+    backup = subject.backup_managed_destination(destination)
+
+    assert backup is not None
+    assert not destination.exists()
+    subject.restore_managed_destination(backup, destination)
+    assert (destination / "payload").read_text(encoding="utf-8") == "original"
 
 
 @pytest.mark.parametrize(
@@ -313,12 +338,10 @@ def test_public_tree_digest_preserves_stored_digest_compatibility(
     """Keep existing managed-tree state valid after making the digest public."""
     source = config_paths.repo_root / "tree"
     source.mkdir()
-    (source / "SKILL.md").write_text(
-        "---\nname: example-skill\ndescription: Example.\n---\n\n# Example\n"
-    )
-    (source / "reference.md").write_text("# Reference\n")
+    (source / "payload.bin").write_bytes(b"\x00managed-tree-digest-contract\xff\x01")
+    (source / "metadata.json").write_text('{"format":1}\n', encoding="utf-8")
     (source / "empty").mkdir()
-    expected_digest = "426c50bb5755776ac2290e8f5ffdee12270e0bcfdb6a94c3dca93e06cb270608"  # pragma: allowlist secret
+    expected_digest = "70c689a06872d5833d4cccb6703cfaafa158e1fd02a848ffe67de049f494f865"  # pragma: allowlist secret
     assert digest_tree(source) == expected_digest
 
 
@@ -635,3 +658,75 @@ def test_managed_tree_allows_dotted_ids_and_guards_preflight_digest(
             destination=Path(".tree"),
             component="cursor",
         )
+
+
+def _try_nonblocking_mutation(
+    home: str, repo: str, result: MultiprocessingQueue[str]
+) -> None:
+    """Report whether a separate process can acquire the state mutation lock."""
+    store = StateStore(RuntimePaths.from_roots(repo_root=Path(repo), home=Path(home)))
+    try:
+        with store.mutation(blocking=False):
+            result.put("acquired")
+    except StateMutationContentionError:
+        result.put("contended")
+
+
+def test_apply_retains_mutation_lock_while_publishing_tree(
+    config_paths: RuntimePaths,
+) -> None:
+    """A concurrent process remains excluded while apply pauses at publication."""
+    active = engine(config_paths, timestamp="20260729T000000Z")
+    source = config_paths.repo_root / "tree-src"
+    source.mkdir()
+    (source / "file.txt").write_text("hello\n", encoding="utf-8")
+    spec = ManagedTreeSpec(
+        id="demo-tree",
+        source=source,
+        destination=Path(".demo/tree"),
+        component="demo",
+    )
+    ready: MultiprocessingQueue[str] = Queue()
+    release: MultiprocessingQueue[str] = Queue()
+    errors: ThreadQueue[BaseException] = ThreadQueue()
+
+    def pause_replace(source_path: Path, destination_path: Path) -> None:
+        """Pause the supported publication boundary before replacing the tree."""
+        ready.put("ready")
+        release.get(timeout=5)
+        os.replace(source_path, destination_path)
+
+    def apply_in_thread() -> None:
+        """Run apply and surface any unexpected exception to the test thread."""
+        try:
+            active.replace = pause_replace
+            active.apply(spec)
+        except BaseException as error:
+            errors.put(error)
+
+    applying = threading.Thread(target=apply_in_thread)
+    applying.start()
+    result: MultiprocessingQueue[str] = Queue()
+    contender: Process | None = None
+    try:
+        assert ready.get(timeout=5) == "ready"
+        contender = Process(
+            target=_try_nonblocking_mutation,
+            args=(str(config_paths.home), str(config_paths.repo_root), result),
+        )
+        contender.start()
+        assert result.get(timeout=5) == "contended"
+    finally:
+        release.put("release")
+        if contender is not None:
+            contender.join(timeout=5)
+            if contender.is_alive():
+                contender.terminate()
+                contender.join(timeout=5)
+        applying.join(timeout=5)
+
+    assert contender is not None
+    assert contender.exitcode == 0
+    assert not applying.is_alive()
+    assert errors.empty()
+    assert (config_paths.home / spec.destination / "file.txt").read_text() == "hello\n"

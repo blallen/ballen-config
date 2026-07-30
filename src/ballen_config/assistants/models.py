@@ -423,12 +423,30 @@ class SkillSpec(BaseModel):
     portability_status: Literal["reviewed-generic", "agent-specific"]
 
 
+class SkillRenameSpec(BaseModel):
+    """Bounded rename from a retired skill name to a catalog successor."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, populate_by_name=True)
+
+    from_name: str = Field(
+        alias="from",
+        pattern=r"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$",
+        description="Retired predecessor skill name eligible for bounded cleanup.",
+    )
+    to_name: str = Field(
+        alias="to",
+        pattern=r"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$",
+        description="Catalog successor skill name that replaces the predecessor.",
+    )
+
+
 class SkillCatalog(BaseModel):
     """Validated canonical-skill dependency catalog."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     skills: tuple[SkillSpec, ...]
+    renames: tuple[SkillRenameSpec, ...] = ()
 
     @model_validator(mode="after")
     def validate_graph(self) -> Self:
@@ -472,6 +490,21 @@ class SkillCatalog(BaseModel):
 
         for name in sorted(by_name):
             visit(name)
+        return self
+
+    @model_validator(mode="after")
+    def validate_renames(self) -> Self:
+        """Reject invalid bounded rename declarations."""
+        skill_names = {skill.name for skill in self.skills}
+        seen_from: set[str] = set()
+        for rename in self.renames:
+            if rename.from_name in skill_names:
+                raise ValueError("rename from still present in skills")
+            if rename.from_name in seen_from:
+                raise ValueError("duplicate rename from")
+            seen_from.add(rename.from_name)
+            if rename.to_name not in skill_names:
+                raise ValueError("rename to absent from skills")
         return self
 
 

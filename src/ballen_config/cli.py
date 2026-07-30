@@ -17,6 +17,7 @@ from ballen_config.assistants import (
     CodexPluginInspectionError,
     CursorExtensionInspectionError,
     SkillCollisionError,
+    SkillRenameBlockedError,
 )
 from ballen_config.assistants.desired_state import AssistantDesiredStateError
 from ballen_config.assistants.orchestrator import AssistantOrchestrator
@@ -211,6 +212,7 @@ def run(
     install_action_candidate_suppliers: Sequence[InstallActionCandidateSupplier] = (),
     install_action_suppliers: Sequence[InstallActionSupplier] = (),
     configuration_suppliers: Sequence[ConfigurationSupplier] = (),
+    doctor_configuration_suppliers: Sequence[ConfigurationSupplier] | None = None,
     doctor_check_suppliers: Sequence[DoctorCheckSupplier] = (),
     plan_contributors: Sequence[PlanContributor] = (),
 ) -> RunResult:
@@ -229,6 +231,7 @@ def run(
         install_action_candidate_suppliers: Static extension installation declarations.
         install_action_suppliers: Post-base native-state installation resolvers.
         configuration_suppliers: Extension configuration declarations.
+        doctor_configuration_suppliers: Read-only extension configuration declarations.
         doctor_check_suppliers: Extension diagnostic checks.
         plan_contributors: Additional structural plan contributors.
 
@@ -268,8 +271,13 @@ def run(
         core = replace(
             core_configuration(resolved, paths), validators=core_validators(runner)
         )
+        active_configuration_suppliers = (
+            doctor_configuration_suppliers
+            if options.stage == "doctor" and doctor_configuration_suppliers is not None
+            else configuration_suppliers
+        )
         supplied = tuple(
-            supplier(resolved, paths) for supplier in configuration_suppliers
+            supplier(resolved, paths) for supplier in active_configuration_suppliers
         )
         configuration = merge_configuration_contributions((core, *supplied))
         engine = ConfigurationEngine(
@@ -319,6 +327,11 @@ def run(
             report=StageReport(outcomes=("assistant desired-state preflight failed",)),
         )
     except SkillCollisionError as error:
+        return RunResult(
+            exit_code=2,
+            report=StageReport(outcomes=(error.outcome(),)),
+        )
+    except SkillRenameBlockedError as error:
         return RunResult(
             exit_code=2,
             report=StageReport(outcomes=(error.outcome(),)),
@@ -398,7 +411,17 @@ def run(
         )
 
     def configure_stage() -> RunResult:
-        report = run_configure(engine, configuration.specs)
+        try:
+            report = run_configure(
+                engine,
+                configuration.specs,
+                skill_renames=configuration.skill_renames,
+            )
+        except SkillRenameBlockedError as error:
+            return RunResult(
+                exit_code=2,
+                report=StageReport(outcomes=(error.outcome(),)),
+            )
         return RunResult(
             exit_code=0,
             report=StageReport(
@@ -455,6 +478,8 @@ def run(
     if installed.exit_code != 0:
         return installed
     configured = configure_stage()
+    if configured.exit_code != 0:
+        return configured
     diagnosed = doctor_stage()
     return RunResult(
         exit_code=diagnosed.exit_code,
@@ -497,6 +522,9 @@ def main(arguments: Sequence[str] | None = None) -> int:
             install_action_suppliers=(assistants.install_actions,),
             configuration_suppliers=(
                 cast(ConfigurationSupplier, assistants.configuration),
+            ),
+            doctor_configuration_suppliers=(
+                cast(ConfigurationSupplier, assistants.diagnostic_configuration),
             ),
             doctor_check_suppliers=(assistants.doctor_checks,),
             plan_contributors=(

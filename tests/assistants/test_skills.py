@@ -872,18 +872,23 @@ def test_jujutsu_workflow_catalog_inventory_and_configuration_are_synchronized(
         item for item in inventory.resources if item.id == "shared.skills.catalog"
     )
     expected_skill = {
-        "name": "jujutsu-workflow",
-        "source": "assistants/shared/skills/jujutsu-workflow",
+        "name": "using-jujutsu",
+        "source": "assistants/shared/skills/using-jujutsu",
         "targets": ["cursor", "claude-code", "codex"],
         "profiles": ["default"],
         "dependencies": [],
         "provenance": (
-            "Byte-for-byte promotion from the reviewed "
-            "plato/skills/jujutsu-workflow source; commit history records the origin."
+            "Renamed from the promoted jujutsu-workflow skill added in commit "
+            "2d057f673971232e2327924c1a5f846ff9ace48e, itself promoted out of "
+            "plato/skills/jujutsu-workflow at commit "
+            "f3b91eead0eff7d0c9cada3bc8e689f7610fba55; commit history records both."
         ),
         "portability_status": "reviewed-generic",
     }
-    assert catalog == {"skills": [expected_skill]}
+    assert catalog == {
+        "skills": [expected_skill],
+        "renames": [{"from": "jujutsu-workflow", "to": "using-jujutsu"}],
+    }
     assert isinstance(resource, CatalogResource)
     assert resource.owner is AgentName.SHARED
     assert resource.targets == (
@@ -891,13 +896,13 @@ def test_jujutsu_workflow_catalog_inventory_and_configuration_are_synchronized(
         AgentName.CLAUDE,
         AgentName.CODEX,
     )
-    source = repo_root / "assistants/shared/skills/jujutsu-workflow"
-    expected_jujutsu_workflow_tree_digest = "e7ca3f2e0a0f3f79dff90cc8fd718d74fecf18234d9b57dfeb0245480af1a8ec"  # pragma: allowlist secret
-    assert hash_skill_tree(source) == expected_jujutsu_workflow_tree_digest
+    source = repo_root / "assistants/shared/skills/using-jujutsu"
+    expected_using_jujutsu_tree_digest = "36852753f77034db3513201dbd75318dee30413d90f8262aa723a7523b374cf0"  # pragma: allowlist secret
+    assert hash_skill_tree(source) == expected_using_jujutsu_tree_digest
     assert (
         sha256((source / "SKILL.md").read_bytes()).hexdigest()
         == (
-            "fb76302a9d6d8e7555052d62099cf0086e5d64363966fca345298359b36491e3"  # pragma: allowlist secret
+            "bad8b9e4975e5ecf674a3b226e8a3a01f6269353b8fabccc16cb19212187aef7"  # pragma: allowlist secret
         )
     )
     assert (
@@ -915,22 +920,95 @@ def test_jujutsu_workflow_catalog_inventory_and_configuration_are_synchronized(
     assert all(isinstance(spec, ManagedTreeSpec) for spec in contribution.specs)
     assert [(spec.id, spec.destination) for spec in contribution.specs] == [
         (
-            "shared-skill-jujutsu-workflow-codex",
-            Path(".agents/skills/jujutsu-workflow"),
+            "shared-skill-using-jujutsu-codex",
+            Path(".agents/skills/using-jujutsu"),
         ),
         (
-            "shared-skill-jujutsu-workflow-claude-code",
-            Path(".claude/skills/jujutsu-workflow"),
+            "shared-skill-using-jujutsu-claude-code",
+            Path(".claude/skills/using-jujutsu"),
         ),
         (
-            "shared-skill-jujutsu-workflow-cursor",
-            Path(".cursor/skills/jujutsu-workflow"),
+            "shared-skill-using-jujutsu-cursor",
+            Path(".cursor/skills/using-jujutsu"),
         ),
     ]
+    assert contribution.skill_renames
+    assert all(
+        action.from_name == "jujutsu-workflow" and action.to_name == "using-jujutsu"
+        for action in contribution.skill_renames
+    )
     assert not paths.state_root.exists()
-    assert not (temporary_home / ".cursor/skills/jujutsu-workflow").exists()
-    assert not (temporary_home / ".claude/skills/jujutsu-workflow").exists()
-    assert not (temporary_home / ".agents/skills/jujutsu-workflow").exists()
+    assert not (temporary_home / ".cursor/skills/using-jujutsu").exists()
+    assert not (temporary_home / ".claude/skills/using-jujutsu").exists()
+    assert not (temporary_home / ".agents/skills/using-jujutsu").exists()
+
+
+def test_jujutsu_workflow_rename_converges_managed_install(
+    repo_root: Path,
+    temporary_home: Path,
+) -> None:
+    """Rename managed jujutsu-workflow installs onto using-jujutsu under lock."""
+    import shutil
+
+    from ballen_config.configure import ConfigurationEngine, run_configure
+
+    legacy_fixture = (
+        Path(__file__).resolve().parent / "fixtures" / "jujutsu-workflow-legacy"
+    )
+    legacy_digest = "e7ca3f2e0a0f3f79dff90cc8fd718d74fecf18234d9b57dfeb0245480af1a8ec"  # pragma: allowlist secret
+    paths = RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home)
+    store = StateStore(paths)
+    managed: dict[str, ManagedRecord] = {}
+    for target, relative in (
+        (AgentName.CURSOR, Path(".cursor/skills/jujutsu-workflow")),
+        (AgentName.CLAUDE, Path(".claude/skills/jujutsu-workflow")),
+        (AgentName.CODEX, Path(".agents/skills/jujutsu-workflow")),
+    ):
+        destination = temporary_home / relative
+        destination.mkdir(parents=True)
+        shutil.copy(legacy_fixture / "SKILL.md", destination / "SKILL.md")
+        shutil.copy(legacy_fixture / "reference.md", destination / "reference.md")
+        assert hash_skill_tree(destination) == legacy_digest
+        record = ManagedRecord(
+            resource_id=f"shared-skill-jujutsu-workflow-{target.value}",
+            source_digest=legacy_digest,
+            destination_digest=legacy_digest,
+            destination=relative.as_posix(),
+        )
+        managed[record.resource_id] = record
+    store.write(BootstrapState(managed=managed))
+    catalog = _catalog(paths)
+    setup = _resolved_setup("cursor", "claude-code", "codex")
+    contribution = configuration(setup, paths, catalog)
+    engine = ConfigurationEngine(
+        paths=paths, state_store=store, timestamp="20260729T140000Z"
+    )
+    run_configure(engine, contribution.specs, skill_renames=contribution.skill_renames)
+    state = store.load()
+    for target, relative in (
+        (AgentName.CURSOR, Path(".cursor/skills")),
+        (AgentName.CLAUDE, Path(".claude/skills")),
+        (AgentName.CODEX, Path(".agents/skills")),
+    ):
+        assert not (temporary_home / relative / "jujutsu-workflow").exists()
+        assert (temporary_home / relative / "using-jujutsu").is_dir()
+        successor_id = f"shared-skill-using-jujutsu-{target.value}"
+        assert successor_id in state.managed
+        assert f"shared-skill-jujutsu-workflow-{target.value}" not in state.managed
+    backups = list((paths.backup_root / "20260729T140000Z").rglob("SKILL.md"))
+    assert len(backups) == 3
+    contribution2 = configuration(setup, paths, catalog)
+    engine2 = ConfigurationEngine(
+        paths=paths, state_store=store, timestamp="20260729T150000Z"
+    )
+    report = run_configure(
+        engine2, contribution2.specs, skill_renames=contribution2.skill_renames
+    )
+    assert all(action.outcome == "unchanged" for action in report.actions)
+    assert all(
+        action.legacy_state.value == "clean" for action in contribution2.skill_renames
+    )
+    assert not (paths.backup_root / "20260729T150000Z").exists()
 
 
 @pytest.mark.parametrize(
