@@ -2,10 +2,16 @@
 
 ## Status
 
-Detailed design. Engine scope is a bounded rename protocol plus the coarse
-mutation lock its ownership proof requires; an earlier revision generalized this
-into a retirement subsystem and has been reduced. Ready for an implementation
-plan.
+Implemented and merged through pull requests 6 through 9. Pull request 6
+recorded the design and executable plans, pull request 7 delivered the bounded
+rename protocol and mutation lock, pull request 8 delivered the seven shared
+skills, and pull request 9 applied the self-review remediation.
+
+This document preserves the design-time rationale and future-tense implementation
+context for that release. The review-related post-v1 work is now elaborated by
+the
+[reusable review workflows roadmap](2026-07-30-reusable-review-workflows-roadmap-design.md).
+Plugin packaging and generic retirement remain deferred.
 
 This document defines Workstream 2 of the
 [Plato generic assets migration program](2026-07-27-plato-generic-assets-migration-design.md).
@@ -1100,6 +1106,12 @@ it fixes a pre-existing race in every state mutator, and it is a prerequisite fo
 any of the above rather than part of it.
 
 ## Post-v1 Roadmap
+
+The review-related groups in this historical roadmap are elaborated by the
+[reusable review workflows roadmap](2026-07-30-reusable-review-workflows-roadmap-design.md).
+Its approved train boundaries, ordering, and mutation gates govern that
+follow-up work. The fold, exclusion, security, and ownership decisions below
+remain in force.
 
 Later work is grouped below. The groups are independent unless a dependency is
 stated; the order is a planning preference, not a chain.
