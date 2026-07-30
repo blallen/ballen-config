@@ -28,6 +28,21 @@ _EXAMPLE_TOP_LEVEL_KEYS: Final[frozenset[str]] = frozenset(
         "scope_identity",
     }
 )
+_REVIEW_RESULT_TOP_LEVEL_KEYS: Final[frozenset[str]] = frozenset(
+    {
+        "contract_version",
+        "reviewer",
+        "scope_identity",
+        "standards_inventory_ref",
+        "applicability",
+        "outcome",
+        "coverage",
+        "findings",
+        "skips",
+        "commands",
+        "summary",
+    }
+)
 _REMOTE_CASE_NAMES: Final[frozenset[str]] = frozenset(
     {
         "single_remote",
@@ -54,6 +69,8 @@ _PROHIBITED_KEY_TERMS: Final[frozenset[str]] = frozenset(
         "credential",
         "credentials",
         "raw_diff",
+        "raw_output",
+        "command_output",
         "session",
         "sessions",
         "token",
@@ -143,6 +160,65 @@ def _walk_key_values(value: object) -> list[tuple[str, object]]:
     return pairs
 
 
+def _walk_strings(value: object) -> list[str]:
+    """Collect nested string values for portable-value validation."""
+    strings: list[str] = []
+    if isinstance(value, str):
+        strings.append(value)
+    elif isinstance(value, Mapping):
+        for key, nested in value.items():
+            strings.append(key)
+            strings.extend(_walk_strings(nested))
+    elif isinstance(value, list):
+        for nested in value:
+            strings.extend(_walk_strings(nested))
+    return strings
+
+
+def _assert_portable_string(value: str) -> None:
+    """Reject absolute paths and remote URLs in portable contract values."""
+    assert re.search(r"(?<![A-Za-z0-9._~-])/[^\s]+", value) is None
+    assert re.search(r"\b[A-Za-z]:[\\/][^\s]*", value) is None
+    assert re.search(r"\b[A-Za-z][A-Za-z0-9+.-]*://", value) is None
+    assert re.search(r"\b[^@\s]+@[^:\s]+:[^\s]+", value) is None
+
+
+def _finding_identity_material(
+    reviewer: str,
+    finding: dict[str, Any],
+) -> dict[str, object]:
+    """Build the semantic material for a stable finding identity."""
+    location = (
+        None
+        if finding["path"] is None
+        else {
+            "path": finding["path"],
+            "start_line": (
+                finding["location"]["start_line"]
+                if finding["location"] is not None
+                else None
+            ),
+            "end_line": (
+                finding["location"]["end_line"]
+                if finding["location"] is not None
+                else None
+            ),
+        }
+    )
+    evidence = unicodedata.normalize(
+        "NFC",
+        finding["evidence"].replace("\r\n", "\n").replace("\r", "\n"),
+    )
+    evidence_digest = hashlib.sha256(evidence.encode()).hexdigest()
+    return {
+        "reviewer": reviewer,
+        "category": finding["category"],
+        "rule": finding["rule"],
+        "location": location,
+        "evidence_digest": evidence_digest,
+    }
+
+
 def _select_remote(case: dict[str, Any]) -> tuple[str | None, str | None]:
     """Apply the contract's non-guessing remote-selection precedence."""
     remotes = case["remotes"]
@@ -188,6 +264,23 @@ def _normalized_remote_material(url: str) -> dict[str, str]:
         "namespace": namespace,
         "vcs": "git",
     }
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "/tmp/review",
+        "output=/tmp/review",
+        "see(/tmp/review)",
+        r"C:\review\result.json",
+        "https://example.invalid/repository",
+        "git@example.invalid:owner/repository.git",
+    ],
+)
+def test_portable_string_rejects_absolute_paths_and_remote_urls(value: str) -> None:
+    """Reject portable-result leaks regardless of surrounding punctuation."""
+    with pytest.raises(AssertionError):
+        _assert_portable_string(value)
 
 
 def test_change_scope_example_is_portable_persisted_projection(
@@ -385,3 +478,191 @@ def test_change_scope_vectors_freeze_remote_selection_and_identity(
         material = _normalized_remote_material(remote["url"])
         assert material == case["expected_material"]
         assert _canonical_sha256(material) == case["expected_identity_digest"]
+
+
+def test_review_result_example_is_portable_and_internally_consistent(
+    change_scope_reference_root: Path,
+) -> None:
+    """Validate the common result envelope without judging review prose."""
+    result = _load_json(change_scope_reference_root / "review-result.example.json")
+
+    assert set(result) == _REVIEW_RESULT_TOP_LEVEL_KEYS
+    assert result["contract_version"] == "v1"
+    assert result["reviewer"] == "review-project-quality"
+    _assert_sha256(result["scope_identity"])
+    _assert_sha256(result["standards_inventory_ref"])
+    assert result["applicability"] in {
+        "applicable",
+        "not_applicable",
+        "unknown",
+    }
+    assert result["outcome"] in {
+        "completed",
+        "incomplete",
+        "unavailable",
+        "blocked",
+    }
+
+    coverage = result["coverage"]
+    assert set(coverage) == {"scope", "inputs", "checks"}
+    assert coverage["scope"] in _COVERAGE_STATES
+    assert coverage["inputs"] in _COVERAGE_STATES
+    for check in coverage["checks"]:
+        assert set(check) == {"check", "required", "selected_scope", "completion"}
+        assert isinstance(check["check"], str)
+        assert isinstance(check["required"], bool)
+        assert check["selected_scope"] in {"changed", "full", "none"}
+        assert check["completion"] in {
+            "completed",
+            "incomplete",
+            "unavailable",
+            "skipped",
+        }
+
+    for finding in result["findings"]:
+        assert set(finding) == {
+            "finding_id",
+            "category",
+            "severity",
+            "source_severity",
+            "path",
+            "location",
+            "rule",
+            "evidence",
+            "remediation",
+            "contributors",
+        }
+        _assert_sha256(finding["finding_id"])
+        assert finding["severity"] in {"blocker", "actionable", "advisory"}
+        if finding["path"] is not None:
+            _assert_repository_relative_path(finding["path"])
+        else:
+            assert finding["location"] is None
+        if finding["location"] is not None:
+            assert set(finding["location"]) == {"start_line", "end_line"}
+            assert finding["location"]["start_line"] >= 1
+            assert finding["location"]["start_line"] <= finding["location"]["end_line"]
+        assert finding["contributors"] == sorted(set(finding["contributors"]))
+        assert finding["contributors"]
+        material = _finding_identity_material(result["reviewer"], finding)
+        assert _canonical_sha256(material) == finding["finding_id"]
+
+    for skip in result["skips"]:
+        assert set(skip) == {"check", "reason", "effect"}
+        assert skip["effect"] in {"none", "incomplete", "unavailable", "blocked"}
+
+    for command in result["commands"]:
+        assert set(command) == {
+            "invocation_id",
+            "provenance",
+            "selected_scope",
+            "completion",
+            "exit_status",
+            "evidence",
+            "unrun_reason",
+        }
+        _assert_sha256(command["invocation_id"])
+        assert command["selected_scope"] in {"changed", "full", "none"}
+        provenance_path = command["provenance"].split(":", maxsplit=1)[0]
+        _assert_repository_relative_path(provenance_path)
+        assert command["completion"] in {
+            "completed",
+            "incomplete",
+            "unavailable",
+            "skipped",
+        }
+        assert command["exit_status"] is None or isinstance(command["exit_status"], int)
+        assert "\n" not in command["evidence"]
+        if command["completion"] == "completed":
+            assert command["exit_status"] is not None
+            assert command["unrun_reason"] is None
+        else:
+            assert command["unrun_reason"] is not None
+
+    counts = result["summary"]["counts"]
+    assert set(counts) == {"blocker", "actionable", "advisory"}
+    assert counts == {
+        severity: sum(finding["severity"] == severity for finding in result["findings"])
+        for severity in ("blocker", "actionable", "advisory")
+    }
+    assert result["summary"]["verdict"] in {
+        "blocked",
+        "unavailable",
+        "incomplete",
+        "blockers_found",
+        "needs_attention",
+        "advisories",
+        "clean",
+    }
+    assert result["summary"]["verdict"] == "needs_attention"
+
+    serialized = json.dumps(result, sort_keys=True)
+    assert "/Users/" not in serialized
+    assert "\\\\Users\\\\" not in serialized
+    for value in _walk_strings(result):
+        _assert_portable_string(value)
+    assert not {key.casefold() for key, _ in _walk_key_values(result)}.intersection(
+        _PROHIBITED_KEY_TERMS
+    )
+
+
+def test_review_result_vectors_freeze_finding_identity(
+    change_scope_reference_root: Path,
+) -> None:
+    """Recompute every stable finding ID from canonical semantic material."""
+    fixture = _load_json(change_scope_reference_root / "review-result-vectors.json")
+
+    assert fixture["contract_version"] == "v1"
+    assert fixture["vectors"]
+    for vector in fixture["vectors"]:
+        assert set(vector) == {"name", "material", "expected_sha256"}
+        _assert_sha256(vector["expected_sha256"])
+        assert _canonical_sha256(vector["material"]) == vector["expected_sha256"]
+
+
+def test_review_result_vectors_freeze_verdict_precedence(
+    change_scope_reference_root: Path,
+) -> None:
+    """Freeze named precedence cases without implementing a second evaluator."""
+    fixture = _load_json(change_scope_reference_root / "review-result-vectors.json")
+
+    vectors = fixture["verdict_vectors"]
+    by_name = {vector["name"]: vector for vector in vectors}
+    assert {name: vector["expected_verdict"] for name, vector in by_name.items()} == {
+        "blocked_precedes_findings": "blocked",
+        "unavailable_precedes_blockers": "unavailable",
+        "unknown_applicability_is_incomplete": "incomplete",
+        "partial_scope_is_incomplete": "incomplete",
+        "skip_prevents_clean": "incomplete",
+        "unavailable_check_prevents_clean": "unavailable",
+        "blocker_finding": "blockers_found",
+        "actionable_finding": "needs_attention",
+        "advisory_finding": "advisories",
+        "clean_requires_complete_coverage": "clean",
+    }
+    for vector in vectors:
+        assert set(vector) == {
+            "name",
+            "applicability",
+            "outcome",
+            "coverage",
+            "skips",
+            "counts",
+            "expected_verdict",
+        }
+
+    assert by_name["blocked_precedes_findings"]["outcome"] == "blocked"
+    assert by_name["blocked_precedes_findings"]["counts"]["actionable"] == 1
+    assert by_name["unavailable_precedes_blockers"]["outcome"] == "unavailable"
+    assert by_name["unavailable_precedes_blockers"]["counts"]["blocker"] == 1
+
+    clean = by_name["clean_requires_complete_coverage"]
+    assert clean["applicability"] == "applicable"
+    assert clean["outcome"] == "completed"
+    assert clean["coverage"]["scope"] == "complete"
+    assert clean["coverage"]["inputs"] == "complete"
+    assert all(
+        check["completion"] == "completed" for check in clean["coverage"]["checks"]
+    )
+    assert clean["skips"] == []
+    assert clean["counts"] == {"blocker": 0, "actionable": 0, "advisory": 0}

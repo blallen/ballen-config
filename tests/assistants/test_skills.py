@@ -35,6 +35,7 @@ _CONTENT_PLAN_SKILL_NAMES: Final[frozenset[str]] = frozenset(
     {
         "discover-project-standards",
         "resolve-change-scope",
+        "review-project-quality",
         "review-project-standards",
         "using-uv",
         "writing-executive-communications",
@@ -45,6 +46,10 @@ _CONTENT_PLAN_SKILL_NAMES: Final[frozenset[str]] = frozenset(
 
 _REVIEW_FOUNDATION_DEPENDENCIES: Final[dict[str, tuple[str, ...]]] = {
     "resolve-change-scope": (),
+    "review-project-quality": (
+        "resolve-change-scope",
+        "discover-project-standards",
+    ),
 }
 
 

@@ -1,0 +1,212 @@
+{
+  "contract_version": "v1",
+  "vectors": [
+    {
+      "name": "quality_lint_finding",
+      "material": {
+        "category": "lint",
+        "evidence_digest": "\u00634f9d862\u0065123dd99\u00394843c2b\u00325f789fe\u00646894aa5\u0032e095d7d\u0062afd8ad5\u00628932a0d",
+        "location": {
+          "end_line": 12,
+          "path": "src/model.py",
+          "start_line": 12
+        },
+        "reviewer": "review-project-quality",
+        "rule": "E501"
+      },
+      "expected_sha256": "\u0032b46ec8e\u00399eb8a91\u00639960844\u0066db9342b\u00323bcbc06\u00645e890ee\u00342ef656d\u00399c528f7"
+    }
+  ],
+  "verdict_vectors": [
+    {
+      "name": "blocked_precedes_findings",
+      "applicability": "applicable",
+      "outcome": "blocked",
+      "coverage": {
+        "scope": "complete",
+        "inputs": "complete",
+        "checks": []
+      },
+      "skips": [],
+      "counts": {
+        "blocker": 0,
+        "actionable": 1,
+        "advisory": 0
+      },
+      "expected_verdict": "blocked"
+    },
+    {
+      "name": "unavailable_precedes_blockers",
+      "applicability": "applicable",
+      "outcome": "unavailable",
+      "coverage": {
+        "scope": "complete",
+        "inputs": "unavailable",
+        "checks": []
+      },
+      "skips": [],
+      "counts": {
+        "blocker": 1,
+        "actionable": 0,
+        "advisory": 0
+      },
+      "expected_verdict": "unavailable"
+    },
+    {
+      "name": "unknown_applicability_is_incomplete",
+      "applicability": "unknown",
+      "outcome": "completed",
+      "coverage": {
+        "scope": "complete",
+        "inputs": "complete",
+        "checks": []
+      },
+      "skips": [],
+      "counts": {
+        "blocker": 0,
+        "actionable": 0,
+        "advisory": 0
+      },
+      "expected_verdict": "incomplete"
+    },
+    {
+      "name": "partial_scope_is_incomplete",
+      "applicability": "applicable",
+      "outcome": "completed",
+      "coverage": {
+        "scope": "partial",
+        "inputs": "complete",
+        "checks": []
+      },
+      "skips": [],
+      "counts": {
+        "blocker": 0,
+        "actionable": 0,
+        "advisory": 0
+      },
+      "expected_verdict": "incomplete"
+    },
+    {
+      "name": "skip_prevents_clean",
+      "applicability": "applicable",
+      "outcome": "completed",
+      "coverage": {
+        "scope": "complete",
+        "inputs": "complete",
+        "checks": []
+      },
+      "skips": [
+        {
+          "check": "documentation-build",
+          "reason": "Configured check is unsafe.",
+          "effect": "none"
+        }
+      ],
+      "counts": {
+        "blocker": 0,
+        "actionable": 0,
+        "advisory": 0
+      },
+      "expected_verdict": "incomplete"
+    },
+    {
+      "name": "unavailable_check_prevents_clean",
+      "applicability": "applicable",
+      "outcome": "unavailable",
+      "coverage": {
+        "scope": "complete",
+        "inputs": "complete",
+        "checks": [
+          {
+            "check": "repository-lint",
+            "required": true,
+            "selected_scope": "none",
+            "completion": "unavailable"
+          }
+        ]
+      },
+      "skips": [],
+      "counts": {
+        "blocker": 0,
+        "actionable": 0,
+        "advisory": 0
+      },
+      "expected_verdict": "unavailable"
+    },
+    {
+      "name": "blocker_finding",
+      "applicability": "applicable",
+      "outcome": "completed",
+      "coverage": {
+        "scope": "complete",
+        "inputs": "complete",
+        "checks": []
+      },
+      "skips": [],
+      "counts": {
+        "blocker": 1,
+        "actionable": 1,
+        "advisory": 1
+      },
+      "expected_verdict": "blockers_found"
+    },
+    {
+      "name": "actionable_finding",
+      "applicability": "applicable",
+      "outcome": "completed",
+      "coverage": {
+        "scope": "complete",
+        "inputs": "complete",
+        "checks": []
+      },
+      "skips": [],
+      "counts": {
+        "blocker": 0,
+        "actionable": 1,
+        "advisory": 1
+      },
+      "expected_verdict": "needs_attention"
+    },
+    {
+      "name": "advisory_finding",
+      "applicability": "applicable",
+      "outcome": "completed",
+      "coverage": {
+        "scope": "complete",
+        "inputs": "complete",
+        "checks": []
+      },
+      "skips": [],
+      "counts": {
+        "blocker": 0,
+        "actionable": 0,
+        "advisory": 1
+      },
+      "expected_verdict": "advisories"
+    },
+    {
+      "name": "clean_requires_complete_coverage",
+      "applicability": "applicable",
+      "outcome": "completed",
+      "coverage": {
+        "scope": "complete",
+        "inputs": "complete",
+        "checks": [
+          {
+            "check": "repository-lint",
+            "required": true,
+            "selected_scope": "changed",
+            "completion": "completed"
+          }
+        ]
+      },
+      "skips": [],
+      "counts": {
+        "blocker": 0,
+        "actionable": 0,
+        "advisory": 0
+      },
+      "expected_verdict": "clean"
+    }
+  ]
+}
