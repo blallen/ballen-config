@@ -580,6 +580,14 @@ def merge_configuration_contributions(
             "validator id",
         ),
         ([key for key, _value in override_items], "plan-action override"),
+        (
+            [
+                f"{rename.from_name} on {rename.target.value}"
+                for contribution in contributions
+                for rename in contribution.skill_renames
+            ],
+            "skill rename cleanup",
+        ),
     ):
         if len(values) != len(set(values)):
             raise ValueError(f"duplicate {name}")
