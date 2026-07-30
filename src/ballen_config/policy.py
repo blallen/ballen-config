@@ -6,6 +6,7 @@ import stat
 import subprocess
 from collections.abc import Sequence
 from pathlib import Path, PurePath
+from typing import Final
 
 import yaml
 from pydantic import BaseModel, ConfigDict, ValidationError
@@ -16,7 +17,7 @@ from ballen_config.assistants.cursor_mcp import (
 )
 from ballen_config.assistants.models import SkillCatalog
 
-_GENERATED_PARTS = frozenset(
+_GENERATED_PARTS: Final[frozenset[str]] = frozenset(
     {
         "__pycache__",
         "cache",
@@ -25,8 +26,8 @@ _GENERATED_PARTS = frozenset(
         "transcripts",
     }
 )
-_GENERATED_SUFFIXES = frozenset({".age", ".sqlite", ".sqlite3"})
-_OPERATIONAL_DIRECTORIES = frozenset(
+_GENERATED_SUFFIXES: Final[frozenset[str]] = frozenset({".age", ".sqlite", ".sqlite3"})
+_OPERATIONAL_DIRECTORIES: Final[frozenset[str]] = frozenset(
     {
         "assistants",
         ".agents",
@@ -41,24 +42,24 @@ _OPERATIONAL_DIRECTORIES = frozenset(
         "terminal",
     }
 )
-_OPERATIONAL_ROOT_FILES = frozenset({"CLAUDE.md", "bootstrap"})
-_OPERATIONAL_DOCS = frozenset(
+_OPERATIONAL_ROOT_FILES: Final[frozenset[str]] = frozenset({"CLAUDE.md", "bootstrap"})
+_OPERATIONAL_DOCS: Final[frozenset[PurePath]] = frozenset(
     {
         PurePath("docs/manual-steps.md"),
         PurePath("docs/ssh-transfer.md"),
     }
 )
 
-_PRIVATE_KEY_PATTERN = re.compile(
+_PRIVATE_KEY_PATTERN: Final[re.Pattern[bytes]] = re.compile(
     rb"-----BEGIN (?:(?:OPENSSH|RSA|EC|DSA) )?PRIVATE KEY-----"
     rb"|-----BEGIN PGP "
     rb"PRIVATE KEY BLOCK-----"
 )
-_CREDENTIAL_COPY_PATTERN = re.compile(
+_CREDENTIAL_COPY_PATTERN: Final[re.Pattern[bytes]] = re.compile(
     rb"(?:copy(?:ing)?\s+credentials\s+from\s+(?:an\s+)?old\s+laptop)",
     re.IGNORECASE,
 )
-_CREDENTIAL_PATTERN = re.compile(
+_CREDENTIAL_PATTERN: Final[re.Pattern[bytes]] = re.compile(
     rb"(?:"
     rb"<YOUR_GITLAB_TOKEN>"
     rb"|"
@@ -68,8 +69,8 @@ _CREDENTIAL_PATTERN = re.compile(
     rb")",
     re.IGNORECASE,
 )
-_MACHINE_PATH_PATTERN = re.compile(rb"/Users/[^/\\\s\"'`]+/")
-_FORBIDDEN_MCP_PATTERN = re.compile(
+_MACHINE_PATH_PATTERN: Final[re.Pattern[bytes]] = re.compile(rb"/Users/[^/\\\s\"'`]+/")
+_FORBIDDEN_MCP_PATTERN: Final[re.Pattern[bytes]] = re.compile(
     rb"(?:"
     rb"gitlab-mr-mcp"
     rb"|@playwright/mcp"
@@ -79,19 +80,19 @@ _FORBIDDEN_MCP_PATTERN = re.compile(
     rb")",
     re.IGNORECASE,
 )
-_CREDENTIAL_FIELD_PATTERN = re.compile(
+_CREDENTIAL_FIELD_PATTERN: Final[re.Pattern[bytes]] = re.compile(
     rb"(?:auth_token|access_token|api_key|password)\s*[:=]",
     re.IGNORECASE,
 )
-_REPOSITORY_IMPORT_PATTERN = re.compile(
+_REPOSITORY_IMPORT_PATTERN: Final[re.Pattern[bytes]] = re.compile(
     rb"(?:\b(?:from|import)\s+plato\b|Projects/plato|plato:skill)",
     re.IGNORECASE,
 )
-_LOCAL_MARKETPLACE_PATTERN = re.compile(
+_LOCAL_MARKETPLACE_PATTERN: Final[re.Pattern[bytes]] = re.compile(
     rb"(?:trust_level\s*=\s*['\"]trusted['\"]|local_marketplace\s*[:=]|source\s*[:=]\s*['\"]?(?:file://|/|~/|\./|\.\./))",
     re.IGNORECASE,
 )
-_SKILL_CATALOG_PATH = PurePath("assistants/shared/skills/catalog.yaml")
+_SKILL_CATALOG_PATH: Final[PurePath] = PurePath("assistants/shared/skills/catalog.yaml")
 
 
 class Violation(BaseModel):

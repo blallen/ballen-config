@@ -79,6 +79,16 @@ class SkillCopyAction:
     target: AgentName
 
 
+@dataclass(frozen=True)
+class _DesiredCopy:
+    """One planned skill destination and the receipt currently claiming it."""
+
+    target: AgentName
+    resource_id: str
+    relative: Path
+    record: ManagedRecord | None
+
+
 class _SkillFrontmatter(BaseModel):
     """Bounded metadata required from a shared skill entrypoint."""
 
@@ -766,20 +776,21 @@ def plan_skill_copies(
     if source.name != name or declared_skill_name(source) != name:
         raise ValueError("skill name mismatch")
 
-    desired: dict[
-        Path,
-        tuple[AgentName, str, Path, ManagedRecord | None],
-    ] = {}
+    desired: dict[Path, _DesiredCopy] = {}
     for target in targets:
         relative = _SKILL_ROOTS[target] / name
         destination = _candidate(home, relative)
         resource_id = f"shared-skill-{name}-{target.value}"
-        record = _matching_record(
-            state=state,
+        desired[destination] = _DesiredCopy(
+            target=target,
             resource_id=resource_id,
-            relative_destination=relative,
+            relative=relative,
+            record=_matching_record(
+                state=state,
+                resource_id=resource_id,
+                relative_destination=relative,
+            ),
         )
-        desired[destination] = (target, resource_id, relative, record)
 
     scanned_roots = (
         _CURSOR_SCANNED_ROOTS
@@ -802,34 +813,34 @@ def plan_skill_copies(
         if scanned_digest == source_digest:
             continue
         desired_entry = desired.get(candidate)
-        if desired_entry is not None and desired_entry[3] is not None:
+        if desired_entry is not None and desired_entry.record is not None:
             continue
         raise SkillCollisionError(name, relative)
 
     actions: list[SkillCopyAction] = []
-    for destination, (target, resource_id, relative, record) in desired.items():
+    for destination, entry in desired.items():
         destination_digest = current_digests.get(destination)
         if destination_digest == source_digest:
             continue
         if destination_digest is None:
             action_state: Literal["create", "update", "repair"] = "create"
         else:
-            if record is None:
-                raise SkillCollisionError(name, relative)
+            if entry.record is None:
+                raise SkillCollisionError(name, entry.relative)
             action_state = (
                 "update"
-                if destination_digest == record.destination_digest
+                if destination_digest == entry.record.destination_digest
                 else "repair"
             )
         actions.append(
             SkillCopyAction(
                 source=source,
                 destination=destination,
-                relative_destination=relative,
+                relative_destination=entry.relative,
                 digest=source_digest,
                 state=action_state,
-                resource_id=resource_id,
-                target=target,
+                resource_id=entry.resource_id,
+                target=entry.target,
             )
         )
     return tuple(
