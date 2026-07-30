@@ -43,6 +43,33 @@ _REVIEW_RESULT_TOP_LEVEL_KEYS: Final[frozenset[str]] = frozenset(
         "summary",
     }
 )
+_SELF_REVIEW_RESULT_TOP_LEVEL_KEYS: Final[frozenset[str]] = frozenset(
+    {
+        "contract_version",
+        "result_id",
+        "created_at",
+        "result_digest",
+        "repository_identity",
+        "scope",
+        "standards_inventory_ref",
+        "reviewers",
+        "findings",
+        "commands",
+        "skips",
+        "diagnostics",
+        "summary",
+    }
+)
+_SELF_REVIEWER_ORDER: Final[tuple[str, ...]] = (
+    "review-project-standards",
+    "review-project-quality",
+    "review-project-tests",
+    "review-python-types",
+)
+_SELF_REVIEWER_NAMES: Final[frozenset[str]] = frozenset(_SELF_REVIEWER_ORDER)
+_UTC_RFC3339_PATTERN: Final[re.Pattern[str]] = re.compile(
+    r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$"
+)
 _REMOTE_CASE_NAMES: Final[frozenset[str]] = frozenset(
     {
         "single_remote",
@@ -90,6 +117,19 @@ def _load_json(path: Path) -> dict[str, Any]:
     loaded = json.loads(path.read_text())
     assert isinstance(loaded, dict)
     return loaded
+
+
+def _load_self_review_artifact(path: Path) -> tuple[dict[str, Any], str]:
+    """Parse the marked JSON block and trailing human summary."""
+    lines = path.read_text().splitlines()
+    assert lines[0] == "<!-- ballen-config:self-review-result:v1 -->"
+    assert lines[1] == "```json"
+    closing_fence = lines.index("```", 2)
+    loaded = json.loads("\n".join(lines[2:closing_fence]))
+    assert isinstance(loaded, dict)
+    summary = "\n".join(lines[closing_fence + 1 :]).strip()
+    assert summary
+    return loaded, summary
 
 
 def _canonical_sha256(material: object) -> str:
@@ -666,3 +706,181 @@ def test_review_result_vectors_freeze_verdict_precedence(
     )
     assert clean["skips"] == []
     assert clean["counts"] == {"blocker": 0, "actionable": 0, "advisory": 0}
+
+
+def test_self_review_artifact_example_is_portable_and_internally_consistent(
+    repo_root: Path,
+) -> None:
+    """Validate persisted review integrity without pinning summary prose."""
+    artifact_path = (
+        repo_root
+        / "assistants/shared/skills/conduct-self-review/references"
+        / "self-review-result.example.md"
+    )
+    result, summary = _load_self_review_artifact(artifact_path)
+
+    assert set(result) == _SELF_REVIEW_RESULT_TOP_LEVEL_KEYS
+    assert result["contract_version"] == "v1"
+    _assert_sha256(result["result_id"])
+    _assert_sha256(result["result_digest"])
+    assert _UTC_RFC3339_PATTERN.fullmatch(result["created_at"])
+
+    semantic_material = {
+        key: value
+        for key, value in result.items()
+        if key not in {"created_at", "result_id", "result_digest"}
+    }
+    assert _canonical_sha256(semantic_material) == result["result_id"]
+    digest_material = {
+        key: value for key, value in result.items() if key != "result_digest"
+    }
+    assert _canonical_sha256(digest_material) == result["result_digest"]
+
+    repository_identity = result["repository_identity"]
+    assert set(repository_identity) == {"state", "vcs", "value", "code"}
+    assert repository_identity["state"] in {"complete", "unavailable"}
+    if repository_identity["value"] is not None:
+        _assert_sha256(repository_identity["value"])
+
+    scope = result["scope"]
+    assert set(scope) == {
+        "status",
+        "source",
+        "request",
+        "comparison",
+        "target_change_id",
+        "scope_identity",
+        "changed_paths",
+        "diff_digest",
+        "coverage",
+    }
+    assert scope["status"] in {"resolved", "empty", "partial", "blocked"}
+    assert scope["source"] in {"git", "jujutsu", "supplied"}
+    _assert_sha256(scope["scope_identity"])
+    if scope["diff_digest"] is not None:
+        _assert_sha256(scope["diff_digest"])
+    assert scope["changed_paths"] == sorted(scope["changed_paths"])
+    for path in scope["changed_paths"]:
+        _assert_repository_relative_path(path)
+
+    _assert_sha256(result["standards_inventory_ref"])
+    reviewers = result["reviewers"]
+    assert [reviewer["reviewer"] for reviewer in reviewers] == list(
+        _SELF_REVIEWER_ORDER
+    )
+    assert {reviewer["reviewer"] for reviewer in reviewers} == _SELF_REVIEWER_NAMES
+    for reviewer in reviewers:
+        assert set(reviewer) == _REVIEW_RESULT_TOP_LEVEL_KEYS
+        assert reviewer["contract_version"] == "v1"
+        assert reviewer["scope_identity"] == scope["scope_identity"]
+        assert reviewer["standards_inventory_ref"] == result["standards_inventory_ref"]
+        reviewer_counts = reviewer["summary"]["counts"]
+        assert reviewer_counts == {
+            severity: sum(
+                finding["severity"] == severity for finding in reviewer["findings"]
+            )
+            for severity in ("blocker", "actionable", "advisory")
+        }
+
+    standards_severity_map = {
+        "Critical": "blocker",
+        "Suggestion": "actionable",
+        "Nit": "advisory",
+    }
+    standards_result = next(
+        reviewer
+        for reviewer in reviewers
+        if reviewer["reviewer"] == "review-project-standards"
+    )
+    for finding in standards_result["findings"]:
+        source_severity = finding["source_severity"]
+        if source_severity in standards_severity_map:
+            assert finding["severity"] == standards_severity_map[source_severity]
+
+    findings = result["findings"]
+    assert len({finding["finding_id"] for finding in findings}) == len(findings)
+    for finding in findings:
+        _assert_sha256(finding["finding_id"])
+        assert finding["contributors"] == sorted(set(finding["contributors"]))
+        assert set(finding["contributors"]).issubset(_SELF_REVIEWER_NAMES)
+        if finding["path"] is not None:
+            _assert_repository_relative_path(finding["path"])
+
+    severity_rank = {"advisory": 0, "actionable": 1, "blocker": 2}
+    finding_groups: dict[tuple[object, ...], list[dict[str, Any]]] = {}
+    for reviewer in reviewers:
+        for finding in reviewer["findings"]:
+            location = finding["location"] or {}
+            dedup_key = (
+                unicodedata.normalize("NFC", finding["category"]),
+                unicodedata.normalize("NFC", finding["rule"]),
+                finding["path"],
+                location.get("start_line"),
+                location.get("end_line"),
+                unicodedata.normalize("NFC", finding["evidence"]),
+            )
+            finding_groups.setdefault(dedup_key, []).append(finding)
+
+    assert len(findings) == len(finding_groups)
+    for finding in findings:
+        location = finding["location"] or {}
+        dedup_key = (
+            unicodedata.normalize("NFC", finding["category"]),
+            unicodedata.normalize("NFC", finding["rule"]),
+            finding["path"],
+            location.get("start_line"),
+            location.get("end_line"),
+            unicodedata.normalize("NFC", finding["evidence"]),
+        )
+        members = finding_groups[dedup_key]
+        assert finding["finding_id"] == min(member["finding_id"] for member in members)
+        highest_severity = max(
+            (member["severity"] for member in members),
+            key=severity_rank.__getitem__,
+        )
+        assert finding["severity"] == highest_severity
+        detail_donor = min(
+            (member for member in members if member["severity"] == highest_severity),
+            key=lambda member: member["finding_id"],
+        )
+        assert finding["source_severity"] == detail_donor["source_severity"]
+        assert finding["remediation"] == detail_donor["remediation"]
+        assert finding["contributors"] == sorted(
+            {
+                contributor
+                for member in members
+                for contributor in member["contributors"]
+            }
+        )
+
+    counts = result["summary"]["counts"]
+    assert counts == {
+        severity: sum(finding["severity"] == severity for finding in findings)
+        for severity in ("blocker", "actionable", "advisory")
+    }
+    assert result["summary"]["verdict"] == "needs_attention"
+
+    command_ids = [command["invocation_id"] for command in result["commands"]]
+    assert len(command_ids) == len(set(command_ids))
+    for invocation_id in command_ids:
+        _assert_sha256(invocation_id)
+
+    assert summary.startswith("## ")
+    serialized = json.dumps(result, sort_keys=True)
+    assert "diff --git" not in serialized
+    assert "\n@@ " not in serialized
+    prohibited_artifact_keys = {
+        "patch",
+        "raw_patch",
+        "reviewable_diff",
+        "raw_diff",
+        "raw_output",
+    }
+    assert not {key.casefold() for key, _ in _walk_key_values(result)}.intersection(
+        prohibited_artifact_keys
+    )
+    for value in _walk_strings(result):
+        _assert_portable_string(value)
+    assert not {key.casefold() for key, _ in _walk_key_values(result)}.intersection(
+        _PROHIBITED_KEY_TERMS
+    )
