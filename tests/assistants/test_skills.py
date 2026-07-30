@@ -24,6 +24,7 @@ from ballen_config.configure import (
     ConfigurationPlanContributor,
     ManagedTreeSpec,
     digest_tree,
+    run_configure,
 )
 from ballen_config.models import Component, Manager, ResolvedSetup
 from ballen_config.planning import PlanAction
@@ -920,10 +921,6 @@ def test_jujutsu_workflow_rename_converges_managed_install(
     temporary_home: Path,
 ) -> None:
     """Rename managed jujutsu-workflow installs onto using-jujutsu under lock."""
-    import shutil
-
-    from ballen_config.configure import ConfigurationEngine, run_configure
-
     legacy_fixture = (
         Path(__file__).resolve().parent / "fixtures" / "jujutsu-workflow-legacy"
     )
