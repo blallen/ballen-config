@@ -33,6 +33,7 @@ from ballen_config.state import BootstrapState, ManagedRecord, StateStore
 
 _CONTENT_PLAN_SKILL_NAMES: Final[frozenset[str]] = frozenset(
     {
+        "address-self-review",
         "conduct-self-review",
         "discover-project-standards",
         "resolve-change-scope",
@@ -48,6 +49,11 @@ _CONTENT_PLAN_SKILL_NAMES: Final[frozenset[str]] = frozenset(
 )
 
 _REVIEW_FOUNDATION_DEPENDENCIES: Final[dict[str, tuple[str, ...]]] = {
+    "address-self-review": (
+        "resolve-change-scope",
+        "discover-project-standards",
+        "conduct-self-review",
+    ),
     "conduct-self-review": (
         "resolve-change-scope",
         "discover-project-standards",
@@ -74,6 +80,15 @@ _REVIEW_FOUNDATION_DEPENDENCIES: Final[dict[str, tuple[str, ...]]] = {
         "discover-project-standards",
     ),
 }
+
+_REQUIRED_SKILL_NAVIGATION_HEADINGS: Final[tuple[str, ...]] = (
+    "## Overview",
+    "## When to Use",
+    "## Quick Reference",
+    "## Boundaries",
+    "## Common Mistakes",
+    "## Related Skills",
+)
 
 
 @pytest.fixture
@@ -1164,6 +1179,19 @@ def test_checked_in_review_foundation_has_expected_dependency_graph(
         name: skills_by_name[name].dependencies
         for name in _REVIEW_FOUNDATION_DEPENDENCIES
     } == _REVIEW_FOUNDATION_DEPENDENCIES
+
+
+def test_review_foundation_skills_have_navigation_sections(repo_root: Path) -> None:
+    """Keep review-foundation skills easy to route and scan."""
+    for skill_name in _REVIEW_FOUNDATION_DEPENDENCIES:
+        skill_path = repo_root / "assistants/shared/skills" / skill_name / "SKILL.md"
+        text = skill_path.read_text()
+        missing = [
+            heading
+            for heading in _REQUIRED_SKILL_NAVIGATION_HEADINGS
+            if heading not in text
+        ]
+        assert not missing, f"{skill_name} missing headings: {missing}"
 
 
 def test_checked_in_skill_catalog_plans_content_workstream_for_all_agents(
