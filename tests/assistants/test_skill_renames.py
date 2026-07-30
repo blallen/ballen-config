@@ -12,6 +12,7 @@ from ballen_config.assistants.models import AgentName, SkillCatalog
 from ballen_config.assistants.skills import (
     _SKILL_ROOTS,
     LegacyRenameState,
+    RenameTargetClassification,
     SkillRenameBlockedError,
     apply_skill_rename_cleanups,
     classify_rename_target,
@@ -65,6 +66,37 @@ def _record(
     )
 
 
+def _classify(
+    *,
+    home: Path,
+    target: AgentName,
+    state: BootstrapState | None = None,
+    successor_digest: str = "a" * 64,
+    enabled: bool = True,
+) -> RenameTargetClassification:
+    """Classify the fixture ``old-skill`` to ``new-skill`` rename for one target.
+
+    Args:
+        home: Home root holding the native skill trees under test.
+        target: Coding-agent target to classify.
+        state: Ownership snapshot; defaults to owning nothing.
+        successor_digest: Expected successor source digest.
+        enabled: Whether the target is selected for the run.
+
+    Returns:
+        The classification produced for the scenario already on disk.
+    """
+    return classify_rename_target(
+        from_name="old-skill",
+        to_name="new-skill",
+        target=target,
+        home=home,
+        state=BootstrapState() if state is None else state,
+        successor_digest=successor_digest,
+        enabled=enabled,
+    )
+
+
 @pytest.mark.parametrize("target", _CONCRETE_TARGETS)
 @pytest.mark.parametrize(
     ("legacy_present", "record_receipt", "expected_state"),
@@ -93,15 +125,7 @@ def test_classify_accepted_legacy_states(
         managed={} if record is None else {record.resource_id: record}
     )
 
-    result = classify_rename_target(
-        from_name="old-skill",
-        to_name="new-skill",
-        target=target,
-        home=temporary_home,
-        state=state,
-        successor_digest="a" * 64,
-        enabled=True,
-    )
+    result = _classify(home=temporary_home, target=target, state=state)
 
     assert result.legacy_state is expected_state
     assert result.legacy_record == record
@@ -112,15 +136,7 @@ def test_classify_accepted_legacy_states(
 def test_classify_rejects_shared_target(temporary_home: Path) -> None:
     """Reject the non-concrete shared target before resolving skill paths."""
     with pytest.raises(ValueError, match="shared is not a concrete skill target"):
-        classify_rename_target(
-            from_name="old-skill",
-            to_name="new-skill",
-            target=AgentName.SHARED,
-            home=temporary_home,
-            state=BootstrapState(),
-            successor_digest="a" * 64,
-            enabled=True,
-        )
+        _classify(home=temporary_home, target=AgentName.SHARED)
 
 
 @pytest.mark.parametrize(
@@ -139,15 +155,7 @@ def test_classify_legacy_leaf_blocks(temporary_home: Path, leaf_kind: str) -> No
     else:
         legacy.write_text("unsupported", encoding="utf-8")
 
-    result = classify_rename_target(
-        from_name="old-skill",
-        to_name="new-skill",
-        target=AgentName.CURSOR,
-        home=temporary_home,
-        state=BootstrapState(),
-        successor_digest="a" * 64,
-        enabled=True,
-    )
+    result = _classify(home=temporary_home, target=AgentName.CURSOR)
 
     assert result.legacy_state == LegacyRenameState.BLOCKED_UNMANAGED_OR_AMBIGUOUS
 
@@ -163,14 +171,11 @@ def test_classify_absent_mismatched_receipt_is_ambiguous(
         destination_digest="e" * 64,
         destination="somewhere/else",
     )
-    result = classify_rename_target(
-        from_name="old-skill",
-        to_name="new-skill",
-        target=target,
+    result = _classify(
         home=temporary_home,
+        target=target,
         state=BootstrapState(managed={record.resource_id: record}),
         successor_digest="f" * 64,
-        enabled=True,
     )
     assert result.legacy_state == LegacyRenameState.BLOCKED_AMBIGUOUS_RECEIPT
 
@@ -182,15 +187,7 @@ def test_classify_present_without_receipt_is_unmanaged(
     """Block a live legacy tree without an ownership receipt."""
     legacy = temporary_home / _SKILL_ROOTS[target] / "old-skill"
     _write_skill(legacy, "old-skill")
-    result = classify_rename_target(
-        from_name="old-skill",
-        to_name="new-skill",
-        target=target,
-        home=temporary_home,
-        state=BootstrapState(),
-        successor_digest="a" * 64,
-        enabled=True,
-    )
+    result = _classify(home=temporary_home, target=target)
     assert result.legacy_state == LegacyRenameState.BLOCKED_UNMANAGED_OR_AMBIGUOUS
 
 
@@ -202,14 +199,11 @@ def test_classify_present_exact_receipt_digest_mismatch_is_drift(
     legacy = temporary_home / _SKILL_ROOTS[target] / "old-skill"
     _write_skill(legacy, "old-skill", body="live")
     record = _record(name="old-skill", target=target, digest="0" * 64)
-    result = classify_rename_target(
-        from_name="old-skill",
-        to_name="new-skill",
-        target=target,
+    result = _classify(
         home=temporary_home,
+        target=target,
         state=BootstrapState(managed={record.resource_id: record}),
         successor_digest="1" * 64,
-        enabled=True,
     )
     assert result.legacy_state == LegacyRenameState.BLOCKED_DRIFT
 
@@ -225,15 +219,7 @@ def test_classify_skipped_never_inspects_filesystem(
         raise AssertionError("skipped targets must not inspect the filesystem")
 
     monkeypatch.setattr("ballen_config.assistants.skills._validated_home", fail_home)
-    result = classify_rename_target(
-        from_name="old-skill",
-        to_name="new-skill",
-        target=target,
-        home=temporary_home,
-        state=BootstrapState(),
-        successor_digest="a" * 64,
-        enabled=False,
-    )
+    result = _classify(home=temporary_home, target=target, enabled=False)
     assert result.legacy_state == LegacyRenameState.SKIPPED
 
 
@@ -245,15 +231,7 @@ def test_classify_unreceipted_successor_at_exact_digest_blocks(
     successor = temporary_home / _SKILL_ROOTS[target] / "new-skill"
     _write_skill(successor, "new-skill")
     digest = hash_skill_tree(successor)
-    result = classify_rename_target(
-        from_name="old-skill",
-        to_name="new-skill",
-        target=target,
-        home=temporary_home,
-        state=BootstrapState(),
-        successor_digest=digest,
-        enabled=True,
-    )
+    result = _classify(home=temporary_home, target=target, successor_digest=digest)
     assert result.legacy_state == LegacyRenameState.BLOCKED_UNMANAGED_SUCCESSOR
 
 
@@ -427,7 +405,7 @@ def test_apply_removes_exact_live_legacy(temporary_home: Path, tmp_path: Path) -
     digest = hash_skill_tree(legacy)
     record = _record(name="old-skill", target=AgentName.CURSOR, digest=digest)
     store = StateStore(paths)
-    store.write(BootstrapState(managed={record.resource_id: record}))
+    store.record_managed(record)
     contribution = configuration(_resolved_setup("cursor"), paths, catalog)
     engine = ConfigurationEngine(
         paths=paths, state_store=store, timestamp="20260729T120000Z"
@@ -456,7 +434,7 @@ def test_apply_rejects_changed_successor_source_before_publish(
         digest=hash_skill_tree(legacy),
     )
     store = StateStore(paths)
-    store.write(BootstrapState(managed={legacy_record.resource_id: legacy_record}))
+    store.record_managed(legacy_record)
     contribution = configuration(_resolved_setup("cursor"), paths, catalog)
     _write_skill(
         paths.repo_root / "assistants/shared/skills/new-skill",
@@ -495,7 +473,7 @@ def test_plan_contributor_renders_rename_cleanup(
         name="old-skill", target=AgentName.CURSOR, digest=legacy_digest
     )
     store = StateStore(paths)
-    store.write(BootstrapState(managed={legacy_record.resource_id: legacy_record}))
+    store.record_managed(legacy_record)
     contribution = configuration(_resolved_setup("cursor"), paths, catalog)
     engine = ConfigurationEngine(paths=paths, state_store=store, timestamp="plan")
     contributor = ConfigurationPlanContributor(
@@ -539,14 +517,8 @@ def test_apply_rejects_stale_successor_receipt(
         destination=".cursor/skills/new-skill",
     )
     store = StateStore(paths)
-    store.write(
-        BootstrapState(
-            managed={
-                legacy_record.resource_id: legacy_record,
-                successor_record.resource_id: successor_record,
-            }
-        )
-    )
+    store.record_managed(legacy_record)
+    store.record_managed(successor_record)
     actions = plan_skill_renames(
         catalog=catalog,
         setup=_resolved_setup("cursor"),
@@ -605,14 +577,8 @@ def test_apply_rejects_successor_receipt_with_mismatched_identity(
         destination=".cursor/skills/new-skill",
     )
     store = StateStore(paths)
-    store.write(
-        BootstrapState(
-            managed={
-                legacy_record.resource_id: legacy_record,
-                successor_record.resource_id: successor_record,
-            }
-        )
-    )
+    store.record_managed(legacy_record)
+    store.record_managed(successor_record)
     actions = plan_skill_renames(
         catalog=catalog,
         setup=_resolved_setup("cursor"),
@@ -620,14 +586,16 @@ def test_apply_rejects_successor_receipt_with_mismatched_identity(
         state=store.load(),
     )
     mismatched_successor_record = successor_record.model_copy(update=receipt_update)
-    store.write(
-        BootstrapState(
-            managed={
-                legacy_record.resource_id: legacy_record,
-                successor_record.resource_id: mismatched_successor_record,
-            }
-        )
+    forged = BootstrapState(
+        managed={
+            legacy_record.resource_id: legacy_record,
+            successor_record.resource_id: mismatched_successor_record,
+        }
     )
+    with store.mutation():
+        # record_managed always keys a receipt by its own resource_id, so the
+        # mismatched-identity snapshot has to be written directly.
+        store._write(forged)
     engine = ConfigurationEngine(paths=paths, state_store=store, timestamp="apply")
 
     with store.mutation(), pytest.raises(SkillRenameBlockedError):
@@ -658,14 +626,8 @@ def test_compare_and_remove_rollback_restores_legacy_tree(
     )
     successor_record = _record(name="new-skill", target=AgentName.CURSOR, digest=digest)
     store = StateStore(paths)
-    store.write(
-        BootstrapState(
-            managed={
-                legacy_record.resource_id: legacy_record,
-                successor_record.resource_id: successor_record,
-            }
-        )
-    )
+    store.record_managed(legacy_record)
+    store.record_managed(successor_record)
     actions = plan_skill_renames(
         catalog=catalog,
         setup=_resolved_setup("cursor"),
@@ -695,7 +657,7 @@ def test_apply_idempotent_second_run(temporary_home: Path, tmp_path: Path) -> No
     digest = hash_skill_tree(legacy)
     record = _record(name="old-skill", target=AgentName.CURSOR, digest=digest)
     store = StateStore(paths)
-    store.write(BootstrapState(managed={record.resource_id: record}))
+    store.record_managed(record)
     contribution = configuration(_resolved_setup("cursor"), paths, catalog)
     engine = ConfigurationEngine(
         paths=paths, state_store=store, timestamp="20260729T120000Z"
@@ -732,7 +694,7 @@ def test_toc_tou_legacy_change_fails_closed(
     digest = hash_skill_tree(legacy)
     record = _record(name="old-skill", target=AgentName.CURSOR, digest=digest)
     store = StateStore(paths)
-    store.write(BootstrapState(managed={record.resource_id: record}))
+    store.record_managed(record)
     contribution = configuration(_resolved_setup("cursor"), paths, catalog)
     assert contribution.skill_renames
     (legacy / "SKILL.md").write_text(
@@ -753,24 +715,35 @@ def test_toc_tou_legacy_change_fails_closed(
     assert not paths.backup_root.exists()
 
 
-def test_apply_preflights_all_targets_before_any_successor_mutation(
-    temporary_home: Path, tmp_path: Path
-) -> None:
-    """Block every successor publish when any frozen legacy target changes."""
+def _prepare_dual_rename_repo(
+    temporary_home: Path,
+    tmp_path: Path,
+) -> tuple[RuntimePaths, StateStore, dict[str, ManagedRecord], SkillCatalog]:
+    """Stage two received legacy renames for the enabled cursor target.
+
+    Args:
+        temporary_home: Isolated home root receiving the native skill trees.
+        tmp_path: Temporary root holding the repository checkout.
+
+    Returns:
+        Approved paths, the seeded state store, receipts keyed by resource id,
+        and the validated two-rename catalog.
+    """
     repo = tmp_path / "repo"
-    catalog_payload = {
-        "skills": [_skill_item("new-first"), _skill_item("new-second")],
-        "renames": [
-            {"from": "old-first", "to": "new-first"},
-            {"from": "old-second", "to": "new-second"},
-        ],
-    }
     for name in ("new-first", "new-second"):
         _write_skill(repo / "assistants/shared/skills" / name, name, body=name)
     paths = RuntimePaths.from_roots(repo_root=repo, home=temporary_home)
-    catalog = SkillCatalog.model_validate(catalog_payload)
+    catalog = SkillCatalog.model_validate(
+        {
+            "skills": [_skill_item("new-first"), _skill_item("new-second")],
+            "renames": [
+                {"from": "old-first", "to": "new-first"},
+                {"from": "old-second", "to": "new-second"},
+            ],
+        }
+    )
+    store = StateStore(paths)
     records: dict[str, ManagedRecord] = {}
-    legacy_paths: dict[str, Path] = {}
     for name in ("old-first", "old-second"):
         legacy = temporary_home / ".cursor/skills" / name
         _write_skill(legacy, name, body=name)
@@ -780,9 +753,19 @@ def test_apply_preflights_all_targets_before_any_successor_mutation(
             digest=hash_skill_tree(legacy),
         )
         records[record.resource_id] = record
-        legacy_paths[name] = legacy
-    store = StateStore(paths)
-    store.write(BootstrapState(managed=records))
+        store.record_managed(record)
+    return paths, store, records, catalog
+
+
+def test_apply_preflights_all_targets_before_any_successor_mutation(
+    temporary_home: Path, tmp_path: Path
+) -> None:
+    """Block every successor publish when any frozen legacy target changes."""
+    paths, store, records, catalog = _prepare_dual_rename_repo(temporary_home, tmp_path)
+    legacy_paths = {
+        name: temporary_home / ".cursor/skills" / name
+        for name in ("old-first", "old-second")
+    }
     contribution = configuration(_resolved_setup("cursor"), paths, catalog)
     (legacy_paths["old-second"] / "SKILL.md").write_text(
         "---\nname: old-second\ndescription: Example.\n---\n\n# changed\n",
@@ -815,39 +798,18 @@ def test_apply_preflights_existing_successor_proof_before_mutation(
     temporary_home: Path, tmp_path: Path
 ) -> None:
     """Block all publishes when an exact existing successor receipt is invalid."""
-    repo = tmp_path / "repo"
-    catalog_payload = {
-        "skills": [_skill_item("new-first"), _skill_item("new-second")],
-        "renames": [
-            {"from": "old-first", "to": "new-first"},
-            {"from": "old-second", "to": "new-second"},
-        ],
-    }
-    for name in ("new-first", "new-second"):
-        _write_skill(repo / "assistants/shared/skills" / name, name, body=name)
-    paths = RuntimePaths.from_roots(repo_root=repo, home=temporary_home)
-    catalog = SkillCatalog.model_validate(catalog_payload)
-    records: dict[str, ManagedRecord] = {}
-    for name in ("old-first", "old-second"):
-        legacy = temporary_home / ".cursor/skills" / name
-        _write_skill(legacy, name, body=name)
-        record = _record(
-            name=name,
-            target=AgentName.CURSOR,
-            digest=hash_skill_tree(legacy),
-        )
-        records[record.resource_id] = record
+    paths, store, records, catalog = _prepare_dual_rename_repo(temporary_home, tmp_path)
     successor = temporary_home / ".cursor/skills/new-second"
-    shutil.copytree(repo / "assistants/shared/skills/new-second", successor)
+    shutil.copytree(paths.repo_root / "assistants/shared/skills/new-second", successor)
     successor_digest = hash_skill_tree(successor)
-    records["shared-skill-new-second-cursor"] = ManagedRecord(
+    invalid_receipt = ManagedRecord(
         resource_id="shared-skill-new-second-cursor",
         source_digest=successor_digest,
         destination_digest="0" * 64,
         destination=".cursor/skills/new-second",
     )
-    store = StateStore(paths)
-    store.write(BootstrapState(managed=records))
+    records[invalid_receipt.resource_id] = invalid_receipt
+    store.record_managed(invalid_receipt)
     contribution = configuration(_resolved_setup("cursor"), paths, catalog)
 
     with pytest.raises(SkillRenameBlockedError):
@@ -867,30 +829,7 @@ def test_apply_verifies_all_successors_before_any_legacy_cleanup(
     temporary_home: Path, tmp_path: Path
 ) -> None:
     """Preserve every legacy target when one installed successor lacks proof."""
-    repo = tmp_path / "repo"
-    catalog_payload = {
-        "skills": [_skill_item("new-first"), _skill_item("new-second")],
-        "renames": [
-            {"from": "old-first", "to": "new-first"},
-            {"from": "old-second", "to": "new-second"},
-        ],
-    }
-    for name in ("new-first", "new-second"):
-        _write_skill(repo / "assistants/shared/skills" / name, name, body=name)
-    paths = RuntimePaths.from_roots(repo_root=repo, home=temporary_home)
-    catalog = SkillCatalog.model_validate(catalog_payload)
-    records: dict[str, ManagedRecord] = {}
-    for name in ("old-first", "old-second"):
-        legacy = temporary_home / ".cursor/skills" / name
-        _write_skill(legacy, name, body=name)
-        record = _record(
-            name=name,
-            target=AgentName.CURSOR,
-            digest=hash_skill_tree(legacy),
-        )
-        records[record.resource_id] = record
-    store = StateStore(paths)
-    store.write(BootstrapState(managed=records))
+    paths, store, records, catalog = _prepare_dual_rename_repo(temporary_home, tmp_path)
     contribution = configuration(_resolved_setup("cursor"), paths, catalog)
     second_successor = temporary_home / ".cursor/skills/new-second"
 
@@ -941,7 +880,7 @@ def test_apply_removes_exact_stale_receipt_without_backup(
         digest="a" * 64,
     )
     store = StateStore(paths)
-    store.write(BootstrapState(managed={legacy_record.resource_id: legacy_record}))
+    store.record_managed(legacy_record)
     contribution = configuration(_resolved_setup("cursor"), paths, catalog)
 
     run_configure(
@@ -957,6 +896,88 @@ def test_apply_removes_exact_stale_receipt_without_backup(
     assert not paths.backup_root.exists()
 
 
+def test_apply_keeps_live_legacy_tree_when_backup_fails(
+    temporary_home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Keep the received legacy tree and receipt when its backup cannot be made."""
+    paths, catalog, _digest = _prepare_rename_repo(
+        temporary_home, tmp_path, legacy_present=True
+    )
+    legacy = temporary_home / ".cursor/skills/old-skill"
+    legacy_digest = hash_skill_tree(legacy)
+    legacy_record = _record(
+        name="old-skill", target=AgentName.CURSOR, digest=legacy_digest
+    )
+    store = StateStore(paths)
+    store.record_managed(legacy_record)
+    contribution = configuration(_resolved_setup("cursor"), paths, catalog)
+
+    original_backup = ConfigurationEngine.backup_managed_destination
+
+    def fail_legacy_backup(engine: ConfigurationEngine, destination: Path) -> Path:
+        """Fail only the legacy backup taken just before receipt removal."""
+        if destination == legacy:
+            raise OSError("backup failed")
+        return original_backup(engine, destination)
+
+    monkeypatch.setattr(
+        ConfigurationEngine, "backup_managed_destination", fail_legacy_backup
+    )
+
+    with pytest.raises(OSError, match="backup failed"):
+        run_configure(
+            ConfigurationEngine(paths=paths, state_store=store, timestamp="apply"),
+            contribution.specs,
+            skill_renames=contribution.skill_renames,
+        )
+
+    assert (temporary_home / ".cursor/skills/new-skill").is_dir()
+    assert hash_skill_tree(legacy) == legacy_digest
+    assert store.load().managed[legacy_record.resource_id] == legacy_record
+
+
+def test_apply_blocks_when_legacy_tree_becomes_a_file(
+    temporary_home: Path, tmp_path: Path
+) -> None:
+    """Block cleanup when the frozen legacy tree is replaced by a regular file."""
+    paths, catalog, _digest = _prepare_rename_repo(
+        temporary_home, tmp_path, legacy_present=True
+    )
+    legacy = temporary_home / ".cursor/skills/old-skill"
+    legacy_record = _record(
+        name="old-skill", target=AgentName.CURSOR, digest=hash_skill_tree(legacy)
+    )
+    store = StateStore(paths)
+    store.record_managed(legacy_record)
+    contribution = configuration(_resolved_setup("cursor"), paths, catalog)
+    shutil.rmtree(legacy)
+    legacy.write_text("no longer a skill tree", encoding="utf-8")
+
+    with pytest.raises(SkillRenameBlockedError):
+        run_configure(
+            ConfigurationEngine(paths=paths, state_store=store, timestamp="apply"),
+            contribution.specs,
+            skill_renames=contribution.skill_renames,
+        )
+
+    assert legacy.is_file()
+    assert store.load().managed[legacy_record.resource_id] == legacy_record
+
+
+def test_blocked_rename_outcome_omits_paths_digests_and_states() -> None:
+    """Report a blocked rename without leaking local paths or internal states."""
+    error = SkillRenameBlockedError(
+        "old-skill",
+        "new-skill",
+        AgentName.CURSOR,
+        LegacyRenameState.BLOCKED_DRIFT,
+    )
+    outcome = error.outcome()
+    assert outcome == "shared skill rename blocked: old-skill -> new-skill on cursor"
+    assert LegacyRenameState.BLOCKED_DRIFT.value in str(error)
+    assert LegacyRenameState.BLOCKED_DRIFT.value not in outcome
+
+
 def test_compare_and_remove_mismatch_is_noop(
     temporary_home: Path, tmp_path: Path
 ) -> None:
@@ -967,7 +988,7 @@ def test_compare_and_remove_mismatch_is_noop(
     store = StateStore(paths)
     expected = _record(name="old-skill", target=AgentName.CURSOR, digest="a" * 64)
     other = expected.model_copy(update={"destination_digest": "b" * 64})
-    store.write(BootstrapState(managed={other.resource_id: other}))
+    store.record_managed(other)
     with store.mutation():
         assert store.compare_and_remove(expected) is False
     assert store.load().managed[other.resource_id] == other
@@ -1046,7 +1067,7 @@ def test_doctor_reports_legacy_drift(temporary_home: Path, tmp_path: Path) -> No
     )
     legacy = temporary_home / ".cursor/skills/old-skill"
     record = _record(name="old-skill", target=AgentName.CURSOR, digest="0" * 64)
-    StateStore(paths).write(BootstrapState(managed={record.resource_id: record}))
+    StateStore(paths).record_managed(record)
     finding = _doctor_rename_finding(paths, temporary_home)
     assert finding.status is FindingStatus.DRIFT
     assert finding.severity is CheckSeverity.ERROR
@@ -1073,14 +1094,9 @@ def test_doctor_reports_incomplete_cleanup_when_successor_present(
         destination_digest=digest,
         destination=".cursor/skills/new-skill",
     )
-    StateStore(paths).write(
-        BootstrapState(
-            managed={
-                legacy_record.resource_id: legacy_record,
-                successor_record.resource_id: successor_record,
-            }
-        )
-    )
+    store = StateStore(paths)
+    store.record_managed(legacy_record)
+    store.record_managed(successor_record)
     finding = _doctor_rename_finding(paths, temporary_home)
     assert finding.status is FindingStatus.DRIFT
     assert finding.severity is CheckSeverity.ERROR
@@ -1107,7 +1123,7 @@ def test_end_to_end_fixture_rename_plan_configure_doctor_idempotent(
     digest = hash_skill_tree(legacy)
     record = _record(name="old-skill", target=AgentName.CURSOR, digest=digest)
     store = StateStore(paths)
-    store.write(BootstrapState(managed={record.resource_id: record}))
+    store.record_managed(record)
     setup = _resolved_setup("cursor")
     contribution = configuration(setup, paths, catalog)
     engine = ConfigurationEngine(

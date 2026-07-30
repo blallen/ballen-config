@@ -945,7 +945,8 @@ def test_jujutsu_workflow_rename_converges_managed_install(
             destination=relative.as_posix(),
         )
         managed[record.resource_id] = record
-    store.write(BootstrapState(managed=managed))
+    for record in managed.values():
+        store.record_managed(record)
     catalog = _catalog(paths)
     setup = _resolved_setup("cursor", "claude-code", "codex")
     contribution = configuration(setup, paths, catalog)

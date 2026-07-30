@@ -10,22 +10,20 @@ from ballen_config.state import BootstrapState, InstallRecord, ManagedRecord, St
 def test_state_store_is_atomic_and_private(repo_root: Path, fake_home: Path) -> None:
     """Persist state with private directory and file permissions."""
     paths = RuntimePaths.from_roots(repo_root=repo_root, home=fake_home)
-    state = BootstrapState(
-        installs={
-            "signal": InstallRecord(resource_id="signal", state="optional-failure")
-        },
-        managed={
-            "zshrc": ManagedRecord(
-                resource_id="zshrc",
-                source_digest="a" * 64,
-                destination_digest="b" * 64,
-                destination=".zshrc",
-            )
-        },
+    install = InstallRecord(resource_id="signal", state="optional-failure")
+    managed = ManagedRecord(
+        resource_id="zshrc",
+        source_digest="a" * 64,
+        destination_digest="b" * 64,
+        destination=".zshrc",
     )
     store = StateStore(paths)
-    store.write(state)
-    assert store.load() == state
+    store.record_install(install)
+    store.record_managed(managed)
+    assert store.load() == BootstrapState(
+        installs={install.resource_id: install},
+        managed={managed.resource_id: managed},
+    )
     assert stat.S_IMODE(paths.state_root.stat().st_mode) == 0o700
     assert stat.S_IMODE(store.path.stat().st_mode) == 0o600
 
@@ -52,7 +50,7 @@ def test_state_store_rejects_symlinked_state_root(
     with pytest.raises(ValueError, match="symlinked path component"):
         store.load()
     with pytest.raises(ValueError, match="symlinked path component"):
-        store.write(BootstrapState())
+        store.record_install(InstallRecord(resource_id="signal", state="present"))
     assert list(outside.iterdir()) == []
 
 
@@ -69,7 +67,7 @@ def test_state_store_rejects_terminal_state_symlink(
     with pytest.raises(ValueError, match="symlinked path component"):
         store.load()
     with pytest.raises(ValueError, match="symlinked path component"):
-        store.write(BootstrapState())
+        store.record_install(InstallRecord(resource_id="signal", state="present"))
     assert outside.read_text() == '{"secret": "unchanged"}'  # pragma: allowlist secret
 
 
@@ -85,5 +83,7 @@ def test_state_store_rejects_state_path_outside_home(
         backup_root=outside / "backups",
     )
     with pytest.raises(ValueError, match="path escapes approved root"):
-        StateStore(paths).write(BootstrapState())
+        StateStore(paths).record_install(
+            InstallRecord(resource_id="signal", state="present")
+        )
     assert not outside.exists()

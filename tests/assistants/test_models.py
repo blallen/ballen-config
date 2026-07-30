@@ -886,10 +886,10 @@ def test_skill_catalog_rejects_invalid_dependency_graphs(
         SkillCatalog.model_validate({"skills": skills})
 
 
-def test_skill_rename_requires_successor_absent_from_and_present_to(
+def test_skill_rename_declaration_aliases_map_to_typed_fields(
     skill_catalog_payload: Callable[[], dict[str, object]],
 ) -> None:
-    """Accept a rename only when its successor is the declared skill."""
+    """Map the ``from`` and ``to`` catalog keys onto typed field names."""
     catalog = SkillCatalog.model_validate(skill_catalog_payload())
     assert catalog.renames[0].from_name == "jujutsu-workflow"
     assert catalog.renames[0].to_name == "using-jujutsu"

@@ -12,6 +12,8 @@ from queue import Queue as ThreadQueue
 import pytest
 from pydantic import ValidationError
 
+from ballen_config.assistants.models import AgentName, ConcreteAgentName
+from ballen_config.assistants.skills import LegacyRenameState, SkillRenameAction
 from ballen_config.configure import (
     ApplyMethod,
     ConfigurationContribution,
@@ -34,6 +36,23 @@ from ballen_config.state import (
     StateMutationContentionError,
     StateStore,
 )
+
+
+def _rename_action(target: ConcreteAgentName) -> SkillRenameAction:
+    """Build one accepted rename cleanup for the given concrete target."""
+    root = Path(f".{'cursor' if target is AgentName.CURSOR else 'claude'}/skills")
+    return SkillRenameAction(
+        from_name="old-skill",
+        to_name="new-skill",
+        target=target,
+        legacy_state=LegacyRenameState.CLEAN,
+        legacy_record=None,
+        legacy_relative=root / "old-skill",
+        successor_resource_id=f"shared-skill-new-skill-{target.value}",
+        successor_relative=root / "new-skill",
+        successor_source_digest="0" * 64,
+        successor_destination_digest="0" * 64,
+    )
 
 
 @pytest.fixture
@@ -372,6 +391,27 @@ def test_duplicate_contribution_fields_are_rejected(config_paths: RuntimePaths) 
     )
     with pytest.raises(ValueError, match="duplicate managed destination"):
         merge_configuration_contributions((contribution, duplicate_destination))
+
+
+def test_rename_cleanups_merge_per_target_and_reject_repeats() -> None:
+    """Keep one cleanup per predecessor and target, rejecting exact repeats."""
+    cursor = _rename_action(AgentName.CURSOR)
+    claude = _rename_action(AgentName.CLAUDE)
+    merged = merge_configuration_contributions(
+        (
+            ConfigurationContribution(skill_renames=(cursor,)),
+            ConfigurationContribution(skill_renames=(claude,)),
+        )
+    )
+    assert merged.skill_renames == (cursor, claude)
+
+    with pytest.raises(ValueError, match="duplicate skill rename cleanup"):
+        merge_configuration_contributions(
+            (
+                ConfigurationContribution(skill_renames=(cursor,)),
+                ConfigurationContribution(skill_renames=(cursor,)),
+            )
+        )
 
 
 def test_plan_action_overrides_are_strict_and_merge_by_spec_id(

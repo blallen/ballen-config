@@ -197,7 +197,17 @@ class AssistantOrchestrator:
         *,
         include_rename_actions: bool = True,
     ) -> ConfigurationContribution:
-        """Compose target configuration from preloaded models."""
+        """Compose target configuration from preloaded models.
+
+        Args:
+            setup: Fully resolved core component and profile selection.
+            paths: Approved checkout, home, state, and backup roots.
+            include_rename_actions: Whether shared-skill planning may contribute
+                declared rename cleanups.
+
+        Returns:
+            One merged contribution with specs sorted by identifier.
+        """
         desired = self._require(setup, paths)
         enabled = _enabled_agents(setup)
         cursor_local = (
@@ -246,7 +256,18 @@ class AssistantOrchestrator:
         setup: ResolvedSetup,
         paths: RuntimePaths,
     ) -> ConfigurationContribution:
-        """Build ordinary configuration without mutating skill rename actions."""
+        """Build ordinary configuration without planning skill rename cleanups.
+
+        Doctor reports rename state from its own checks, so it must not receive
+        cleanup actions that a configure stage would apply.
+
+        Args:
+            setup: Fully resolved core component and profile selection.
+            paths: Approved checkout, home, state, and backup roots.
+
+        Returns:
+            The same contribution as ``configuration`` with no rename actions.
+        """
         return self.configuration(setup, paths, include_rename_actions=False)
 
     def doctor_checks(

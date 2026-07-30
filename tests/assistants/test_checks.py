@@ -13,7 +13,7 @@ from ballen_config.assistants.checks import assistant_checks
 from ballen_config.doctor import CheckSeverity, FindingStatus, run_doctor
 from ballen_config.install import InstallAction
 from ballen_config.runtime import RuntimePaths
-from ballen_config.state import BootstrapState, ManagedRecord, StateStore
+from ballen_config.state import ManagedRecord, StateStore
 from tests.assistants.fakes import StatefulAssistantFake
 
 
@@ -250,16 +250,12 @@ def test_skills_report_names_only_collisions_and_managed_drift(
     managed = paths.home / ".claude/skills/managed"
     managed.mkdir(parents=True)
     (managed / "SKILL.md").write_text("---\nname: managed\n---\ncurrent\n")
-    StateStore(paths).write(
-        BootstrapState(
-            managed={
-                "shared-skill-managed-claude-code": ManagedRecord(
-                    resource_id="shared-skill-managed-claude-code",
-                    source_digest="0" * 64,
-                    destination_digest="1" * 64,
-                    destination=".claude/skills/managed",
-                ),
-            }
+    StateStore(paths).record_managed(
+        ManagedRecord(
+            resource_id="shared-skill-managed-claude-code",
+            source_digest="0" * 64,
+            destination_digest="1" * 64,
+            destination=".claude/skills/managed",
         )
     )
 

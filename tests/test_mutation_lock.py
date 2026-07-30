@@ -270,7 +270,7 @@ def test_contention_raises_and_mutates_nothing(
                 pytest.raises(StateMutationContentionError),
                 store.mutation(blocking=False),
             ):
-                store.write(BootstrapState())
+                pytest.fail("contended mutation body must not run")
         finally:
             release.put("done")
     assert holder.exitcode == 0
@@ -336,7 +336,7 @@ def test_compare_and_remove_rejects_non_owner_thread(
         destination_digest="b" * 64,
         destination=".receipt",
     )
-    store.write(BootstrapState(managed={record.resource_id: record}))
+    store.record_managed(record)
     errors: ThreadQueue[BaseException] = ThreadQueue()
 
     def remove_from_non_owner() -> None:
@@ -353,6 +353,32 @@ def test_compare_and_remove_rejects_non_owner_thread(
         assert not thread.is_alive()
         assert isinstance(errors.get(timeout=5), StateMutationContentionError)
         assert store.load().managed[record.resource_id] == record
+
+
+def test_write_outside_mutation_is_refused(repo_root: Path, fake_home: Path) -> None:
+    """Refuse a whole-state write that no mutation lock protects."""
+    store = StateStore(_paths(repo_root, fake_home))
+    with pytest.raises(RuntimeError, match="write requires mutation lock"):
+        store._write(BootstrapState())
+    assert not store.path.exists()
+
+
+def test_mutation_releases_lock_when_the_body_raises(
+    repo_root: Path, fake_home: Path
+) -> None:
+    """Release the advisory lock for other processes after a failed mutation."""
+    store = StateStore(_paths(repo_root, fake_home))
+    result: MultiprocessingQueue[str] = Queue()
+
+    with pytest.raises(RuntimeError, match="mutation body failed"), store.mutation():
+        raise RuntimeError("mutation body failed")
+
+    with _started_process(
+        _try_nonblocking_lock,
+        (str(fake_home), str(repo_root), result),
+    ) as released:
+        assert result.get(timeout=5) == "acquired"
+    assert released.exitcode == 0
 
 
 def test_release_rejects_non_owner_thread(repo_root: Path, fake_home: Path) -> None:
