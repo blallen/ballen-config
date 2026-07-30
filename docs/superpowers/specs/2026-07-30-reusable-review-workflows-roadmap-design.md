@@ -10,6 +10,8 @@ and implementation plan before code or skill content changes begin.
 This roadmap follows the first reusable-skills release delivered through pull
 requests 6 through 9 and elaborates the review-related roadmap in the
 [Plato reusable skills detailed design](2026-07-28-plato-reusable-skills-design.md).
+The review-foundation train is refined by the approved
+[review foundation detailed design](2026-07-30-review-foundation-design.md).
 
 ## Purpose
 
@@ -32,7 +34,8 @@ skill.
 ## Goals
 
 - Provide one Git/Jujutsu-neutral scope result for local review consumers.
-- Add report-first quality, test, Python-type, and self-review workflows.
+- Add report-first quality, test, Python-type, and self-review workflows, with
+  remediation isolated behind an explicit follow-up skill.
 - Make local forge review useful without requiring remote publication.
 - Add remote review posting and response behind explicit, revalidated mutation
   gates.
@@ -145,10 +148,12 @@ An empty, completely resolved scope is distinct from missing coverage. A
 missing or ambiguous comparison base, unavailable command, unsupported
 repository, or incomplete required diff can never produce a clean review.
 
-The detailed train design must explicitly choose the default working scope and
-untracked-file policy for Git and Jujutsu. Until those choices are approved,
-the resolver requires an explicit scope rather than guessing `main`, `HEAD~1`,
-staged changes, or a branch name.
+When no selector is supplied, the default is the current non-ignored local
+change. For Git, that includes staged and unstaged tracked changes relative to
+`HEAD` plus non-ignored untracked files. For Jujutsu, it is `@` relative to the
+automatic merge of all parents, with normal working-copy snapshot bookkeeping
+allowed. The resolver never guesses `main`, `HEAD~1`, a staging-only view, or a
+branch name.
 
 ### Quality review
 
@@ -157,12 +162,15 @@ The second MR adds `review-project-quality`. It depends on
 
 The skill:
 
-- discovers repository-selected lint, type-check, documentation, and static
-  analysis commands;
+- discovers repository-selected lint, formatting, documentation, build, and
+  non-type static-analysis commands;
 - runs non-mutating checks and records unavailable tools;
 - normalizes findings into path, location, rule, severity, and evidence;
 - distinguishes clean results from incomplete command coverage; and
 - remains report-only until the user separately requests fixes.
+
+It may inventory Python type-check tooling but delegates its execution and
+findings to `review-python-types`.
 
 Durable intent from `tooling-lint-markdown` is folded into documentation-check
 discovery. No Plato command or package-manager invocation becomes a generic
@@ -176,9 +184,11 @@ The third MR adds `review-project-tests`. It depends on
 The skill retains portable guidance for:
 
 - behavior-over-implementation review;
-- theatre-test detection;
+- theatre-test detection, including tests that only reproduce dependency or
+  framework guarantees;
 - meaningful assertions;
 - fixtures, doubles, and mock verification;
+- consolidation and explicit parameterization opportunities;
 - test/source coverage gaps when sufficient source scope exists; and
 - concise snapshot-review decisions.
 
@@ -223,10 +233,30 @@ every consumer. It aggregates findings and coverage rather than implementing
 another checker. Skipped, unavailable, and inapplicable sections remain visible
 and cannot become a clean verdict.
 
-The default result is inline. A report file is written only when the user asks.
+Every self-review attempt that passes artifact preflight writes a Markdown
+artifact, including blocked and incomplete results. The default directory is
+`.reviews/self-review/`; the caller may instead supply a repository-relative
+ignored directory. The destination must be repository-local, ignored,
+untracked, and writable. The inline result is a summary and artifact link. If
+no safe ignored destination exists, the skill asks for one and writes nothing.
+It never changes ignore rules.
+
 The skill records an additive or delegated relationship with native
 `verification-before-completion` and code-review skills instead of claiming
 their authority.
+
+### Self-review remediation
+
+The sixth MR adds `address-self-review`. It consumes an explicit self-review
+artifact and selected finding IDs, requires a complete matching repository
+identity, revalidates scope and standards, and applies the smallest sufficient
+edits. Explicit invocation authorizes focused edits when the result still
+matches; stale, ambiguous, or materially broader work requires a pause.
+
+After editing, the skill runs focused verification and one fresh self-review.
+It reports resolved, unresolved, superseded, and blocked findings without
+recursively fixing new findings. It does not commit, push, change ignore rules,
+or suppress checks without separate approval.
 
 ### Foundation exit gate
 
@@ -236,9 +266,12 @@ The train is complete only when:
 - Git, Jujutsu, and supplied-scope fixtures cover resolved, empty, partial, and
   blocked outcomes;
 - blocked or partial scope cannot yield a clean result;
+- each completed self-review produces a valid ignored artifact;
+- stale review artifacts cannot authorize edits;
 - enabled native harnesses prove name-based composition;
 - focused and full repository verification passes; and
-- `conduct-self-review` is dogfooded on a real `ballen-config` change.
+- `conduct-self-review` and `address-self-review` are dogfooded on bounded real
+  `ballen-config` changes.
 
 ## Forge Review and Response Train
 
@@ -464,6 +497,13 @@ At train start:
 3. keep one writer in the shared working copy; and
 4. use separate workspaces only for genuinely independent implementation.
 
+Stacked GitHub PRs merge bottom-up. Train-focused designs own the exact remote
+preflight, explicit retargeting, rewritten-ancestry recovery, branch deletion,
+and bookmark-retirement procedure. The
+[review foundation detailed design](2026-07-30-review-foundation-design.md)
+defines the first such procedure. No train relies on automatic retargeting or
+continues after an unverified base or diff change.
+
 At train completion:
 
 1. complete dogfooding and full verification;
@@ -478,6 +518,8 @@ The roadmap is complete when:
 - all three trains have approved focused designs and implementation plans;
 - the review-foundation skills distinguish complete, empty, partial, blocked,
   skipped, and inapplicable coverage;
+- every completed self-review produces an ignored artifact and explicit
+  remediation rejects stale results;
 - local forge review works without remote publication;
 - GitHub and GitLab publication and response honor explicit mutation gates;
 - normalized review threads feed the learning workflow;
