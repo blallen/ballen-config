@@ -19,6 +19,31 @@ coverage rules, and diagnostic codes. Use the checked-in JSON example and
 vectors as structural fixtures, not as substitutes for inspecting the current
 repository.
 
+## Overview
+
+Resolve one immutable, repository-relative comparison before any reviewer
+reads the change. The result is a shared v1 contract: downstream reviewers
+reuse its scope, identities, path inventory, and reviewable evidence instead
+of rediscovering or widening the boundary.
+
+## When to Use
+
+Use this skill when:
+
+- a review needs an exact Git, Jujutsu, explicit-endpoint, or caller-supplied
+  change scope;
+- staged, unstaged, untracked, rename, binary, or working-copy state could
+  make review evidence incomplete; or
+- multiple downstream reviewers must share one deterministic comparison.
+
+Do not use it to:
+
+- inspect or edit tracked files;
+- choose a branch, `main`, `HEAD~1`, or a first parent from conversation
+  context;
+- infer a scope after VCS failure or replace one backend with another; or
+- let an individual reviewer rediscover or widen the comparison.
+
 ## Inputs and precedence
 
 Require a repository root and accept exactly one request mode:
@@ -229,6 +254,26 @@ For a persisted or logged projection, set `reviewable_diff.content` to `null`.
 Report the status, scope identity, diff digest, changed-path inventory,
 coverage, and diagnostic codes without raw diff content.
 
+## Quick Reference
+
+| Situation | Required handling |
+| --- | --- |
+| Supplied, explicit, or current request | Accept exactly one mode; reject mixed or one-sided input |
+| Jujutsu repository | Use native merged-parent `@` semantics and retain full identities |
+| Working-copy drift | Capture stable inputs before and after; block on mismatch |
+| Unreviewable content | Preserve binary/conflict/unavailable state; never coerce it into text |
+| Complete comparison | Return `resolved` or `empty` with shared identities and coverage |
+| Missing or ambiguous evidence | Return `partial` or `blocked`; never claim clean coverage |
+
+## Common Mistakes
+
+- Inferring `main`, a branch, `HEAD~1`, or the first parent.
+- Pairing per-parent diffs instead of using Jujutsu's merged-parent comparison.
+- Capturing staged, unstaged, or untracked state against different heads.
+- Sorting away meaningful working-copy drift.
+- Treating a path list as a complete supplied scope without patch evidence.
+- Persisting raw diffs, absolute paths, remote URLs, or sensitive state.
+
 ## Boundaries
 
 - Remain read-only for tracked project files.
@@ -239,3 +284,15 @@ coverage, and diagnostic codes without raw diff content.
   state, or generated plugin state.
 - Do not claim `empty`, `resolved`, or clean review coverage when evidence is
   partial or blocked.
+
+## Related Skills
+
+- `discover-project-standards` — Supplies the standards inventory used by
+  downstream reviewers.
+- `review-project-standards`, `review-project-quality`,
+  `review-project-tests`, and `review-python-types` — Consume the shared
+  scope without rediscovering it.
+- `conduct-self-review` — Shares one scope across all specialists and
+  persists the aggregate result.
+- `address-self-review` — Re-resolves the reviewed scope before selected
+  remediation.
