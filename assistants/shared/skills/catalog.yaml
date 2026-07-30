@@ -10,6 +10,16 @@ skills:
       promotion.
     portability_status: reviewed-generic
 
+  - name: resolve-change-scope
+    source: assistants/shared/skills/resolve-change-scope
+    targets: [cursor, claude-code, codex]
+    profiles: [default]
+    dependencies: []
+    provenance: >-
+      Authored for ballen-config under the approved review-foundation design;
+      commit history records the implementation.
+    portability_status: reviewed-generic
+
   - name: review-project-standards
     source: assistants/shared/skills/review-project-standards
     targets: [cursor, claude-code, codex]
