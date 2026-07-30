@@ -393,8 +393,9 @@ rtk jj diff --from main --summary
 rtk jj log -r 'main::@' --no-graph
 ```
 
-Expected: only the roadmap, detailed design, and this implementation plan are
-ahead of `main`; the working copy is otherwise clean.
+Expected: only the historical design status/backpointer update, roadmap,
+detailed design, and this implementation plan are ahead of `main`; the working
+copy is otherwise clean.
 
 - [ ] **Step 0.2: Run the planning-document gate**
 
@@ -451,6 +452,7 @@ Expected: the created PR targets `main`, its head is
 `review-foundation-planning`, and it contains only:
 
 ```text
+docs/superpowers/specs/2026-07-28-plato-reusable-skills-design.md
 docs/superpowers/specs/2026-07-30-reusable-review-workflows-roadmap-design.md
 docs/superpowers/specs/2026-07-30-review-foundation-design.md
 docs/superpowers/plans/2026-07-30-review-foundation.md
