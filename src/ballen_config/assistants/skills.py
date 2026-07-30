@@ -352,13 +352,8 @@ def classify_rename_target(
         LegacyRenameState.EXACT_LIVE,
         LegacyRenameState.EXACT_STALE,
     }:
-        successor_destination = _candidate(home, successor_relative)
-        successor_metadata = _metadata(successor_destination)
-        if successor_metadata is not None and stat.S_ISDIR(successor_metadata.st_mode):
-            try:
-                successor_live = hash_skill_tree(successor_destination)
-            except ValueError:
-                successor_live = None
+        successor_live = _live_tree_digest(home, successor_relative)
+        if successor_live is not None:
             successor_resource_id = f"shared-skill-{to_name}-{target.value}"
             try:
                 successor_record = _matching_record(
@@ -448,6 +443,18 @@ _ACCEPTED_RENAME_STATES: Final[frozenset[LegacyRenameState]] = frozenset(
 )
 
 
+def _rename_action_order(action: SkillRenameAction) -> tuple[str, str, str]:
+    """Return the deterministic plan and apply ordering key for one action.
+
+    Args:
+        action: Frozen rename cleanup action to order.
+
+    Returns:
+        Predecessor name, successor name, and concrete target value.
+    """
+    return (action.from_name, action.to_name, action.target.value)
+
+
 def plan_skill_renames(
     *,
     catalog: SkillCatalog,
@@ -515,12 +522,7 @@ def plan_skill_renames(
                     successor_destination_digest=successor_digest,
                 )
             )
-    return tuple(
-        sorted(
-            actions,
-            key=lambda item: (item.from_name, item.to_name, item.target.value),
-        )
-    )
+    return tuple(sorted(actions, key=_rename_action_order))
 
 
 def _require_exact_successor_proof(
@@ -587,23 +589,37 @@ def _require_frozen_legacy_proof(
     return classification
 
 
+def _live_tree_digest(home: Path, relative: Path) -> str | None:
+    """Return the digest of a usable skill tree at a home-relative path.
+
+    Args:
+        home: Validated home root holding the native skill trees.
+        relative: Home-relative skill tree path.
+
+    Returns:
+        The tree digest, or ``None`` when the path is absent, is not a
+        directory, or is not a readable skill tree.
+    """
+    destination = _candidate(home, relative)
+    metadata = _metadata(destination)
+    if metadata is None or not stat.S_ISDIR(metadata.st_mode):
+        return None
+    try:
+        return hash_skill_tree(destination)
+    except ValueError:
+        return None
+
+
 def _existing_successor_matches_frozen_tree(
     *,
     action: SkillRenameAction,
     home: Path,
 ) -> bool:
     """Return whether an already present successor has the frozen tree digest."""
-    successor_destination = _candidate(home, action.successor_relative)
-    metadata = _metadata(successor_destination)
-    if metadata is None or not stat.S_ISDIR(metadata.st_mode):
-        return False
-    try:
-        return (
-            hash_skill_tree(successor_destination)
-            == action.successor_destination_digest
-        )
-    except ValueError:
-        return False
+    return (
+        _live_tree_digest(home, action.successor_relative)
+        == action.successor_destination_digest
+    )
 
 
 def preflight_skill_rename_cleanups(
@@ -627,9 +643,7 @@ def preflight_skill_rename_cleanups(
             the frozen digest without exact receipt proof.
     """
     state = engine.state_store.load()
-    for action in sorted(
-        actions, key=lambda item: (item.from_name, item.to_name, item.target.value)
-    ):
+    for action in sorted(actions, key=_rename_action_order):
         _require_frozen_legacy_proof(
             action=action,
             state=state,
@@ -664,9 +678,7 @@ def verify_skill_rename_successors(
             does not match the frozen digests.
     """
     state = engine.state_store.load()
-    for action in sorted(
-        actions, key=lambda item: (item.from_name, item.to_name, item.target.value)
-    ):
+    for action in sorted(actions, key=_rename_action_order):
         _require_exact_successor_proof(
             action=action,
             state=state,
@@ -688,9 +700,7 @@ def apply_skill_rename_cleanups(
         SkillRenameBlockedError: If live state no longer matches the frozen plan
             or the successor receipt is missing.
     """
-    for action in sorted(
-        actions, key=lambda item: (item.from_name, item.to_name, item.target.value)
-    ):
+    for action in sorted(actions, key=_rename_action_order):
         state = engine.state_store.load()
         _require_exact_successor_proof(
             action=action,
