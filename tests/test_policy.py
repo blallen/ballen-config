@@ -119,6 +119,57 @@ def test_policy_rejects_agent_specific_operational_rules(
     )
 
 
+def test_skill_catalog_ignores_historical_provenance_for_repository_imports(
+    tmp_path: Path,
+) -> None:
+    """Approved historical catalog provenance is not an operational import."""
+    relative = Path("assistants/shared/skills/catalog.yaml")
+    path = tmp_path / relative
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        """skills:
+  - name: portable-skill
+    source: assistants/shared/skills/portable-skill
+    targets: [cursor]
+    provenance: Genericized from plato/skills/portable-skill at commit f3b91eead0eff7d0c9cada3bc8e689f7610fba55
+    portability_status: reviewed-generic
+"""
+    )
+
+    assert scan_paths(tmp_path, (relative,)) == ()
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        pytest.param(
+            """skills:
+  - name: portable-skill
+    source: Projects/plato/skills/portable-skill
+    targets: [cursor]
+    provenance: Authored for portability.
+    portability_status: reviewed-generic
+""",
+            id="machine-consumed-source",
+        ),
+        pytest.param("skills: [\nimport plato\n", id="invalid-catalog"),
+    ],
+)
+def test_skill_catalog_repository_import_scan_remains_fail_closed(
+    tmp_path: Path,
+    content: str,
+) -> None:
+    """Machine-consumed or invalid catalog content remains subject to policy."""
+    relative = Path("assistants/shared/skills/catalog.yaml")
+    path = tmp_path / relative
+    path.parent.mkdir(parents=True)
+    path.write_text(content)
+
+    assert scan_paths(tmp_path, (relative,)) == (
+        Violation(rule="repo-specific-import", path=relative.as_posix()),
+    )
+
+
 def test_policy_allows_only_reviewed_cursor_atlassian_workaround(
     tmp_path: Path,
 ) -> None:

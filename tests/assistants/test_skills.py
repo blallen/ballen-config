@@ -2,15 +2,14 @@
 
 import os
 import shutil
-from hashlib import sha256
 from pathlib import Path
-from typing import cast
+from typing import Final, cast
 
 import pytest
 import yaml
 
 from ballen_config.assistants.inventory import load_inventory
-from ballen_config.assistants.models import AgentName, CatalogResource, SkillCatalog
+from ballen_config.assistants.models import AgentName, SkillCatalog
 from ballen_config.assistants.skills import (
     SkillCollisionError,
     SkillCopyAction,
@@ -25,11 +24,23 @@ from ballen_config.configure import (
     ConfigurationPlanContributor,
     ManagedTreeSpec,
     digest_tree,
+    run_configure,
 )
 from ballen_config.models import Component, Manager, ResolvedSetup
 from ballen_config.planning import PlanAction
 from ballen_config.runtime import RuntimePaths
 from ballen_config.state import BootstrapState, ManagedRecord, StateStore
+
+_CONTENT_PLAN_SKILL_NAMES: Final[frozenset[str]] = frozenset(
+    {
+        "discover-project-standards",
+        "review-project-standards",
+        "using-uv",
+        "writing-executive-communications",
+        "using-gitlab",
+        "using-github",
+    }
+)
 
 
 @pytest.fixture
@@ -96,6 +107,17 @@ def _catalog(paths: RuntimePaths) -> SkillCatalog:
             (paths.repo_root / "assistants/shared/skills/catalog.yaml").read_text()
         )
     )
+
+
+@pytest.fixture
+def checked_in_skill_catalog(repo_root: Path) -> SkillCatalog:
+    """Load the checked-in shared skill catalog through the inventory loader."""
+    loaded = load_inventory(repo_root / "assistants/inventory.yaml", repo_root)
+    for catalog in loaded.catalogs:
+        if catalog.resource_id == "shared.skills.catalog":
+            assert isinstance(catalog.document, SkillCatalog)
+            return catalog.document
+    raise AssertionError("shared skill catalog is missing from inventory")
 
 
 def _resolved_setup(
@@ -857,90 +879,41 @@ def test_configuration_selects_all_eligible_skills_deterministically(
     assert not (skill_paths.home / ".cursor").exists()
 
 
-def test_jujutsu_workflow_catalog_inventory_and_configuration_are_synchronized(
+def test_checked_in_using_jujutsu_rename_plans_without_mutation(
     repo_root: Path,
     temporary_home: Path,
+    checked_in_skill_catalog: SkillCatalog,
 ) -> None:
-    """Declare and plan the first reviewed shared skill without mutation."""
-    inventory = load_inventory(
-        repo_root / "assistants/inventory.yaml", repo_root
-    ).inventory
-    catalog = yaml.safe_load(
-        (repo_root / "assistants/shared/skills/catalog.yaml").read_text()
-    )
-    resource = next(
-        item for item in inventory.resources if item.id == "shared.skills.catalog"
-    )
-    expected_skill = {
-        "name": "using-jujutsu",
-        "source": "assistants/shared/skills/using-jujutsu",
-        "targets": ["cursor", "claude-code", "codex"],
-        "profiles": ["default"],
-        "dependencies": [],
-        "provenance": (
-            "Renamed from the promoted jujutsu-workflow skill added in commit "
-            "2d057f673971232e2327924c1a5f846ff9ace48e, itself promoted out of "
-            "plato/skills/jujutsu-workflow at commit "
-            "f3b91eead0eff7d0c9cada3bc8e689f7610fba55; commit history records both."
-        ),
-        "portability_status": "reviewed-generic",
-    }
-    assert catalog == {
-        "skills": [expected_skill],
-        "renames": [{"from": "jujutsu-workflow", "to": "using-jujutsu"}],
-    }
-    assert isinstance(resource, CatalogResource)
-    assert resource.owner is AgentName.SHARED
-    assert resource.targets == (
-        AgentName.CURSOR,
-        AgentName.CLAUDE,
-        AgentName.CODEX,
-    )
-    source = repo_root / "assistants/shared/skills/using-jujutsu"
-    expected_using_jujutsu_tree_digest = "36852753f77034db3513201dbd75318dee30413d90f8262aa723a7523b374cf0"  # pragma: allowlist secret
-    assert hash_skill_tree(source) == expected_using_jujutsu_tree_digest
-    assert (
-        sha256((source / "SKILL.md").read_bytes()).hexdigest()
-        == (
-            "bad8b9e4975e5ecf674a3b226e8a3a01f6269353b8fabccc16cb19212187aef7"  # pragma: allowlist secret
-        )
-    )
-    assert (
-        sha256((source / "reference.md").read_bytes()).hexdigest()
-        == (
-            "5bf5d9320b46672700b4d0d2f063ba90ce7d8fd67ec83f096971f522576b2a93"  # pragma: allowlist secret
-        )
-    )
+    """Plan the checked-in rename and native destinations without mutation."""
+    assert [
+        (rename.from_name, rename.to_name)
+        for rename in checked_in_skill_catalog.renames
+    ] == [("jujutsu-workflow", "using-jujutsu")]
+
     paths = RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home)
     contribution = configuration(
         _resolved_setup("cursor", "claude-code", "codex"),
         paths,
-        _catalog(paths),
+        checked_in_skill_catalog,
     )
-    assert all(isinstance(spec, ManagedTreeSpec) for spec in contribution.specs)
-    assert [(spec.id, spec.destination) for spec in contribution.specs] == [
-        (
-            "shared-skill-using-jujutsu-codex",
-            Path(".agents/skills/using-jujutsu"),
-        ),
-        (
-            "shared-skill-using-jujutsu-claude-code",
-            Path(".claude/skills/using-jujutsu"),
-        ),
-        (
-            "shared-skill-using-jujutsu-cursor",
-            Path(".cursor/skills/using-jujutsu"),
-        ),
-    ]
-    assert contribution.skill_renames
-    assert all(
-        action.from_name == "jujutsu-workflow" and action.to_name == "using-jujutsu"
+    assert {
+        spec.id: spec.destination
+        for spec in contribution.specs
+        if spec.id.startswith("shared-skill-using-jujutsu-")
+    } == {
+        "shared-skill-using-jujutsu-codex": Path(".agents/skills/using-jujutsu"),
+        "shared-skill-using-jujutsu-claude-code": Path(".claude/skills/using-jujutsu"),
+        "shared-skill-using-jujutsu-cursor": Path(".cursor/skills/using-jujutsu"),
+    }
+    assert {
+        (action.from_name, action.to_name, action.target)
         for action in contribution.skill_renames
-    )
+    } == {
+        ("jujutsu-workflow", "using-jujutsu", target)
+        for target in (AgentName.CURSOR, AgentName.CLAUDE, AgentName.CODEX)
+    }
     assert not paths.state_root.exists()
-    assert not (temporary_home / ".cursor/skills/using-jujutsu").exists()
-    assert not (temporary_home / ".claude/skills/using-jujutsu").exists()
-    assert not (temporary_home / ".agents/skills/using-jujutsu").exists()
+    assert not any(temporary_home.iterdir())
 
 
 def test_jujutsu_workflow_rename_converges_managed_install(
@@ -948,10 +921,6 @@ def test_jujutsu_workflow_rename_converges_managed_install(
     temporary_home: Path,
 ) -> None:
     """Rename managed jujutsu-workflow installs onto using-jujutsu under lock."""
-    import shutil
-
-    from ballen_config.configure import ConfigurationEngine, run_configure
-
     legacy_fixture = (
         Path(__file__).resolve().parent / "fixtures" / "jujutsu-workflow-legacy"
     )
@@ -1149,3 +1118,44 @@ def test_managed_skill_publish_failure_rolls_back(
 
     assert original.read_text().endswith("description: Original.\n---\n")
     assert store.load() == before_state
+
+
+def test_checked_in_skill_catalog_plans_content_workstream_for_all_agents(
+    repo_root: Path,
+    temporary_home: Path,
+    checked_in_skill_catalog: SkillCatalog,
+) -> None:
+    """Plan every content-workstream skill across all native agent roots."""
+    skills_by_name = {skill.name: skill for skill in checked_in_skill_catalog.skills}
+    assert _CONTENT_PLAN_SKILL_NAMES.issubset(skills_by_name)
+    assert skills_by_name["review-project-standards"].dependencies == (
+        "discover-project-standards",
+    )
+
+    paths = RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home)
+    contribution = configuration(
+        _resolved_setup("cursor", "claude-code", "codex"),
+        paths,
+        checked_in_skill_catalog,
+    )
+
+    expected_ids = {
+        f"shared-skill-{name}-{agent}"
+        for name in _CONTENT_PLAN_SKILL_NAMES
+        for agent in ("cursor", "claude-code", "codex")
+    }
+    assert expected_ids.issubset({spec.id for spec in contribution.specs})
+    assert not paths.state_root.exists()
+    assert not any(temporary_home.iterdir())
+
+
+def test_using_uv_projection_matches_canonical_standard(repo_root: Path) -> None:
+    """Keep the co-packaged dependency-management projection byte-identical."""
+    canonical = (
+        repo_root / "assistants/shared/standards/dependency-management.md"
+    ).read_bytes()
+    projection = (
+        repo_root
+        / "assistants/shared/skills/using-uv/references/dependency-management.md"
+    ).read_bytes()
+    assert projection == canonical

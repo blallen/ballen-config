@@ -1,4 +1,47 @@
 skills:
+  - name: discover-project-standards
+    source: assistants/shared/skills/discover-project-standards
+    targets: [cursor, claude-code, codex]
+    profiles: [default]
+    dependencies: []
+    provenance: >-
+      Genericized from plato/skills/tooling-discover-standards at commit
+      f3b91eead0eff7d0c9cada3bc8e689f7610fba55; commit history records the
+      promotion.
+    portability_status: reviewed-generic
+
+  - name: review-project-standards
+    source: assistants/shared/skills/review-project-standards
+    targets: [cursor, claude-code, codex]
+    profiles: [default]
+    dependencies: [discover-project-standards]
+    provenance: >-
+      Genericized from plato/skills/tooling-review-standards at commit
+      f3b91eead0eff7d0c9cada3bc8e689f7610fba55; commit history records the
+      promotion.
+    portability_status: reviewed-generic
+
+  - name: using-github
+    source: assistants/shared/skills/using-github
+    targets: [cursor, claude-code, codex]
+    profiles: [default]
+    dependencies: []
+    provenance: >-
+      Authored for ballen-config as the GitHub counterpart to using-gitlab,
+      verified against current primary GitHub CLI documentation.
+    portability_status: reviewed-generic
+
+  - name: using-gitlab
+    source: assistants/shared/skills/using-gitlab
+    targets: [cursor, claude-code, codex]
+    profiles: [default]
+    dependencies: []
+    provenance: >-
+      Rewritten for portability from plato/skills/using-gitlab at commit
+      f3b91eead0eff7d0c9cada3bc8e689f7610fba55; commit history records the
+      promotion.
+    portability_status: reviewed-generic
+
   - name: using-jujutsu
     source: assistants/shared/skills/using-jujutsu
     targets: [cursor, claude-code, codex]
@@ -9,6 +52,25 @@ skills:
       2d057f673971232e2327924c1a5f846ff9ace48e, itself promoted out of
       plato/skills/jujutsu-workflow at commit
       f3b91eead0eff7d0c9cada3bc8e689f7610fba55; commit history records both.
+    portability_status: reviewed-generic
+
+  - name: using-uv
+    source: assistants/shared/skills/using-uv
+    targets: [cursor, claude-code, codex]
+    profiles: [default]
+    dependencies: []
+    provenance: Authored for ballen-config against current primary uv documentation.
+    portability_status: reviewed-generic
+
+  - name: writing-executive-communications
+    source: assistants/shared/skills/writing-executive-communications
+    targets: [cursor, claude-code, codex]
+    profiles: [default]
+    dependencies: []
+    provenance: >-
+      Genericized from plato/skills/reports-consultant-style at commit
+      f3b91eead0eff7d0c9cada3bc8e689f7610fba55; commit history records the
+      promotion.
     portability_status: reviewed-generic
 
 renames:

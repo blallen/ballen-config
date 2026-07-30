@@ -520,17 +520,7 @@ def _has_exact_successor_proof(
         or record.destination_digest != action.successor_destination_digest
     ):
         return False
-    successor_destination = _candidate(home, action.successor_relative)
-    metadata = _metadata(successor_destination)
-    if metadata is None or not stat.S_ISDIR(metadata.st_mode):
-        return False
-    try:
-        return (
-            hash_skill_tree(successor_destination)
-            == action.successor_destination_digest
-        )
-    except ValueError:
-        return False
+    return _existing_successor_matches_frozen_tree(action=action, home=home)
 
 
 def _require_exact_successor_proof(
