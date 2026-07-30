@@ -37,7 +37,7 @@ from ballen_config.models import ResolvedSetup
 from ballen_config.planning import PlanAction
 from ballen_config.runner import CommandResult
 from ballen_config.runtime import RuntimePaths
-from ballen_config.state import BootstrapState, ManagedRecord, StateStore
+from ballen_config.state import ManagedRecord, StateStore
 
 
 @pytest.fixture
@@ -159,7 +159,7 @@ def _prepare_legacy_skill_rename(
         destination_digest=digest,
         destination=".cursor/skills/jujutsu-workflow",
     )
-    StateStore(paths).write(BootstrapState(managed={record.resource_id: record}))
+    StateStore(paths).record_managed(record)
     return paths, legacy, record
 
 

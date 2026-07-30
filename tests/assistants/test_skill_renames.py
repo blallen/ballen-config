@@ -427,7 +427,7 @@ def test_apply_removes_exact_live_legacy(temporary_home: Path, tmp_path: Path) -
     digest = hash_skill_tree(legacy)
     record = _record(name="old-skill", target=AgentName.CURSOR, digest=digest)
     store = StateStore(paths)
-    store.write(BootstrapState(managed={record.resource_id: record}))
+    store.record_managed(record)
     contribution = configuration(_resolved_setup("cursor"), paths, catalog)
     engine = ConfigurationEngine(
         paths=paths, state_store=store, timestamp="20260729T120000Z"
@@ -456,7 +456,7 @@ def test_apply_rejects_changed_successor_source_before_publish(
         digest=hash_skill_tree(legacy),
     )
     store = StateStore(paths)
-    store.write(BootstrapState(managed={legacy_record.resource_id: legacy_record}))
+    store.record_managed(legacy_record)
     contribution = configuration(_resolved_setup("cursor"), paths, catalog)
     _write_skill(
         paths.repo_root / "assistants/shared/skills/new-skill",
@@ -495,7 +495,7 @@ def test_plan_contributor_renders_rename_cleanup(
         name="old-skill", target=AgentName.CURSOR, digest=legacy_digest
     )
     store = StateStore(paths)
-    store.write(BootstrapState(managed={legacy_record.resource_id: legacy_record}))
+    store.record_managed(legacy_record)
     contribution = configuration(_resolved_setup("cursor"), paths, catalog)
     engine = ConfigurationEngine(paths=paths, state_store=store, timestamp="plan")
     contributor = ConfigurationPlanContributor(
@@ -539,14 +539,8 @@ def test_apply_rejects_stale_successor_receipt(
         destination=".cursor/skills/new-skill",
     )
     store = StateStore(paths)
-    store.write(
-        BootstrapState(
-            managed={
-                legacy_record.resource_id: legacy_record,
-                successor_record.resource_id: successor_record,
-            }
-        )
-    )
+    store.record_managed(legacy_record)
+    store.record_managed(successor_record)
     actions = plan_skill_renames(
         catalog=catalog,
         setup=_resolved_setup("cursor"),
@@ -605,14 +599,8 @@ def test_apply_rejects_successor_receipt_with_mismatched_identity(
         destination=".cursor/skills/new-skill",
     )
     store = StateStore(paths)
-    store.write(
-        BootstrapState(
-            managed={
-                legacy_record.resource_id: legacy_record,
-                successor_record.resource_id: successor_record,
-            }
-        )
-    )
+    store.record_managed(legacy_record)
+    store.record_managed(successor_record)
     actions = plan_skill_renames(
         catalog=catalog,
         setup=_resolved_setup("cursor"),
@@ -620,14 +608,16 @@ def test_apply_rejects_successor_receipt_with_mismatched_identity(
         state=store.load(),
     )
     mismatched_successor_record = successor_record.model_copy(update=receipt_update)
-    store.write(
-        BootstrapState(
-            managed={
-                legacy_record.resource_id: legacy_record,
-                successor_record.resource_id: mismatched_successor_record,
-            }
-        )
+    forged = BootstrapState(
+        managed={
+            legacy_record.resource_id: legacy_record,
+            successor_record.resource_id: mismatched_successor_record,
+        }
     )
+    with store.mutation():
+        # record_managed always keys a receipt by its own resource_id, so the
+        # mismatched-identity snapshot has to be written directly.
+        store._write(forged)
     engine = ConfigurationEngine(paths=paths, state_store=store, timestamp="apply")
 
     with store.mutation(), pytest.raises(SkillRenameBlockedError):
@@ -658,14 +648,8 @@ def test_compare_and_remove_rollback_restores_legacy_tree(
     )
     successor_record = _record(name="new-skill", target=AgentName.CURSOR, digest=digest)
     store = StateStore(paths)
-    store.write(
-        BootstrapState(
-            managed={
-                legacy_record.resource_id: legacy_record,
-                successor_record.resource_id: successor_record,
-            }
-        )
-    )
+    store.record_managed(legacy_record)
+    store.record_managed(successor_record)
     actions = plan_skill_renames(
         catalog=catalog,
         setup=_resolved_setup("cursor"),
@@ -695,7 +679,7 @@ def test_apply_idempotent_second_run(temporary_home: Path, tmp_path: Path) -> No
     digest = hash_skill_tree(legacy)
     record = _record(name="old-skill", target=AgentName.CURSOR, digest=digest)
     store = StateStore(paths)
-    store.write(BootstrapState(managed={record.resource_id: record}))
+    store.record_managed(record)
     contribution = configuration(_resolved_setup("cursor"), paths, catalog)
     engine = ConfigurationEngine(
         paths=paths, state_store=store, timestamp="20260729T120000Z"
@@ -732,7 +716,7 @@ def test_toc_tou_legacy_change_fails_closed(
     digest = hash_skill_tree(legacy)
     record = _record(name="old-skill", target=AgentName.CURSOR, digest=digest)
     store = StateStore(paths)
-    store.write(BootstrapState(managed={record.resource_id: record}))
+    store.record_managed(record)
     contribution = configuration(_resolved_setup("cursor"), paths, catalog)
     assert contribution.skill_renames
     (legacy / "SKILL.md").write_text(
@@ -782,7 +766,8 @@ def test_apply_preflights_all_targets_before_any_successor_mutation(
         records[record.resource_id] = record
         legacy_paths[name] = legacy
     store = StateStore(paths)
-    store.write(BootstrapState(managed=records))
+    for record in records.values():
+        store.record_managed(record)
     contribution = configuration(_resolved_setup("cursor"), paths, catalog)
     (legacy_paths["old-second"] / "SKILL.md").write_text(
         "---\nname: old-second\ndescription: Example.\n---\n\n# changed\n",
@@ -847,7 +832,8 @@ def test_apply_preflights_existing_successor_proof_before_mutation(
         destination=".cursor/skills/new-second",
     )
     store = StateStore(paths)
-    store.write(BootstrapState(managed=records))
+    for record in records.values():
+        store.record_managed(record)
     contribution = configuration(_resolved_setup("cursor"), paths, catalog)
 
     with pytest.raises(SkillRenameBlockedError):
@@ -890,7 +876,8 @@ def test_apply_verifies_all_successors_before_any_legacy_cleanup(
         )
         records[record.resource_id] = record
     store = StateStore(paths)
-    store.write(BootstrapState(managed=records))
+    for record in records.values():
+        store.record_managed(record)
     contribution = configuration(_resolved_setup("cursor"), paths, catalog)
     second_successor = temporary_home / ".cursor/skills/new-second"
 
@@ -941,7 +928,7 @@ def test_apply_removes_exact_stale_receipt_without_backup(
         digest="a" * 64,
     )
     store = StateStore(paths)
-    store.write(BootstrapState(managed={legacy_record.resource_id: legacy_record}))
+    store.record_managed(legacy_record)
     contribution = configuration(_resolved_setup("cursor"), paths, catalog)
 
     run_configure(
@@ -967,7 +954,7 @@ def test_compare_and_remove_mismatch_is_noop(
     store = StateStore(paths)
     expected = _record(name="old-skill", target=AgentName.CURSOR, digest="a" * 64)
     other = expected.model_copy(update={"destination_digest": "b" * 64})
-    store.write(BootstrapState(managed={other.resource_id: other}))
+    store.record_managed(other)
     with store.mutation():
         assert store.compare_and_remove(expected) is False
     assert store.load().managed[other.resource_id] == other
@@ -1046,7 +1033,7 @@ def test_doctor_reports_legacy_drift(temporary_home: Path, tmp_path: Path) -> No
     )
     legacy = temporary_home / ".cursor/skills/old-skill"
     record = _record(name="old-skill", target=AgentName.CURSOR, digest="0" * 64)
-    StateStore(paths).write(BootstrapState(managed={record.resource_id: record}))
+    StateStore(paths).record_managed(record)
     finding = _doctor_rename_finding(paths, temporary_home)
     assert finding.status is FindingStatus.DRIFT
     assert finding.severity is CheckSeverity.ERROR
@@ -1073,14 +1060,9 @@ def test_doctor_reports_incomplete_cleanup_when_successor_present(
         destination_digest=digest,
         destination=".cursor/skills/new-skill",
     )
-    StateStore(paths).write(
-        BootstrapState(
-            managed={
-                legacy_record.resource_id: legacy_record,
-                successor_record.resource_id: successor_record,
-            }
-        )
-    )
+    store = StateStore(paths)
+    store.record_managed(legacy_record)
+    store.record_managed(successor_record)
     finding = _doctor_rename_finding(paths, temporary_home)
     assert finding.status is FindingStatus.DRIFT
     assert finding.severity is CheckSeverity.ERROR
@@ -1107,7 +1089,7 @@ def test_end_to_end_fixture_rename_plan_configure_doctor_idempotent(
     digest = hash_skill_tree(legacy)
     record = _record(name="old-skill", target=AgentName.CURSOR, digest=digest)
     store = StateStore(paths)
-    store.write(BootstrapState(managed={record.resource_id: record}))
+    store.record_managed(record)
     setup = _resolved_setup("cursor")
     contribution = configuration(setup, paths, catalog)
     engine = ConfigurationEngine(

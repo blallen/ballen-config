@@ -270,7 +270,7 @@ def test_contention_raises_and_mutates_nothing(
                 pytest.raises(StateMutationContentionError),
                 store.mutation(blocking=False),
             ):
-                store.write(BootstrapState())
+                pytest.fail("contended mutation body must not run")
         finally:
             release.put("done")
     assert holder.exitcode == 0
@@ -336,7 +336,7 @@ def test_compare_and_remove_rejects_non_owner_thread(
         destination_digest="b" * 64,
         destination=".receipt",
     )
-    store.write(BootstrapState(managed={record.resource_id: record}))
+    store.record_managed(record)
     errors: ThreadQueue[BaseException] = ThreadQueue()
 
     def remove_from_non_owner() -> None:

@@ -52,7 +52,15 @@ class StateMutationContentionError(RuntimeError):
 
 
 class StateStore:
-    """Atomically persist private bootstrap state."""
+    """Atomically persist private bootstrap state.
+
+    Every write path runs under the exclusive advisory lock in ``state_root``,
+    which serializes concurrent bootstrap processes. ``mutation()`` acquires it;
+    ``compare_and_remove`` requires the calling thread to already own it, and
+    ``record_install`` and ``record_managed`` acquire it themselves. ``load`` is
+    unlocked, so a read-modify-write sequence must be wrapped in ``mutation()``
+    to be race-free.
+    """
 
     def __init__(self, paths: RuntimePaths) -> None:
         self.paths = paths
@@ -191,6 +199,24 @@ class StateStore:
             finally:
                 os.close(fd)
 
+    def _require_lock_ownership(self, operation: str) -> None:
+        """Reject a mutation attempted without this thread owning the lock.
+
+        Args:
+            operation: Operation name used in the raised messages.
+
+        Raises:
+            RuntimeError: If no mutation lock is held.
+            StateMutationContentionError: If another thread owns the lock.
+        """
+        with self._thread_guard:
+            if self._lock_depth <= 0:
+                raise RuntimeError(f"{operation} requires mutation lock")
+            if self._lock_owner != threading.get_ident():
+                raise StateMutationContentionError(
+                    f"{operation} attempted by non-owner thread"
+                )
+
     def load(self) -> BootstrapState:
         """Load state, or return empty versioned state when absent."""
         self._validate_paths()
@@ -198,12 +224,20 @@ class StateStore:
             return BootstrapState()
         return BootstrapState.model_validate_json(self.path.read_text(encoding="utf-8"))
 
-    def write(self, state: BootstrapState) -> None:
+    def _write(self, state: BootstrapState) -> None:
         """Write state via a mode-0600 same-directory atomic replacement.
+
+        The calling thread must own ``mutation()``, so that a read-modify-write
+        sequence cannot interleave with another process.
 
         Args:
             state: Fully normalized state to persist.
+
+        Raises:
+            RuntimeError: If no mutation lock is held.
+            StateMutationContentionError: If another thread owns the lock.
         """
+        self._require_lock_ownership("write")
         self._validate_paths()
         self.paths.state_root.mkdir(parents=True, mode=0o700, exist_ok=True)
         self._validate_paths()
@@ -242,13 +276,7 @@ class StateStore:
             RuntimeError: If no mutation lock is held.
             StateMutationContentionError: If another thread owns the lock.
         """
-        with self._thread_guard:
-            if self._lock_depth <= 0:
-                raise RuntimeError("compare_and_remove requires mutation lock")
-            if self._lock_owner != threading.get_ident():
-                raise StateMutationContentionError(
-                    "compare_and_remove attempted by non-owner thread"
-                )
+        self._require_lock_ownership("compare_and_remove")
         state = self.load()
         current = state.managed.get(expected.resource_id)
         if current != expected:
@@ -258,7 +286,7 @@ class StateStore:
             for key, value in state.managed.items()
             if key != expected.resource_id
         }
-        self.write(state.model_copy(update={"managed": managed}))
+        self._write(state.model_copy(update={"managed": managed}))
         return True
 
     def record_install(self, record: InstallRecord) -> None:
@@ -270,7 +298,7 @@ class StateStore:
         with self.mutation():
             state = self.load()
             installs = {**state.installs, record.resource_id: record}
-            self.write(state.model_copy(update={"installs": installs}))
+            self._write(state.model_copy(update={"installs": installs}))
 
     def record_managed(self, record: ManagedRecord) -> None:
         """Record managed-destination ownership metadata.
@@ -281,4 +309,4 @@ class StateStore:
         with self.mutation():
             state = self.load()
             managed = {**state.managed, record.resource_id: record}
-            self.write(state.model_copy(update={"managed": managed}))
+            self._write(state.model_copy(update={"managed": managed}))
