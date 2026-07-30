@@ -1,75 +1,203 @@
 ---
 name: review-project-standards
 description: >-
-  Use when reviewing code against the repository’s human-written coding
-  standards and accumulated lessons. Invoke discover-project-standards first,
-  then map those rules to a supplied diff or changed-file set.
+  Use when a resolved change must be reviewed against repository-authored
+  coding standards or accumulated lessons.
 ---
 
 # Review Project Standards
 
-Apply human-written project rules and accumulated lessons to code under review.
-Invoke `discover-project-standards` by name before review; do not assume fixed
-project-specific paths. A sibling install may expose
-`../discover-project-standards/SKILL.md` as a packaging hint only.
+## Overview
 
-## Instructions
+**Core principle:** Apply only discovered repository-authored rules to the
+fixed reviewable scope, with a citation for every finding.
 
-Treat each discovered instruction or standards file as authoritative prose.
-Derive review checks only from what those documents say — no repo-agnostic
-boilerplate checklist unless the rules themselves imply it.
+Executable configuration provides context but is not narrative standards.
+Automated tooling owns its checks; this specialist owns human-authored rules
+and accumulated lessons.
 
-Repository-selected tools from discovery provide context, but their executable
-configuration is not narrative standards. Automated tooling owns its checks.
+Use `resolve-change-scope` and `discover-project-standards` by name when valid
+inputs were not supplied. Sibling paths are packaging hints only; invoke
+dependencies by canonical name.
+
+## When to Use
+
+Use this skill when a resolved or resolvable change needs review against:
+
+- repository instructions and engineering standards;
+- accumulated lessons or local conventions;
+- documentation presence and style requirements; or
+- conflicts and gaps among applicable human-authored rules.
+
+Do not use it to invent repo-agnostic rules, execute lint or type checking,
+judge general test design, remediate findings, or compute an aggregate
+multi-reviewer verdict.
+
+## Inputs
+
+Accept:
+
+- one v1 `ChangeScope`, including its live in-memory reviewable diff; and
+- one discovered standards and tool inventory with a stable identity.
+
+Reuse supplied inputs only when their versions, identities, repository
+identity, path inventory, and digests validate. Otherwise invoke the named
+dependencies once. Never silently replace the supplied scope or rediscover
+standards to obtain a different answer.
+
+If scope is blocked, return a blocked common result without analyzing code.
+For partial scope, review only entries with trustworthy content and force an
+incomplete outcome.
 
 ## Workflow
 
-### Step 1 — Discover standards
+### 1. Validate shared inputs
 
-Invoke `discover-project-standards` first and reuse its inventory. Before
-analyzing code, report its ordered instruction sources, applicable standards,
-repository-selected tools, conflicts, and unavailable sources. Do not
-re-implement discovery procedure here.
+Record the exact `scope_identity` and `standards_inventory_ref`. Confirm the
+scope status, coverage, path inventory, content evidence, and every ordered
+instruction or standards source.
 
-### Step 2 — Receive code to review
+Report discovery conflicts and unavailable sources as coverage evidence.
+Never reimplement either dependency's discovery or scope-selection algorithm.
 
-Accept a supplied diff or changed-file set, including:
+### 2. Establish applicability
 
-- Explicit file paths
-- Inline code or diffs supplied by the user or another skill
+Standards review is applicable when at least one discovered human-authored rule
+governs a reviewable changed entry. Prove `not_applicable` only from complete
+scope and standards evidence. Use `unknown` when partial scope or incomplete
+discovery prevents the decision.
 
-If scope is unclear, ask which files or supplied diff apply. This skill does not
-resolve Git/Jujutsu change scopes.
+An empty complete scope can be not applicable. Missing or unreadable required
+standards make the result incomplete or unavailable according to the common
+contract; they do not justify a clean review.
 
-### Step 3 — Analyze
+### 3. Map rules to reviewable entries
 
-Read the discovered rule files and map their guidance to the supplied code.
-Cite the violating rule by source file (and section heading when it helps).
-Call out conflicts between sources or gaps where the repository is silent. If
-discovery found no applicable standards or is incomplete, report that outcome
-without fabricating a review.
+Treat each discovered instruction, standards file, and accumulated lesson as
+authoritative within its precedence and scope. Derive checks only from what
+those sources say.
 
-### Step 4 — Report
+For each reviewable entry:
 
-For actionable findings, report:
+1. identify the applicable rule and its source;
+2. inspect only the trustworthy changed content and necessary local context;
+3. cite the repository-relative source file and section when useful;
+4. record concrete changed-code evidence; and
+5. distinguish a violation from a repository-silent gap.
 
-| Field | Content |
+Do not inspect unreviewable binary or unavailable content as though it were
+text. Preserve that limitation and prevent a clean result.
+
+### 4. Review docstring appropriateness
+
+Apply discovered documentation and testing standards exactly. When they
+require Google-style docstrings, assess required presence and whether the
+content is appropriately concise or expanded.
+
+Use a one-line docstring when the purpose is straightforward and no additional
+contract detail helps. Expanded sections are appropriate when parameters,
+return semantics, raised exceptions, side effects, invariants, or other
+non-obvious contract details add useful context.
+
+For tests, apply any discovered requirement that every test have a short
+behavioral docstring. `review-project-tests` owns whether the name and
+docstring communicate meaningful repository-owned behavior. This specialist
+owns required presence and one-line versus expanded style appropriateness.
+
+Configured Ruff docstring diagnostics belong to `review-project-quality`.
+Do not duplicate them as tool findings, though the same changed code may
+independently violate a cited human-authored standard.
+
+### 5. Normalize findings
+
+Preserve the source label while mapping it into the common severities:
+
+| Source severity | Normalized severity |
 | --- | --- |
-| Severity | `Critical` — blocking; `Suggestion` — meaningful improvement; `Nit` — optional polish |
-| Location | File and line (or diff hunk) when applicable |
-| Rule | The specific rule or lesson violated (relevant standard) |
-| Evidence | Short explanation tied to that rule |
+| `Critical` | `blocker` |
+| `Suggestion` | `actionable` |
+| `Nit` | `advisory` |
 
-Distinguish clearly:
+Set `source_severity` to the cited source label. Each finding contains a tight
+repository-relative location, rule citation, concise evidence, bounded
+remediation, and `review-project-standards` as its contributor.
 
-- No applicable standards discovered
-- Incomplete discovery (inventory incomplete or unreadable sources)
-- Clean review (standards present; no actionable findings)
-- Actionable findings (with severity)
+Do not escalate a repository `Suggestion` or `Nit` merely because the deadline
+is near. Keep materially different rule reasoning separate even when another
+specialist reports a similar location.
 
-This skill is read-only by default. Offer to implement fixes and wait for
-explicit approval before editing files.
+### 6. Normalize the common result
 
-## Related Commands
+Return exactly one v1 review-result envelope for
+`review-project-standards`. Use stable finding IDs from the shared contract and
+preserve canonical ordering.
 
-- `discover-project-standards` — Discover standards and lessons inventory
+Verdict precedence is:
+
+```text
+blocked
+unavailable
+incomplete
+blockers_found
+needs_attention
+advisories
+clean
+```
+
+`clean` requires complete resolved or empty scope coverage, complete inputs and
+owned checks, known applicability, no findings, no skips, no unavailable
+checks, and no blocked work.
+
+## Output
+
+Return one common v1 review-result envelope with the supplied scope and
+standards identities, applicability, outcome, owned coverage, normalized
+findings, explicit skips, sanitized command evidence, counts, and specialist
+verdict.
+
+Never return only prose findings or offer to implement fixes. The orchestrator
+owns aggregation, and `address-self-review` owns any separately authorized
+remediation.
+
+## Quick Reference
+
+| Situation | Required handling |
+| --- | --- |
+| Valid scope and inventory supplied | Reuse both unchanged |
+| Required input invalid or absent | Invoke the named dependency once |
+| Scope is partial | Review trustworthy entries; outcome remains incomplete |
+| Rule source is unavailable | Preserve unavailable coverage; do not invent it |
+| Public contract is straightforward | A required one-line docstring may suffice |
+| Contract details add useful context | Require the discovered expanded style |
+| Ruff reports a docstring rule | Delegate the tool finding to quality review |
+| Same location has distinct rule reasoning | Keep the findings separate |
+
+## Boundaries
+
+This skill is report-only. Never edit tracked files, implement fixes, add
+standards, run automated checker commands, widen scope, or retain raw diffs,
+raw output, absolute paths, credentials, sessions, trust state, or generated
+plugin state.
+
+## Common Mistakes
+
+- Reviewing a loose file list after a valid immutable scope was supplied.
+- Re-running standards discovery per file or per reviewer.
+- Applying generic preferences that no discovered repository rule supports.
+- Reading an unreviewable entry and then claiming complete coverage.
+- Treating every present docstring as appropriate, or expanding a simple
+  contract with sections that add no useful information.
+- Duplicating Ruff diagnostics instead of citing an independent human-authored
+  requirement.
+- Losing `Critical`, `Suggestion`, or `Nit` when normalizing severity.
+- Offering to fix findings from a report-only specialist.
+
+## Related Skills
+
+- `resolve-change-scope` owns immutable comparison and drift detection.
+- `discover-project-standards` owns ordered standards and tool discovery.
+- `review-project-quality` owns configured lint and documentation checks.
+- `review-project-tests` owns behavioral test quality and documentation
+  meaning.
+- `review-python-types` owns Python type-check execution and findings.
+- `conduct-self-review` supplies shared inputs and aggregates this result.

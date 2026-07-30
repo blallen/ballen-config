@@ -33,6 +33,7 @@ from ballen_config.state import BootstrapState, ManagedRecord, StateStore
 
 _CONTENT_PLAN_SKILL_NAMES: Final[frozenset[str]] = frozenset(
     {
+        "conduct-self-review",
         "discover-project-standards",
         "resolve-change-scope",
         "review-project-quality",
@@ -47,8 +48,20 @@ _CONTENT_PLAN_SKILL_NAMES: Final[frozenset[str]] = frozenset(
 )
 
 _REVIEW_FOUNDATION_DEPENDENCIES: Final[dict[str, tuple[str, ...]]] = {
+    "conduct-self-review": (
+        "resolve-change-scope",
+        "discover-project-standards",
+        "review-project-standards",
+        "review-project-quality",
+        "review-project-tests",
+        "review-python-types",
+    ),
     "resolve-change-scope": (),
     "review-project-quality": (
+        "resolve-change-scope",
+        "discover-project-standards",
+    ),
+    "review-project-standards": (
         "resolve-change-scope",
         "discover-project-standards",
     ),
@@ -1161,9 +1174,6 @@ def test_checked_in_skill_catalog_plans_content_workstream_for_all_agents(
     """Plan every content-workstream skill across all native agent roots."""
     skills_by_name = {skill.name: skill for skill in checked_in_skill_catalog.skills}
     assert _CONTENT_PLAN_SKILL_NAMES.issubset(skills_by_name)
-    assert skills_by_name["review-project-standards"].dependencies == (
-        "discover-project-standards",
-    )
 
     paths = RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home)
     contribution = configuration(
@@ -1180,6 +1190,17 @@ def test_checked_in_skill_catalog_plans_content_workstream_for_all_agents(
     assert expected_ids.issubset({spec.id for spec in contribution.specs})
     assert not paths.state_root.exists()
     assert not any(temporary_home.iterdir())
+
+
+def test_review_artifact_directory_is_ignored_by_default(repo_root: Path) -> None:
+    """Require the exact ignored root used by composed self-review."""
+    rules = {
+        stripped
+        for line in (repo_root / ".gitignore").read_text().splitlines()
+        if (stripped := line.strip()) and not stripped.startswith("#")
+    }
+
+    assert ".reviews/" in rules
 
 
 def test_using_uv_projection_matches_canonical_standard(repo_root: Path) -> None:

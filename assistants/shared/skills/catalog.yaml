@@ -1,4 +1,15 @@
 skills:
+  - name: conduct-self-review
+    source: assistants/shared/skills/conduct-self-review
+    targets: [cursor, claude-code, codex]
+    profiles: [default]
+    dependencies: [resolve-change-scope, discover-project-standards, review-project-standards, review-project-quality, review-project-tests, review-python-types]
+    provenance: >-
+      Genericized from plato/skills/tooling-self-review at commit
+      f3b91eead0eff7d0c9cada3bc8e689f7610fba55; commit history records the
+      promotion.
+    portability_status: reviewed-generic
+
   - name: discover-project-standards
     source: assistants/shared/skills/discover-project-standards
     targets: [cursor, claude-code, codex]
@@ -35,7 +46,7 @@ skills:
     source: assistants/shared/skills/review-project-standards
     targets: [cursor, claude-code, codex]
     profiles: [default]
-    dependencies: [discover-project-standards]
+    dependencies: [resolve-change-scope, discover-project-standards]
     provenance: >-
       Genericized from plato/skills/tooling-review-standards at commit
       f3b91eead0eff7d0c9cada3bc8e689f7610fba55; commit history records the
