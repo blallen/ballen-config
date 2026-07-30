@@ -4,6 +4,7 @@ import hashlib
 import os
 import stat
 from collections.abc import Collection, Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
 from typing import Final
@@ -39,6 +40,58 @@ _AGENT_ROOTS: Final[Mapping[str, tuple[Path, ...]]] = MappingProxyType(
         "codex": (Path(".agents/skills"), Path(".codex/skills")),
     }
 )
+
+
+@dataclass(frozen=True)
+class _RenameFindingTemplate:
+    """Doctor outcome for one blocked or unfinished rename classification."""
+
+    status: FindingStatus
+    severity: CheckSeverity
+    summary: str
+    """Format string accepting ``from_name``, ``to_name``, and ``target``."""
+
+
+_UNMANAGED_OR_AMBIGUOUS = _RenameFindingTemplate(
+    status=FindingStatus.MANUAL,
+    severity=CheckSeverity.WARNING,
+    summary=(
+        "Legacy skill {from_name} is unmanaged or ambiguous on {target}; rename blocked"
+    ),
+)
+_INCOMPLETE_CLEANUP = _RenameFindingTemplate(
+    status=FindingStatus.DRIFT,
+    severity=CheckSeverity.ERROR,
+    summary="Rename cleanup incomplete for {from_name} -> {to_name} on {target}",
+)
+_RENAME_FINDING_TEMPLATES: Final[Mapping[LegacyRenameState, _RenameFindingTemplate]] = (
+    MappingProxyType(
+        {
+            LegacyRenameState.SKIPPED: _RenameFindingTemplate(
+                status=FindingStatus.SKIPPED,
+                severity=CheckSeverity.INFO,
+                summary="Skill rename {from_name} -> {to_name} skipped on {target}",
+            ),
+            LegacyRenameState.BLOCKED_DRIFT: _RenameFindingTemplate(
+                status=FindingStatus.DRIFT,
+                severity=CheckSeverity.ERROR,
+                summary="Managed legacy skill {from_name} drifted on {target}; "
+                "rename blocked",
+            ),
+            LegacyRenameState.BLOCKED_UNMANAGED_SUCCESSOR: _RenameFindingTemplate(
+                status=FindingStatus.MANUAL,
+                severity=CheckSeverity.WARNING,
+                summary="Unreceipted successor {to_name} blocks rename on {target}",
+            ),
+            LegacyRenameState.BLOCKED_AMBIGUOUS_RECEIPT: _UNMANAGED_OR_AMBIGUOUS,
+            LegacyRenameState.BLOCKED_UNMANAGED_OR_AMBIGUOUS: _UNMANAGED_OR_AMBIGUOUS,
+            LegacyRenameState.EXACT_STALE: _INCOMPLETE_CLEANUP,
+            LegacyRenameState.EXACT_LIVE: _INCOMPLETE_CLEANUP,
+        }
+    )
+)
+"""Findings by classification. ``CLEAN`` is converged and reports nothing."""
+
 _MAX_SKILL_ROOT_ENTRIES: Final[int] = 512
 _MAX_SKILL_TREE_ENTRIES: Final[int] = 2048
 _MAX_SKILL_TREE_BYTES: Final[int] = 32 * 1024 * 1024
@@ -327,78 +380,28 @@ def _skill_rename_findings(
                 successor_digest=successor_digest,
                 enabled=enabled_flag,
             )
-            finding_id = f"skill-rename.{rename.from_name}.{target.value}"
             state_name = classification.legacy_state
             successor_id = f"shared-skill-{rename.to_name}-{target.value}"
-            has_successor = successor_id in state.managed
-
-            if state_name == LegacyRenameState.SKIPPED:
-                findings.append(
-                    _finding(
-                        finding_id,
-                        FindingStatus.SKIPPED,
-                        CheckSeverity.INFO,
-                        (
-                            f"Skill rename {rename.from_name} -> {rename.to_name} "
-                            f"skipped on {target.value}"
-                        ),
-                    )
-                )
-            elif state_name == LegacyRenameState.CLEAN:
-                continue
-            elif state_name == LegacyRenameState.BLOCKED_DRIFT:
-                findings.append(
-                    _finding(
-                        finding_id,
-                        FindingStatus.DRIFT,
-                        CheckSeverity.ERROR,
-                        (
-                            f"Managed legacy skill {rename.from_name} drifted on "
-                            f"{target.value}; rename blocked"
-                        ),
-                    )
-                )
-            elif state_name == LegacyRenameState.BLOCKED_UNMANAGED_SUCCESSOR:
-                findings.append(
-                    _finding(
-                        finding_id,
-                        FindingStatus.MANUAL,
-                        CheckSeverity.WARNING,
-                        (
-                            f"Unreceipted successor {rename.to_name} blocks rename "
-                            f"on {target.value}"
-                        ),
-                    )
-                )
-            elif state_name in {
-                LegacyRenameState.BLOCKED_AMBIGUOUS_RECEIPT,
-                LegacyRenameState.BLOCKED_UNMANAGED_OR_AMBIGUOUS,
-            }:
-                findings.append(
-                    _finding(
-                        finding_id,
-                        FindingStatus.MANUAL,
-                        CheckSeverity.WARNING,
-                        (
-                            f"Legacy skill {rename.from_name} is unmanaged or "
-                            f"ambiguous on {target.value}; rename blocked"
-                        ),
-                    )
-                )
-            elif state_name == LegacyRenameState.EXACT_STALE or (
-                state_name == LegacyRenameState.EXACT_LIVE and has_successor
+            if (
+                state_name is LegacyRenameState.EXACT_LIVE
+                and successor_id not in state.managed
             ):
-                findings.append(
-                    _finding(
-                        finding_id,
-                        FindingStatus.DRIFT,
-                        CheckSeverity.ERROR,
-                        (
-                            f"Rename cleanup incomplete for {rename.from_name} -> "
-                            f"{rename.to_name} on {target.value}"
-                        ),
-                    )
+                continue
+            template = _RENAME_FINDING_TEMPLATES.get(state_name)
+            if template is None:
+                continue
+            findings.append(
+                _finding(
+                    f"skill-rename.{rename.from_name}.{target.value}",
+                    template.status,
+                    template.severity,
+                    template.summary.format(
+                        from_name=rename.from_name,
+                        to_name=rename.to_name,
+                        target=target.value,
+                    ),
                 )
+            )
     return findings
 
 
