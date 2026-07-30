@@ -1,0 +1,923 @@
+{
+  "contract_version": "v1",
+  "canonicalization": {
+    "encoding": "utf-8",
+    "ensure_ascii": false,
+    "sort_keys": true,
+    "separators": [
+      ",",
+      ":"
+    ],
+    "string_normalization": "NFC",
+    "digest": "sha256-lowercase-hex"
+  },
+  "diagnostic_vocabulary": [
+    "artifact_contract_unsupported",
+    "artifact_finding_id_mismatch",
+    "artifact_json_malformed",
+    "artifact_marker_missing",
+    "artifact_path_invalid",
+    "artifact_result_digest_mismatch",
+    "artifact_result_id_mismatch",
+    "artifact_structure_invalid",
+    "finding_evidence_not_reproduced",
+    "fresh_review_incomplete",
+    "ok",
+    "remediation_broader_than_finding",
+    "repository_identity_mismatch",
+    "repository_identity_unavailable",
+    "scope_identity_mismatch",
+    "selected_finding_ambiguous",
+    "selected_finding_scope_mismatch",
+    "selected_finding_unknown",
+    "selection_invalid",
+    "standards_inventory_changed",
+    "verification_incomplete",
+    "workspace_fingerprint_mismatch"
+  ],
+  "baseline": {
+    "artifact_marker": "<!-- ballen-config:self-review-result:v1 -->",
+    "artifact_result": {
+      "contract_version": "v1",
+      "result_id": "7a66574\u00647041852\u00660355678\u0065363b07c\u0065d0b54df\u0034716f742\u0063a29e87e\u00665fa2b73\u0030",
+      "created_at": "2026-07-30T20:20:00Z",
+      "result_digest": "52688a2\u0036dcc97c7\u0031e7ff264\u00316e6a45e\u003995af274\u0033ce1f338\u0063bd6ac05\u00315c5a412\u0064",
+      "repository_identity": {
+        "state": "complete",
+        "vcs": "jujutsu",
+        "value": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "code": null
+      },
+      "scope": {
+        "status": "resolved",
+        "source": "jujutsu",
+        "request": {
+          "mode": "explicit",
+          "selector": {
+            "base": "base-change",
+            "target": "target-change"
+          }
+        },
+        "comparison": {
+          "kind": "explicit-range",
+          "base_identities": [
+            {
+              "state": "resolved",
+              "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          ],
+          "target_identity": {
+            "state": "resolved",
+            "value": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "resolved_selector": {
+            "base": {
+              "commit_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "change_id": "basechangeidbasechangeidbasechange"
+            },
+            "target": {
+              "commit_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "change_id": "targetchangeidtargetchangeidtarget"
+            }
+          }
+        },
+        "target_change_id": "targetchangeidtargetchangeidtarget",
+        "scope_identity": "ad3fd68\u00628ecf014\u006409f0fb7\u00347eb412a\u003774a1b14\u0066882334b\u00378138ee5\u0064e0bfbab\u0064",
+        "changed_paths": [
+          "src/review.py"
+        ],
+        "diff_digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "coverage": {
+          "entries": "complete",
+          "textual_diff": "complete",
+          "overall": "complete",
+          "unreviewable_paths": []
+        }
+      },
+      "standards_inventory_ref": "4444444444444444444444444444444444444444444444444444444444444444",
+      "reviewers": [
+        {
+          "contract_version": "v1",
+          "reviewer": "review-project-standards",
+          "scope_identity": "ad3fd68\u00628ecf014\u006409f0fb7\u00347eb412a\u003774a1b14\u0066882334b\u00378138ee5\u0064e0bfbab\u0064",
+          "standards_inventory_ref": "4444444444444444444444444444444444444444444444444444444444444444",
+          "applicability": "applicable",
+          "outcome": "completed",
+          "coverage": {
+            "scope": "complete",
+            "inputs": "complete",
+            "checks": [
+              {
+                "check": "selected-review",
+                "required": true,
+                "selected_scope": "changed",
+                "completion": "completed"
+              }
+            ]
+          },
+          "findings": [
+            {
+              "finding_id": "d6491cb\u00655f09e95\u0033ce78fae\u003288fe4fd\u0039be83429\u0039ce52ad2\u006598763cb\u0037135cb3e\u0062",
+              "category": "types",
+              "severity": "actionable",
+              "source_severity": "Suggestion",
+              "path": "src/review.py",
+              "location": {
+                "start_line": 12,
+                "end_line": 12
+              },
+              "rule": "TYPED-BOUNDARY",
+              "evidence": "The selected function returns an unvalidated mapping across a typed boundary.",
+              "remediation": "Validate the mapping at the typed boundary.",
+              "contributors": [
+                "review-project-standards"
+              ]
+            }
+          ],
+          "skips": [],
+          "commands": [],
+          "summary": {
+            "counts": {
+              "blocker": 0,
+              "actionable": 1,
+              "advisory": 0
+            },
+            "verdict": "needs_attention"
+          }
+        },
+        {
+          "contract_version": "v1",
+          "reviewer": "review-project-quality",
+          "scope_identity": "ad3fd68\u00628ecf014\u006409f0fb7\u00347eb412a\u003774a1b14\u0066882334b\u00378138ee5\u0064e0bfbab\u0064",
+          "standards_inventory_ref": "4444444444444444444444444444444444444444444444444444444444444444",
+          "applicability": "applicable",
+          "outcome": "completed",
+          "coverage": {
+            "scope": "complete",
+            "inputs": "complete",
+            "checks": [
+              {
+                "check": "selected-review",
+                "required": true,
+                "selected_scope": "changed",
+                "completion": "completed"
+              }
+            ]
+          },
+          "findings": [],
+          "skips": [],
+          "commands": [],
+          "summary": {
+            "counts": {
+              "blocker": 0,
+              "actionable": 0,
+              "advisory": 0
+            },
+            "verdict": "clean"
+          }
+        },
+        {
+          "contract_version": "v1",
+          "reviewer": "review-project-tests",
+          "scope_identity": "ad3fd68\u00628ecf014\u006409f0fb7\u00347eb412a\u003774a1b14\u0066882334b\u00378138ee5\u0064e0bfbab\u0064",
+          "standards_inventory_ref": "4444444444444444444444444444444444444444444444444444444444444444",
+          "applicability": "applicable",
+          "outcome": "completed",
+          "coverage": {
+            "scope": "complete",
+            "inputs": "complete",
+            "checks": [
+              {
+                "check": "selected-review",
+                "required": true,
+                "selected_scope": "changed",
+                "completion": "completed"
+              }
+            ]
+          },
+          "findings": [],
+          "skips": [],
+          "commands": [],
+          "summary": {
+            "counts": {
+              "blocker": 0,
+              "actionable": 0,
+              "advisory": 0
+            },
+            "verdict": "clean"
+          }
+        },
+        {
+          "contract_version": "v1",
+          "reviewer": "review-python-types",
+          "scope_identity": "ad3fd68\u00628ecf014\u006409f0fb7\u00347eb412a\u003774a1b14\u0066882334b\u00378138ee5\u0064e0bfbab\u0064",
+          "standards_inventory_ref": "4444444444444444444444444444444444444444444444444444444444444444",
+          "applicability": "applicable",
+          "outcome": "completed",
+          "coverage": {
+            "scope": "complete",
+            "inputs": "complete",
+            "checks": [
+              {
+                "check": "selected-review",
+                "required": true,
+                "selected_scope": "changed",
+                "completion": "completed"
+              }
+            ]
+          },
+          "findings": [],
+          "skips": [],
+          "commands": [],
+          "summary": {
+            "counts": {
+              "blocker": 0,
+              "actionable": 0,
+              "advisory": 0
+            },
+            "verdict": "clean"
+          }
+        }
+      ],
+      "findings": [
+        {
+          "finding_id": "d6491cb\u00655f09e95\u0033ce78fae\u003288fe4fd\u0039be83429\u0039ce52ad2\u006598763cb\u0037135cb3e\u0062",
+          "category": "types",
+          "severity": "actionable",
+          "source_severity": "Suggestion",
+          "path": "src/review.py",
+          "location": {
+            "start_line": 12,
+            "end_line": 12
+          },
+          "rule": "TYPED-BOUNDARY",
+          "evidence": "The selected function returns an unvalidated mapping across a typed boundary.",
+          "remediation": "Validate the mapping at the typed boundary.",
+          "contributors": [
+            "review-project-standards"
+          ]
+        }
+      ],
+      "commands": [],
+      "skips": [],
+      "diagnostics": [],
+      "summary": {
+        "counts": {
+          "blocker": 0,
+          "actionable": 1,
+          "advisory": 0
+        },
+        "verdict": "needs_attention"
+      }
+    },
+    "selected_finding_reviewer": "review-project-standards",
+    "reviewed_state": {
+      "repository_identity": {
+        "state": "complete",
+        "vcs": "jujutsu",
+        "value": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "code": null
+      },
+      "scope": {
+        "material": {
+          "contract_version": "v1",
+          "source": "jujutsu",
+          "request_mode": "explicit",
+          "repository_identity": {
+            "state": "complete",
+            "value": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+          },
+          "comparison": {
+            "kind": "explicit-range",
+            "base_identities": [
+              {
+                "state": "resolved",
+                "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              }
+            ],
+            "target_identity": {
+              "state": "resolved",
+              "value": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            },
+            "resolved_selector": {
+              "base": {
+                "commit_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "change_id": "basechangeidbasechangeidbasechange"
+              },
+              "target": {
+                "commit_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "change_id": "targetchangeidtargetchangeidtarget"
+              }
+            }
+          },
+          "workspace_fingerprint": "ce23f50\u003193dd8e1\u003563bf03a\u00399897c65\u0066886fddf\u0036773c463\u003042245f9\u0039aee2383\u0036",
+          "reviewable_diff_digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "coverage": {
+            "entries": "complete",
+            "textual_diff": "complete",
+            "overall": "complete",
+            "unreviewable_paths": []
+          }
+        },
+        "scope_identity": "ad3fd68\u00628ecf014\u006409f0fb7\u00347eb412a\u003774a1b14\u0066882334b\u00378138ee5\u0064e0bfbab\u0064"
+      },
+      "workspace": {
+        "material": {
+          "source": "jujutsu",
+          "request_mode": "explicit",
+          "base_identities": [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "changes": [
+            {
+              "path": "src/review.py",
+              "change_type": "modify",
+              "previous_path": null,
+              "content_kind": "text",
+              "diff_state": "complete",
+              "content_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            }
+          ],
+          "diff_coverage": {
+            "entries": "complete",
+            "textual_diff": "complete",
+            "overall": "complete",
+            "unreviewable_paths": []
+          }
+        },
+        "fingerprint": "ce23f50\u003193dd8e1\u003563bf03a\u00399897c65\u0066886fddf\u0036773c463\u003042245f9\u0039aee2383\u0036"
+      },
+      "standards_inventory_ref": "4444444444444444444444444444444444444444444444444444444444444444",
+      "finding_evidence": [
+        {
+          "finding_id": "d6491cb\u00655f09e95\u0033ce78fae\u003288fe4fd\u0039be83429\u0039ce52ad2\u006598763cb\u0037135cb3e\u0062",
+          "path": "src/review.py",
+          "location": {
+            "start_line": 12,
+            "end_line": 12
+          },
+          "evidence": "The selected function returns an unvalidated mapping across a typed boundary."
+        }
+      ]
+    }
+  },
+  "vectors": [
+    {
+      "name": "valid_selected_finding",
+      "artifact": {
+        "base": "baseline",
+        "marker": "inherit",
+        "json_state": "valid",
+        "result_id": "inherit",
+        "result_digest": "inherit",
+        "finding_id": "inherit",
+        "path": "inherit",
+        "location": "inherit"
+      },
+      "current_state": {
+        "base": "reviewed",
+        "repository_identity": "inherit",
+        "scope": "inherit",
+        "workspace": "inherit",
+        "standards_inventory_ref": "inherit",
+        "finding_evidence": "inherit"
+      },
+      "selected_finding_ids": [
+        "d6491cb\u00655f09e95\u0033ce78fae\u003288fe4fd\u0039be83429\u0039ce52ad2\u006598763cb\u0037135cb3e\u0062"
+      ],
+      "requested_edit": {
+        "paths": [
+          "src/review.py"
+        ],
+        "authority_paths": [
+          "src/review.py"
+        ]
+      },
+      "expected": {
+        "decision": "proceed",
+        "diagnostic_code": "ok"
+      }
+    },
+    {
+      "name": "missing_marker",
+      "artifact": {
+        "base": "baseline",
+        "marker": null,
+        "json_state": "valid",
+        "result_id": "inherit",
+        "result_digest": "inherit",
+        "finding_id": "inherit",
+        "path": "inherit",
+        "location": "inherit"
+      },
+      "current_state": {
+        "base": "reviewed",
+        "repository_identity": "inherit",
+        "scope": "inherit",
+        "workspace": "inherit",
+        "standards_inventory_ref": "inherit",
+        "finding_evidence": "inherit"
+      },
+      "selected_finding_ids": [
+        "d6491cb\u00655f09e95\u0033ce78fae\u003288fe4fd\u0039be83429\u0039ce52ad2\u006598763cb\u0037135cb3e\u0062"
+      ],
+      "requested_edit": {
+        "paths": [
+          "src/review.py"
+        ],
+        "authority_paths": [
+          "src/review.py"
+        ]
+      },
+      "expected": {
+        "decision": "block",
+        "diagnostic_code": "artifact_marker_missing"
+      }
+    },
+    {
+      "name": "malformed_json",
+      "artifact": {
+        "base": "baseline",
+        "marker": "inherit",
+        "json_state": "malformed",
+        "result_id": null,
+        "result_digest": null,
+        "finding_id": null,
+        "path": "inherit",
+        "location": "inherit"
+      },
+      "current_state": {
+        "base": "reviewed",
+        "repository_identity": "inherit",
+        "scope": "inherit",
+        "workspace": "inherit",
+        "standards_inventory_ref": "inherit",
+        "finding_evidence": "inherit"
+      },
+      "selected_finding_ids": [
+        "d6491cb\u00655f09e95\u0033ce78fae\u003288fe4fd\u0039be83429\u0039ce52ad2\u006598763cb\u0037135cb3e\u0062"
+      ],
+      "requested_edit": {
+        "paths": [
+          "src/review.py"
+        ],
+        "authority_paths": [
+          "src/review.py"
+        ]
+      },
+      "expected": {
+        "decision": "block",
+        "diagnostic_code": "artifact_json_malformed"
+      }
+    },
+    {
+      "name": "result_digest_mismatch",
+      "artifact": {
+        "base": "baseline",
+        "marker": "inherit",
+        "json_state": "valid",
+        "result_id": "inherit",
+        "result_digest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "finding_id": "inherit",
+        "path": "inherit",
+        "location": "inherit"
+      },
+      "current_state": {
+        "base": "reviewed",
+        "repository_identity": "inherit",
+        "scope": "inherit",
+        "workspace": "inherit",
+        "standards_inventory_ref": "inherit",
+        "finding_evidence": "inherit"
+      },
+      "selected_finding_ids": [
+        "d6491cb\u00655f09e95\u0033ce78fae\u003288fe4fd\u0039be83429\u0039ce52ad2\u006598763cb\u0037135cb3e\u0062"
+      ],
+      "requested_edit": {
+        "paths": [
+          "src/review.py"
+        ],
+        "authority_paths": [
+          "src/review.py"
+        ]
+      },
+      "expected": {
+        "decision": "block",
+        "diagnostic_code": "artifact_result_digest_mismatch"
+      }
+    },
+    {
+      "name": "finding_id_tamper",
+      "artifact": {
+        "base": "baseline",
+        "marker": "inherit",
+        "json_state": "valid",
+        "result_id": "5ee9157\u00337ffdb6c\u006410784b6\u00639b03155\u0031abe6599\u0032ca3708b\u003664bda25\u0039b3c41f8\u0035",
+        "result_digest": "1eafae9\u006263fbc84\u0063bda72f7\u00613a8aea2\u0066c97f60c\u003356e89e6\u0065dd7ee22\u003654271ca\u0034",
+        "finding_id": "5555555555555555555555555555555555555555555555555555555555555555",
+        "path": "inherit",
+        "location": "inherit"
+      },
+      "current_state": {
+        "base": "reviewed",
+        "repository_identity": "inherit",
+        "scope": "inherit",
+        "workspace": "inherit",
+        "standards_inventory_ref": "inherit",
+        "finding_evidence": "inherit"
+      },
+      "selected_finding_ids": [
+        "5555555555555555555555555555555555555555555555555555555555555555"
+      ],
+      "requested_edit": {
+        "paths": [
+          "src/review.py"
+        ],
+        "authority_paths": [
+          "src/review.py"
+        ]
+      },
+      "expected": {
+        "decision": "block",
+        "diagnostic_code": "artifact_finding_id_mismatch"
+      }
+    },
+    {
+      "name": "repository_identity_unavailable",
+      "artifact": {
+        "base": "baseline",
+        "marker": "inherit",
+        "json_state": "valid",
+        "result_id": "inherit",
+        "result_digest": "inherit",
+        "finding_id": "inherit",
+        "path": "inherit",
+        "location": "inherit"
+      },
+      "current_state": {
+        "base": "reviewed",
+        "repository_identity": {
+          "state": "unavailable",
+          "vcs": "jujutsu",
+          "value": null,
+          "code": "repository_identity_no_remote"
+        },
+        "scope": {
+          "material": {
+            "contract_version": "v1",
+            "source": "jujutsu",
+            "request_mode": "explicit",
+            "repository_identity": {
+              "state": "unavailable",
+              "value": null
+            },
+            "comparison": {
+              "kind": "explicit-range",
+              "base_identities": [
+                {
+                  "state": "resolved",
+                  "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                }
+              ],
+              "target_identity": {
+                "state": "resolved",
+                "value": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+              },
+              "resolved_selector": {
+                "base": {
+                  "commit_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "change_id": "basechangeidbasechangeidbasechange"
+                },
+                "target": {
+                  "commit_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                  "change_id": "targetchangeidtargetchangeidtarget"
+                }
+              }
+            },
+            "workspace_fingerprint": "ce23f50\u003193dd8e1\u003563bf03a\u00399897c65\u0066886fddf\u0036773c463\u003042245f9\u0039aee2383\u0036",
+            "reviewable_diff_digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "coverage": {
+              "entries": "complete",
+              "textual_diff": "complete",
+              "overall": "complete",
+              "unreviewable_paths": []
+            }
+          },
+          "scope_identity": "138d4c1\u00635bdaf8a\u00657cb35b7\u003971f8e7c\u003054ffab2\u00357a24983\u0038a446ba2\u0038ea25a2e\u0034"
+        },
+        "workspace": "inherit",
+        "standards_inventory_ref": "inherit",
+        "finding_evidence": "inherit"
+      },
+      "selected_finding_ids": [
+        "d6491cb\u00655f09e95\u0033ce78fae\u003288fe4fd\u0039be83429\u0039ce52ad2\u006598763cb\u0037135cb3e\u0062"
+      ],
+      "requested_edit": {
+        "paths": [
+          "src/review.py"
+        ],
+        "authority_paths": [
+          "src/review.py"
+        ]
+      },
+      "expected": {
+        "decision": "block",
+        "diagnostic_code": "repository_identity_unavailable"
+      }
+    },
+    {
+      "name": "repository_identity_mismatch",
+      "artifact": {
+        "base": "baseline",
+        "marker": "inherit",
+        "json_state": "valid",
+        "result_id": "inherit",
+        "result_digest": "inherit",
+        "finding_id": "inherit",
+        "path": "inherit",
+        "location": "inherit"
+      },
+      "current_state": {
+        "base": "reviewed",
+        "repository_identity": {
+          "state": "complete",
+          "vcs": "jujutsu",
+          "value": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "code": null
+        },
+        "scope": {
+          "material": {
+            "contract_version": "v1",
+            "source": "jujutsu",
+            "request_mode": "explicit",
+            "repository_identity": {
+              "state": "complete",
+              "value": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            },
+            "comparison": {
+              "kind": "explicit-range",
+              "base_identities": [
+                {
+                  "state": "resolved",
+                  "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                }
+              ],
+              "target_identity": {
+                "state": "resolved",
+                "value": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+              },
+              "resolved_selector": {
+                "base": {
+                  "commit_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "change_id": "basechangeidbasechangeidbasechange"
+                },
+                "target": {
+                  "commit_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                  "change_id": "targetchangeidtargetchangeidtarget"
+                }
+              }
+            },
+            "workspace_fingerprint": "ce23f50\u003193dd8e1\u003563bf03a\u00399897c65\u0066886fddf\u0036773c463\u003042245f9\u0039aee2383\u0036",
+            "reviewable_diff_digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "coverage": {
+              "entries": "complete",
+              "textual_diff": "complete",
+              "overall": "complete",
+              "unreviewable_paths": []
+            }
+          },
+          "scope_identity": "0cc8f5e\u0065f9d34e0\u0033ffd4e44\u0032ad33a0a\u0036e908107\u00337a3dbd7\u006246f5d22\u00319a4523f\u0030"
+        },
+        "workspace": "inherit",
+        "standards_inventory_ref": "inherit",
+        "finding_evidence": "inherit"
+      },
+      "selected_finding_ids": [
+        "d6491cb\u00655f09e95\u0033ce78fae\u003288fe4fd\u0039be83429\u0039ce52ad2\u006598763cb\u0037135cb3e\u0062"
+      ],
+      "requested_edit": {
+        "paths": [
+          "src/review.py"
+        ],
+        "authority_paths": [
+          "src/review.py"
+        ]
+      },
+      "expected": {
+        "decision": "block",
+        "diagnostic_code": "repository_identity_mismatch"
+      }
+    },
+    {
+      "name": "stale_workspace_fingerprint",
+      "artifact": {
+        "base": "baseline",
+        "marker": "inherit",
+        "json_state": "valid",
+        "result_id": "inherit",
+        "result_digest": "inherit",
+        "finding_id": "inherit",
+        "path": "inherit",
+        "location": "inherit"
+      },
+      "current_state": {
+        "base": "reviewed",
+        "repository_identity": "inherit",
+        "scope": "inherit",
+        "workspace": {
+          "material": {
+            "source": "jujutsu",
+            "request_mode": "explicit",
+            "base_identities": [
+              "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            ],
+            "changes": [
+              {
+                "path": "src/review.py",
+                "change_type": "modify",
+                "previous_path": null,
+                "content_kind": "text",
+                "diff_state": "complete",
+                "content_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+              }
+            ],
+            "diff_coverage": {
+              "entries": "complete",
+              "textual_diff": "complete",
+              "overall": "complete",
+              "unreviewable_paths": []
+            }
+          },
+          "fingerprint": "0efd737\u00364149ae4\u0033922e43d\u0062cd9396c\u0065ee2fccc\u0064c988394\u0033bd6eac4\u003340f8a81\u0065"
+        },
+        "standards_inventory_ref": "inherit",
+        "finding_evidence": "inherit"
+      },
+      "selected_finding_ids": [
+        "d6491cb\u00655f09e95\u0033ce78fae\u003288fe4fd\u0039be83429\u0039ce52ad2\u006598763cb\u0037135cb3e\u0062"
+      ],
+      "requested_edit": {
+        "paths": [
+          "src/review.py"
+        ],
+        "authority_paths": [
+          "src/review.py"
+        ]
+      },
+      "expected": {
+        "decision": "block",
+        "diagnostic_code": "workspace_fingerprint_mismatch"
+      }
+    },
+    {
+      "name": "standards_inventory_changed",
+      "artifact": {
+        "base": "baseline",
+        "marker": "inherit",
+        "json_state": "valid",
+        "result_id": "inherit",
+        "result_digest": "inherit",
+        "finding_id": "inherit",
+        "path": "inherit",
+        "location": "inherit"
+      },
+      "current_state": {
+        "base": "reviewed",
+        "repository_identity": "inherit",
+        "scope": "inherit",
+        "workspace": "inherit",
+        "standards_inventory_ref": "5555555555555555555555555555555555555555555555555555555555555555",
+        "finding_evidence": "inherit"
+      },
+      "selected_finding_ids": [
+        "d6491cb\u00655f09e95\u0033ce78fae\u003288fe4fd\u0039be83429\u0039ce52ad2\u006598763cb\u0037135cb3e\u0062"
+      ],
+      "requested_edit": {
+        "paths": [
+          "src/review.py"
+        ],
+        "authority_paths": [
+          "src/review.py"
+        ]
+      },
+      "expected": {
+        "decision": "block",
+        "diagnostic_code": "standards_inventory_changed"
+      }
+    },
+    {
+      "name": "broader_than_finding",
+      "artifact": {
+        "base": "baseline",
+        "marker": "inherit",
+        "json_state": "valid",
+        "result_id": "inherit",
+        "result_digest": "inherit",
+        "finding_id": "inherit",
+        "path": "inherit",
+        "location": "inherit"
+      },
+      "current_state": {
+        "base": "reviewed",
+        "repository_identity": "inherit",
+        "scope": "inherit",
+        "workspace": "inherit",
+        "standards_inventory_ref": "inherit",
+        "finding_evidence": "inherit"
+      },
+      "selected_finding_ids": [
+        "d6491cb\u00655f09e95\u0033ce78fae\u003288fe4fd\u0039be83429\u0039ce52ad2\u006598763cb\u0037135cb3e\u0062"
+      ],
+      "requested_edit": {
+        "paths": [
+          "src/extra.py",
+          "src/review.py"
+        ],
+        "authority_paths": [
+          "src/review.py"
+        ]
+      },
+      "expected": {
+        "decision": "block",
+        "diagnostic_code": "remediation_broader_than_finding"
+      }
+    }
+  ],
+  "supplemental_vectors": [
+    {
+      "name": "rehashed_out_of_scope_path",
+      "artifact": {
+        "base": "baseline",
+        "marker": "inherit",
+        "json_state": "valid",
+        "result_id": "ff857d0\u00652d9a2df\u0038cf0e89a\u00617d45aeb\u00618c74638\u0032a4fb0c0\u003942a8d1e\u0061ec19b5b\u0033",
+        "result_digest": "c6d0620\u00361b7abef\u0066317768c\u0065cecca9f\u003044c2f6d\u0064204b4e6\u00347f1f71e\u0030af7cdeb\u0063",
+        "finding_id": "b8e85ff\u0031f048f4e\u0063b49b88e\u003960d78bb\u0066ae28f80\u003781d47b2\u0035164793b\u0062b31cd0b\u0036",
+        "path": "src/other.py",
+        "location": "inherit"
+      },
+      "current_state": {
+        "base": "reviewed",
+        "repository_identity": "inherit",
+        "scope": "inherit",
+        "workspace": "inherit",
+        "standards_inventory_ref": "inherit",
+        "finding_evidence": "inherit"
+      },
+      "selected_finding_ids": [
+        "b8e85ff\u0031f048f4e\u0063b49b88e\u003960d78bb\u0066ae28f80\u003781d47b2\u0035164793b\u0062b31cd0b\u0036"
+      ],
+      "requested_edit": {
+        "paths": [
+          "src/other.py"
+        ],
+        "authority_paths": [
+          "src/other.py"
+        ]
+      },
+      "expected": {
+        "decision": "block",
+        "diagnostic_code": "selected_finding_scope_mismatch"
+      }
+    },
+    {
+      "name": "rehashed_in_scope_wrong_location",
+      "artifact": {
+        "base": "baseline",
+        "marker": "inherit",
+        "json_state": "valid",
+        "result_id": "bebd99c\u0061adc78c6\u0064d0efc1f\u006224040c0\u006142078c5\u0036dcff3ae\u0036f62d9b9\u00364bf6008\u0035",
+        "result_digest": "24a5c86\u0036cea88b6\u0031ac53f4f\u0035e507376\u0065e025d41\u0066acc1c11\u0038af1012e\u00338c7b295\u0063",
+        "finding_id": "217aba4\u00667ddf6d8\u003612f41e0\u0065c7c5aa6\u0032abe99b0\u0039784881d\u0064fef5844\u0064f91a093\u0036",
+        "path": "inherit",
+        "location": {
+          "start_line": 14,
+          "end_line": 14
+        }
+      },
+      "current_state": {
+        "base": "reviewed",
+        "repository_identity": "inherit",
+        "scope": "inherit",
+        "workspace": "inherit",
+        "standards_inventory_ref": "inherit",
+        "finding_evidence": "inherit"
+      },
+      "selected_finding_ids": [
+        "217aba4\u00667ddf6d8\u003612f41e0\u0065c7c5aa6\u0032abe99b0\u0039784881d\u0064fef5844\u0064f91a093\u0036"
+      ],
+      "requested_edit": {
+        "paths": [
+          "src/review.py"
+        ],
+        "authority_paths": [
+          "src/review.py"
+        ]
+      },
+      "expected": {
+        "decision": "block",
+        "diagnostic_code": "finding_evidence_not_reproduced"
+      }
+    }
+  ]
+}

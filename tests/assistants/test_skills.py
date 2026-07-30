@@ -33,6 +33,7 @@ from ballen_config.state import BootstrapState, ManagedRecord, StateStore
 
 _CONTENT_PLAN_SKILL_NAMES: Final[frozenset[str]] = frozenset(
     {
+        "address-self-review",
         "conduct-self-review",
         "discover-project-standards",
         "resolve-change-scope",
@@ -48,6 +49,11 @@ _CONTENT_PLAN_SKILL_NAMES: Final[frozenset[str]] = frozenset(
 )
 
 _REVIEW_FOUNDATION_DEPENDENCIES: Final[dict[str, tuple[str, ...]]] = {
+    "address-self-review": (
+        "resolve-change-scope",
+        "discover-project-standards",
+        "conduct-self-review",
+    ),
     "conduct-self-review": (
         "resolve-change-scope",
         "discover-project-standards",

@@ -67,6 +67,48 @@ _SELF_REVIEWER_ORDER: Final[tuple[str, ...]] = (
     "review-python-types",
 )
 _SELF_REVIEWER_NAMES: Final[frozenset[str]] = frozenset(_SELF_REVIEWER_ORDER)
+_REMEDIATION_CASE_DIAGNOSTICS: Final[dict[str, str]] = {
+    "valid_selected_finding": "ok",
+    "missing_marker": "artifact_marker_missing",
+    "malformed_json": "artifact_json_malformed",
+    "result_digest_mismatch": "artifact_result_digest_mismatch",
+    "finding_id_tamper": "artifact_finding_id_mismatch",
+    "repository_identity_unavailable": "repository_identity_unavailable",
+    "repository_identity_mismatch": "repository_identity_mismatch",
+    "stale_workspace_fingerprint": "workspace_fingerprint_mismatch",
+    "standards_inventory_changed": "standards_inventory_changed",
+    "broader_than_finding": "remediation_broader_than_finding",
+}
+_REMEDIATION_SUPPLEMENTAL_DIAGNOSTICS: Final[dict[str, str]] = {
+    "rehashed_out_of_scope_path": "selected_finding_scope_mismatch",
+    "rehashed_in_scope_wrong_location": "finding_evidence_not_reproduced",
+}
+_REMEDIATION_DIAGNOSTIC_VOCABULARY: Final[frozenset[str]] = frozenset(
+    {
+        "ok",
+        "artifact_path_invalid",
+        "artifact_marker_missing",
+        "artifact_json_malformed",
+        "artifact_contract_unsupported",
+        "artifact_structure_invalid",
+        "artifact_result_id_mismatch",
+        "artifact_result_digest_mismatch",
+        "artifact_finding_id_mismatch",
+        "repository_identity_unavailable",
+        "repository_identity_mismatch",
+        "scope_identity_mismatch",
+        "workspace_fingerprint_mismatch",
+        "standards_inventory_changed",
+        "selection_invalid",
+        "selected_finding_unknown",
+        "selected_finding_ambiguous",
+        "selected_finding_scope_mismatch",
+        "finding_evidence_not_reproduced",
+        "remediation_broader_than_finding",
+        "verification_incomplete",
+        "fresh_review_incomplete",
+    }
+)
 _UTC_RFC3339_PATTERN: Final[re.Pattern[str]] = re.compile(
     r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$"
 )
@@ -92,6 +134,8 @@ _COVERAGE_STATES: Final[frozenset[str]] = frozenset(
 )
 _PROHIBITED_KEY_TERMS: Final[frozenset[str]] = frozenset(
     {
+        "api_key",
+        "auth",
         "absolute_path",
         "credential",
         "credentials",
@@ -100,6 +144,7 @@ _PROHIBITED_KEY_TERMS: Final[frozenset[str]] = frozenset(
         "command_output",
         "session",
         "sessions",
+        "secret",
         "token",
         "trust",
     }
@@ -642,6 +687,409 @@ def test_review_result_example_is_portable_and_internally_consistent(
     for value in _walk_strings(result):
         _assert_portable_string(value)
     assert not {key.casefold() for key, _ in _walk_key_values(result)}.intersection(
+        _PROHIBITED_KEY_TERMS
+    )
+
+
+def test_remediation_vectors_freeze_validation_and_authority_boundaries(
+    repo_root: Path,
+) -> None:
+    """Validate remediation gates without implementing the editing workflow."""
+    fixture_path = (
+        repo_root
+        / "assistants/shared/skills/address-self-review/references"
+        / "remediation-vectors.json"
+    )
+    fixture = _load_json(fixture_path)
+
+    assert set(fixture) == {
+        "contract_version",
+        "canonicalization",
+        "diagnostic_vocabulary",
+        "baseline",
+        "vectors",
+        "supplemental_vectors",
+    }
+    assert fixture["contract_version"] == "v1"
+    assert fixture["canonicalization"] == {
+        "encoding": "utf-8",
+        "ensure_ascii": False,
+        "sort_keys": True,
+        "separators": [",", ":"],
+        "string_normalization": "NFC",
+        "digest": "sha256-lowercase-hex",
+    }
+    assert fixture["diagnostic_vocabulary"] == sorted(
+        _REMEDIATION_DIAGNOSTIC_VOCABULARY
+    )
+    assert set(_REMEDIATION_CASE_DIAGNOSTICS.values()).issubset(
+        _REMEDIATION_DIAGNOSTIC_VOCABULARY
+    )
+    assert set(_REMEDIATION_SUPPLEMENTAL_DIAGNOSTICS.values()).issubset(
+        _REMEDIATION_DIAGNOSTIC_VOCABULARY
+    )
+
+    baseline = fixture["baseline"]
+    assert set(baseline) == {
+        "artifact_marker",
+        "artifact_result",
+        "selected_finding_reviewer",
+        "reviewed_state",
+    }
+    assert baseline["artifact_marker"] == "<!-- ballen-config:self-review-result:v1 -->"
+    baseline_result = baseline["artifact_result"]
+    assert set(baseline_result) == _SELF_REVIEW_RESULT_TOP_LEVEL_KEYS
+    semantic_material = {
+        key: value
+        for key, value in baseline_result.items()
+        if key not in {"created_at", "result_id", "result_digest"}
+    }
+    assert _canonical_sha256(semantic_material) == baseline_result["result_id"]
+    digest_material = {
+        key: value for key, value in baseline_result.items() if key != "result_digest"
+    }
+    assert _canonical_sha256(digest_material) == baseline_result["result_digest"]
+
+    baseline_reviewers = baseline_result["reviewers"]
+    assert [reviewer["reviewer"] for reviewer in baseline_reviewers] == list(
+        _SELF_REVIEWER_ORDER
+    )
+    for reviewer in baseline_reviewers:
+        assert set(reviewer) == _REVIEW_RESULT_TOP_LEVEL_KEYS
+        assert reviewer["scope_identity"] == baseline_result["scope"]["scope_identity"]
+        assert (
+            reviewer["standards_inventory_ref"]
+            == baseline_result["standards_inventory_ref"]
+        )
+        assert reviewer["summary"]["counts"] == {
+            severity: sum(
+                finding["severity"] == severity for finding in reviewer["findings"]
+            )
+            for severity in ("blocker", "actionable", "advisory")
+        }
+
+    assert len(baseline_result["findings"]) == 1
+    baseline_finding = baseline_result["findings"][0]
+    baseline_finding_id = baseline_finding["finding_id"]
+    baseline_reviewer = baseline["selected_finding_reviewer"]
+    source_result = next(
+        reviewer
+        for reviewer in baseline_result["reviewers"]
+        if reviewer["reviewer"] == baseline_reviewer
+    )
+    source_finding = next(
+        finding
+        for finding in source_result["findings"]
+        if finding["finding_id"] == baseline_finding_id
+    )
+    assert baseline_finding == source_finding
+    assert (
+        _canonical_sha256(_finding_identity_material(baseline_reviewer, source_finding))
+        == baseline_finding_id
+    )
+    assert baseline_result["summary"]["counts"] == {
+        severity: sum(
+            finding["severity"] == severity for finding in baseline_result["findings"]
+        )
+        for severity in ("blocker", "actionable", "advisory")
+    }
+    assert baseline_result["summary"]["verdict"] == "needs_attention"
+
+    reviewed_state = baseline["reviewed_state"]
+    assert set(reviewed_state) == {
+        "repository_identity",
+        "scope",
+        "workspace",
+        "standards_inventory_ref",
+        "finding_evidence",
+    }
+    assert (
+        reviewed_state["repository_identity"] == baseline_result["repository_identity"]
+    )
+    assert (
+        reviewed_state["scope"]["scope_identity"]
+        == baseline_result["scope"]["scope_identity"]
+    )
+    assert (
+        _canonical_sha256(reviewed_state["scope"]["material"])
+        == reviewed_state["scope"]["scope_identity"]
+    )
+    assert (
+        _canonical_sha256(reviewed_state["workspace"]["material"])
+        == reviewed_state["workspace"]["fingerprint"]
+    )
+    assert (
+        reviewed_state["scope"]["material"]["workspace_fingerprint"]
+        == reviewed_state["workspace"]["fingerprint"]
+    )
+    assert (
+        reviewed_state["scope"]["material"]["reviewable_diff_digest"]
+        == baseline_result["scope"]["diff_digest"]
+    )
+    assert (
+        reviewed_state["standards_inventory_ref"]
+        == baseline_result["standards_inventory_ref"]
+    )
+
+    vectors = fixture["vectors"]
+    assert {vector["name"] for vector in vectors} == set(_REMEDIATION_CASE_DIAGNOSTICS)
+    assert len(vectors) == len(_REMEDIATION_CASE_DIAGNOSTICS)
+    supplemental_vectors = fixture["supplemental_vectors"]
+    assert {vector["name"] for vector in supplemental_vectors} == set(
+        _REMEDIATION_SUPPLEMENTAL_DIAGNOSTICS
+    )
+    assert len(supplemental_vectors) == len(_REMEDIATION_SUPPLEMENTAL_DIAGNOSTICS)
+    expected_diagnostics = {
+        **_REMEDIATION_CASE_DIAGNOSTICS,
+        **_REMEDIATION_SUPPLEMENTAL_DIAGNOSTICS,
+    }
+    for vector in [*vectors, *supplemental_vectors]:
+        assert set(vector) == {
+            "name",
+            "artifact",
+            "current_state",
+            "selected_finding_ids",
+            "requested_edit",
+            "expected",
+        }
+        name = vector["name"]
+        artifact = vector["artifact"]
+        assert set(artifact) == {
+            "base",
+            "marker",
+            "json_state",
+            "result_id",
+            "result_digest",
+            "finding_id",
+            "path",
+            "location",
+        }
+        assert artifact["base"] == "baseline"
+        assert artifact["json_state"] in {"valid", "malformed"}
+        artifact_marker = (
+            baseline["artifact_marker"]
+            if artifact["marker"] == "inherit"
+            else artifact["marker"]
+        )
+        artifact_result_id = (
+            baseline_result["result_id"]
+            if artifact["result_id"] == "inherit"
+            else artifact["result_id"]
+        )
+        artifact_result_digest = (
+            baseline_result["result_digest"]
+            if artifact["result_digest"] == "inherit"
+            else artifact["result_digest"]
+        )
+        artifact_finding_id = (
+            baseline_finding_id
+            if artifact["finding_id"] == "inherit"
+            else artifact["finding_id"]
+        )
+        artifact_path = (
+            baseline_finding["path"]
+            if artifact["path"] == "inherit"
+            else artifact["path"]
+        )
+        artifact_location = (
+            baseline_finding["location"]
+            if artifact["location"] == "inherit"
+            else artifact["location"]
+        )
+        _assert_repository_relative_path(artifact_path)
+        assert set(artifact_location) == {"start_line", "end_line"}
+        assert artifact_location["start_line"] >= 1
+        assert artifact_location["start_line"] <= artifact_location["end_line"]
+
+        result_id_valid = False
+        result_digest_valid = False
+        finding_id_valid = False
+        if artifact["json_state"] == "valid":
+            _assert_sha256(artifact_result_id)
+            _assert_sha256(artifact_result_digest)
+            _assert_sha256(artifact_finding_id)
+            materialized = json.loads(json.dumps(baseline_result))
+            for finding in materialized["findings"]:
+                if finding["finding_id"] == baseline_finding_id:
+                    finding["finding_id"] = artifact_finding_id
+                    finding["path"] = artifact_path
+                    finding["location"] = artifact_location
+            for reviewer in materialized["reviewers"]:
+                for finding in reviewer["findings"]:
+                    if finding["finding_id"] == baseline_finding_id:
+                        finding["finding_id"] = artifact_finding_id
+                        finding["path"] = artifact_path
+                        finding["location"] = artifact_location
+            materialized["result_id"] = artifact_result_id
+            materialized["result_digest"] = artifact_result_digest
+
+            semantic_material = {
+                key: value
+                for key, value in materialized.items()
+                if key not in {"created_at", "result_id", "result_digest"}
+            }
+            result_id_valid = _canonical_sha256(semantic_material) == artifact_result_id
+            digest_material = {
+                key: value
+                for key, value in materialized.items()
+                if key != "result_digest"
+            }
+            result_digest_valid = (
+                _canonical_sha256(digest_material) == artifact_result_digest
+            )
+            materialized_source = next(
+                reviewer
+                for reviewer in materialized["reviewers"]
+                if reviewer["reviewer"] == baseline_reviewer
+            )
+            materialized_finding = materialized_source["findings"][0]
+            finding_id_valid = (
+                _canonical_sha256(
+                    _finding_identity_material(
+                        baseline_reviewer,
+                        materialized_finding,
+                    )
+                )
+                == artifact_finding_id
+            )
+        else:
+            assert artifact_result_id is None
+            assert artifact_result_digest is None
+            assert artifact_finding_id is None
+
+        current_state_input = vector["current_state"]
+        assert set(current_state_input) == {
+            "base",
+            "repository_identity",
+            "scope",
+            "workspace",
+            "standards_inventory_ref",
+            "finding_evidence",
+        }
+        assert current_state_input["base"] == "reviewed"
+        current_state = json.loads(json.dumps(reviewed_state))
+        for field in (
+            "repository_identity",
+            "scope",
+            "workspace",
+            "standards_inventory_ref",
+            "finding_evidence",
+        ):
+            if current_state_input[field] != "inherit":
+                current_state[field] = current_state_input[field]
+        repository_identity = current_state["repository_identity"]
+        assert set(repository_identity) == {"state", "vcs", "value", "code"}
+        assert repository_identity["state"] in {"complete", "unavailable"}
+        if repository_identity["value"] is not None:
+            _assert_sha256(repository_identity["value"])
+
+        scope = current_state["scope"]
+        assert set(scope) == {"material", "scope_identity"}
+        _assert_sha256(scope["scope_identity"])
+        assert _canonical_sha256(scope["material"]) == scope["scope_identity"]
+        workspace = current_state["workspace"]
+        assert set(workspace) == {"material", "fingerprint"}
+        _assert_sha256(workspace["fingerprint"])
+        assert _canonical_sha256(workspace["material"]) == workspace["fingerprint"]
+        _assert_sha256(current_state["standards_inventory_ref"])
+
+        for evidence in current_state["finding_evidence"]:
+            assert set(evidence) == {"finding_id", "path", "location", "evidence"}
+            _assert_sha256(evidence["finding_id"])
+            _assert_repository_relative_path(evidence["path"])
+            assert set(evidence["location"]) == {"start_line", "end_line"}
+            assert evidence["location"]["start_line"] >= 1
+            assert (
+                evidence["location"]["start_line"] <= evidence["location"]["end_line"]
+            )
+
+        selected_finding_ids = vector["selected_finding_ids"]
+        assert selected_finding_ids
+        assert selected_finding_ids == sorted(set(selected_finding_ids))
+        for finding_id in selected_finding_ids:
+            _assert_sha256(finding_id)
+
+        requested_edit = vector["requested_edit"]
+        assert set(requested_edit) == {"paths", "authority_paths"}
+        assert requested_edit["paths"] == sorted(set(requested_edit["paths"]))
+        assert requested_edit["authority_paths"] == sorted(
+            set(requested_edit["authority_paths"])
+        )
+        for path in requested_edit["paths"] + requested_edit["authority_paths"]:
+            _assert_repository_relative_path(path)
+
+        expected = vector["expected"]
+        assert set(expected) == {"decision", "diagnostic_code"}
+        assert expected["diagnostic_code"] == expected_diagnostics[name]
+        assert expected["decision"] == (
+            "proceed" if name == "valid_selected_finding" else "block"
+        )
+
+        if name == "valid_selected_finding":
+            assert artifact_marker == baseline["artifact_marker"]
+            assert result_id_valid
+            assert result_digest_valid
+            assert finding_id_valid
+            assert current_state == reviewed_state
+            assert set(requested_edit["paths"]).issubset(
+                requested_edit["authority_paths"]
+            )
+        elif name == "missing_marker":
+            assert artifact_marker is None
+        elif name == "malformed_json":
+            assert artifact["json_state"] == "malformed"
+        elif name == "result_digest_mismatch":
+            assert result_id_valid
+            assert not result_digest_valid
+        elif name == "finding_id_tamper":
+            assert result_id_valid
+            assert result_digest_valid
+            assert not finding_id_valid
+        elif name == "repository_identity_unavailable":
+            assert repository_identity["state"] == "unavailable"
+            assert scope["scope_identity"] != reviewed_state["scope"]["scope_identity"]
+        elif name == "repository_identity_mismatch":
+            assert repository_identity["state"] == "complete"
+            assert (
+                repository_identity["value"]
+                != reviewed_state["repository_identity"]["value"]
+            )
+            assert scope["scope_identity"] != reviewed_state["scope"]["scope_identity"]
+        elif name == "stale_workspace_fingerprint":
+            assert (
+                workspace["fingerprint"] != reviewed_state["workspace"]["fingerprint"]
+            )
+            assert scope["scope_identity"] == reviewed_state["scope"]["scope_identity"]
+        elif name == "standards_inventory_changed":
+            assert (
+                current_state["standards_inventory_ref"]
+                != reviewed_state["standards_inventory_ref"]
+            )
+        elif name == "broader_than_finding":
+            assert not set(requested_edit["paths"]).issubset(
+                requested_edit["authority_paths"]
+            )
+        elif name == "rehashed_out_of_scope_path":
+            assert result_id_valid
+            assert result_digest_valid
+            assert finding_id_valid
+            assert artifact_path not in baseline_result["scope"]["changed_paths"]
+        elif name == "rehashed_in_scope_wrong_location":
+            assert result_id_valid
+            assert result_digest_valid
+            assert finding_id_valid
+            assert artifact_path in baseline_result["scope"]["changed_paths"]
+            assert artifact_location != baseline_finding["location"]
+            assert not any(
+                evidence["finding_id"] == artifact_finding_id
+                and evidence["path"] == artifact_path
+                and evidence["location"] == artifact_location
+                for evidence in current_state["finding_evidence"]
+            )
+
+    for value in _walk_strings(fixture):
+        _assert_portable_string(value)
+    assert not {key.casefold() for key, _ in _walk_key_values(fixture)}.intersection(
         _PROHIBITED_KEY_TERMS
     )
 

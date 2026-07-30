@@ -1,4 +1,14 @@
 skills:
+  - name: address-self-review
+    source: assistants/shared/skills/address-self-review
+    targets: [cursor, claude-code, codex]
+    profiles: [default]
+    dependencies: [resolve-change-scope, discover-project-standards, conduct-self-review]
+    provenance: >-
+      Authored for ballen-config under the approved review-foundation design;
+      commit history records the implementation.
+    portability_status: reviewed-generic
+
   - name: conduct-self-review
     source: assistants/shared/skills/conduct-self-review
     targets: [cursor, claude-code, codex]
