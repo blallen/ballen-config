@@ -12,6 +12,9 @@ requests 6 through 9 and elaborates the review-related roadmap in the
 [Plato reusable skills detailed design](2026-07-28-plato-reusable-skills-design.md).
 The review-foundation train is refined by the approved
 [review foundation detailed design](2026-07-30-review-foundation-design.md).
+The forge review and response train is refined by the section-approved
+[forge review and response detailed design](2026-07-30-forge-review-response-design.md),
+which awaits written-spec review before implementation planning.
 
 ## Purpose
 
@@ -275,95 +278,36 @@ The train is complete only when:
 
 ## Forge Review and Response Train
 
-### Provider-neutral comment plan
+The section-approved
+[forge review and response detailed design](2026-07-30-forge-review-response-design.md)
+governs the exact artifact contracts, seven skill boundaries, managed Python
+toolset, mutation gates, delivery sequence, and verification strategy once its
+written-spec review is complete.
 
-The first MR defines the provider-neutral local-review and comment-plan
-contract. It owns:
+The train delivers, in order:
 
-- canonical repository and change identity;
-- provider and head revision;
-- changed-file and diff references;
-- proposed inline and general comments;
-- stable deduplication keys;
-- intended publication actions;
-- per-item validation and outcome state; and
-- exact partial-completion reporting.
+1. `review-github-pull-request`;
+2. `publish-github-review`;
+3. `prepare-review-response`;
+4. `respond-to-github-review`;
+5. `review-gitlab-merge-request`;
+6. `publish-gitlab-review`; and
+7. `respond-to-gitlab-review`.
 
-The contract does not own provider authentication, API payloads, thread
-positions, or retry semantics.
+The first GitHub capability proves the provider-neutral comment plan and safe
+local workspace against a complete read-only consumer. Response preparation
+owns normalized threads and feedback evaluation; provider-specific responders
+own separately approved local and remote mutation.
 
-### Local draft workspace
+One managed Python 3.12 toolset preserves deterministic Markdown parsing,
+provider-native payload construction, dry-run previews, positioned posting,
+deduplication, and normalized receipts. It inherits an already selected
+provider transport and never manages authentication.
 
-Local review is a complete workflow, not merely a staging step for remote
-publication. By default, the forge reviewer writes an editable Markdown draft
-inside a repository-local workspace that is already ignored.
-
-Before writing, the skill proves that the destination is repository-local,
-ignored, and untracked. If no safe ignored destination exists, it asks for one
-and writes nothing. It never changes ignore rules automatically. A tracked or
-staged review draft is a review finding.
-
-Editing a Markdown draft does not authorize remote publication. The executable
-comment plan and the user's publication intent remain separate.
-
-### GitHub review and publication
-
-GitHub is the default first adapter because `ballen-config` provides immediate
-dogfooding evidence. The order remains architecturally reversible.
-
-The GitHub work is delivered in three MRs:
-
-1. `review-github-pull-request` in read, analyze, deduplicate, and local-draft
-   mode;
-2. an explicit publication phase; and
-3. `respond-to-github-review`.
-
-The draft reviewer uses `using-github` for provider behavior and standards
-discovery for repository rules. It may consume supplied outputs from the
-review-foundation skills when a local checkout and complete scope are
-available, but remote draft review does not require every local checker.
-
-Immediately before publication, the skill re-fetches and confirms:
-
-- host, repository, and pull request;
-- current head revision;
-- comment positions and existing threads;
-- deduplication keys; and
-- the exact payload to post.
-
-The user explicitly approves the current payload. Stale heads, invalid
-positions, ambiguity, or duplicate risk block the affected action. Successful
-and failed items are reported separately; retries do not silently duplicate
-comments.
-
-### GitHub response
-
-`respond-to-github-review` separates:
-
-1. thread retrieval and normalization;
-2. feedback evaluation;
-3. proposed local changes;
-4. approved editing;
-5. verification;
-6. change description and commit;
-7. push; and
-8. remote response.
-
-Each mutation boundary requires its own current intent. Feedback evaluation
-delegates to native `receiving-code-review` when available and reports missing
-coverage when it is not.
-
-### GitLab adapter
-
-After GitHub dogfooding, the train adds:
-
-1. `review-gitlab-merge-request` in local-draft mode;
-2. explicit GitLab publication; and
-3. `respond-to-gitlab-review`.
-
-The GitLab adapter uses `using-gitlab` and preserves GitLab-native discussion,
-position, and partial-failure semantics. It reuses the provider-neutral logical
-contracts without translating GitHub payloads into GitLab shapes.
+GitHub is implemented and dogfooded first. GitLab reuses provider-neutral
+logical contracts while preserving native discussion, position, reply, and
+partial-failure semantics. Neither provider depends on the other's payloads or
+user-facing skill.
 
 ### Forge exit gate
 
@@ -371,10 +315,12 @@ The train is complete only when:
 
 - local review remains fully useful with publication disabled or unavailable;
 - local drafts are proven ignored and untracked;
-- GitHub dogfooding covers draft creation and an explicitly approved
-  publication;
+- GitHub dogfooding covers draft creation, explicitly approved publication,
+  response preparation, and an explicitly approved response;
+- persisted selections cannot independently authorize local or remote mutation;
 - stale-head, duplicate-comment, invalid-position, and partial-failure fixtures
   pass;
+- retries cannot duplicate confirmed successful actions;
 - GitLab behavior is tested through its native adapter contract;
 - normalized review threads are available to downstream consumers; and
 - no shared source contains credentials, provider-generated state, or
