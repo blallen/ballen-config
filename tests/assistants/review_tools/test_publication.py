@@ -69,6 +69,7 @@ def _read_responses(head: str = HEAD_SHA) -> list[CompletedCommand]:
         CompletedCommand(0, json.dumps({"number": 17, "head": {"sha": head}}), ""),
         CompletedCommand(0, "[]", ""),
         CompletedCommand(0, "[]", ""),
+        CompletedCommand(0, "[]", ""),
     ]
 
 
@@ -97,6 +98,30 @@ def _two_action_plan() -> ReviewCommentPlan:
     )
 
 
+def _inline_plan() -> ReviewCommentPlan:
+    """Return one inline action whose current diff location can be varied."""
+    identity = _plan().identity
+    action = ReviewAction(
+        action_id="R001",
+        kind="inline",
+        selected=True,
+        body="Guard the empty case.",
+        path="src/example.py",
+        line=20,
+        side="RIGHT",
+        deduplication_key="f" * 64,
+        validation_state="valid",
+        intended_action="create-inline",
+        outcome="pending",
+    )
+    return ReviewCommentPlan(
+        contract_version="review-comment-plan/v1",
+        identity=identity,
+        source_draft_digest="c" * 64,
+        actions=(action,),
+    )
+
+
 def test_preview_contains_current_plan_and_remote_digests() -> None:
     """Bind preview output to the current plan and observations."""
     runner = RecordingRunner(_read_responses())
@@ -108,6 +133,32 @@ def test_preview_contains_current_plan_and_remote_digests() -> None:
     assert preview.observed_head == HEAD_SHA
     assert preview.items[0].state == "eligible"
     assert preview.items[0].payload is not None
+
+
+def test_preview_blocks_inline_location_missing_from_current_diff() -> None:
+    """Do not publish an inline comment at a stale or invalid line."""
+    responses = _read_responses()
+    responses[3] = CompletedCommand(
+        0,
+        json.dumps(
+            [
+                {
+                    "filename": "src/example.py",
+                    "patch": "@@ -1,1 +1,1 @@\n-old\n+new\n",
+                }
+            ]
+        ),
+        "",
+    )
+    plan = _inline_plan()
+    preview = preview_github_publication(
+        plan,
+        GitHubProvider(identity=plan.identity, runner=RecordingRunner(responses)),
+    )
+
+    assert preview.status == "ready"
+    assert preview.items[0].state == "blocked"
+    assert "current diff" in (preview.items[0].reason or "")
 
 
 def test_execute_rejects_changed_head_before_any_write() -> None:
