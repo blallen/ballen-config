@@ -101,4 +101,4 @@ without duplicating it.
 ## References
 
 - [Streamlit documentation](https://docs.streamlit.io/)
-- [Streamlit changelog](https://docs.streamlit.io/develop/quick-reference/changelog)
+- [Streamlit 2026 release notes](https://docs.streamlit.io/develop/quick-reference/release-notes/2026)

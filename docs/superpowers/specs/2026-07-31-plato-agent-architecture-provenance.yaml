@@ -7,17 +7,23 @@ source_documents:
   docs/agent_charter/README.md:
     disposition: split
     destinations:
+      - README.md
       - core/architecture-levels.md
       - core/agent-layers.md
+      - reference-profiles/README.md
   docs/agent_charter/agent_construction_standard.md:
     disposition: profile
     destinations:
+      - reference-profiles/pydantic-ai/README.md
       - reference-profiles/pydantic-ai/construction.md
   docs/agent_charter/agent_service_pattern.md:
     disposition: split
     destinations:
       - core/agent-layers.md
       - delegation/agent-as-tool.md
+      - delegation/dynamic-subagents.md
+      - delegation/isolation-matrix.md
+      - reference-profiles/pydantic-ai/README.md
       - reference-profiles/pydantic-ai/services-and-dependencies.md
   docs/agent_charter/auth_flow.md:
     disposition: excluded
@@ -26,6 +32,9 @@ source_documents:
     disposition: split
     destinations:
       - core/tools-and-capabilities.md
+      - delegation/dynamic-subagents.md
+      - delegation/isolation-matrix.md
+      - reference-profiles/pydantic-ai/README.md
       - reference-profiles/pydantic-ai/tools-and-capabilities.md
   docs/agent_charter/credentials_config.md:
     disposition: excluded
@@ -54,6 +63,7 @@ source_documents:
     disposition: split
     destinations:
       - core/models-and-errors.md
+      - reference-profiles/pydantic-ai/README.md
       - reference-profiles/pydantic-ai/construction.md
   docs/agent_charter/observability_logfire.md:
     disposition: profile
@@ -74,11 +84,15 @@ source_documents:
     disposition: split
     destinations:
       - core/tools-and-capabilities.md
+      - reference-profiles/pydantic-ai/README.md
       - reference-profiles/pydantic-ai/tools-and-capabilities.md
   docs/agentic_workflows/README.md:
     disposition: extracted
     destinations:
+      - README.md
+      - delegation/isolation-matrix.md
       - orchestration/director-act-scene.md
+      - orchestration/persistence-and-resume.md
   docs/agentic_workflows/contracts.md:
     disposition: extracted
     destinations:
@@ -262,6 +276,12 @@ documents:
         primary_source: "https://ai.pydantic.dev/install/#slim-install"
         release_history: "https://github.com/pydantic/pydantic-ai/releases"
         reviewed_on: "2026-07-31"
+      - product: subagents-pydantic-ai
+        package: subagents-pydantic-ai
+        version: "0.2.7"
+        primary_source: "https://github.com/vstorm-co/subagents-pydantic-ai#readme"
+        release_history: "https://github.com/vstorm-co/subagents-pydantic-ai/releases"
+        reviewed_on: "2026-07-31"
   reference-profiles/pydantic-ai/construction.md:
     kind: reference-profile
     authority: conditional
@@ -355,7 +375,7 @@ documents:
         package: streamlit
         version: "1.54.0"
         primary_source: "https://docs.streamlit.io/"
-        release_history: "https://docs.streamlit.io/develop/quick-reference/changelog"
+        release_history: "https://docs.streamlit.io/develop/quick-reference/release-notes/2026"
         reviewed_on: "2026-07-31"
   templates/readme-templates.md:
     kind: template
