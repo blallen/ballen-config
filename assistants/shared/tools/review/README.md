@@ -197,3 +197,11 @@ guessing:
 - A body over 10,000 characters is truncated, and its thread records that.
 - Replies not attached to a captured root comment, such as a reply to a reply,
   are listed by ID in one snapshot limitation.
+
+For GitLab, `using-gitlab` supplies a captured MR response containing
+`diff_refs` and `discussions`; normalization remains local and read-only:
+
+```text
+review-plan normalize-threads --provider gitlab --identity PATH \
+  --input PATH --output PATH --repo-root PATH
+```
