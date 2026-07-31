@@ -1,0 +1,318 @@
+"""Contract tests for the shared agent-architecture reference library."""
+
+from pathlib import Path, PurePosixPath
+from typing import Literal, NotRequired, TypedDict, cast
+
+import yaml
+
+SOURCE_REVISION = "0d7699bb0cae3025097718126fcb8e413b6a49e0"  # pragma: allowlist secret
+APPROVED_DECISION = (
+    "docs/superpowers/specs/2026-07-31-plato-agent-architecture-design.md"
+)
+PROVENANCE_MANIFEST = Path(
+    "docs/superpowers/specs/2026-07-31-plato-agent-architecture-provenance.yaml"
+)
+LIBRARY_ROOT = Path("assistants/shared/agent-architecture")
+
+SourceDisposition = Literal[
+    "extracted",
+    "split",
+    "profile",
+    "template",
+    "stub",
+    "excluded",
+]
+DocumentKind = Literal[
+    "core",
+    "orchestration",
+    "delegation",
+    "reference-profile",
+    "template",
+    "stub",
+]
+Authority = Literal[
+    "normative",
+    "conditional",
+    "informative",
+    "non-normative-draft",
+]
+SourceRole = Literal["primary", "supporting"]
+
+
+class VersionReview(TypedDict):
+    """One dated review of a version-sensitive external product."""
+
+    product: str
+    package: str
+    version: str
+    primary_source: str
+    release_history: str
+    reviewed_on: str
+
+
+class SourceRecord(TypedDict):
+    """Disposition of one source document."""
+
+    disposition: SourceDisposition
+    destinations: NotRequired[list[str]]
+    reason: NotRequired[str]
+
+
+class DestinationRecord(TypedDict):
+    """Audit metadata for one destination document."""
+
+    kind: DocumentKind
+    authority: Authority
+    source_paths: list[str]
+    source_roles: dict[str, SourceRole]
+    transformation_note: str
+    evidence_paths: NotRequired[list[str]]
+    version_reviews: NotRequired[list[VersionReview]]
+
+
+class ProvenanceManifest(TypedDict):
+    """Complete source and destination provenance manifest."""
+
+    source_repository: str
+    source_revision: str
+    approved_decision: str
+    portability_result: str
+    review_date: str
+    source_documents: dict[str, SourceRecord]
+    documents: dict[str, DestinationRecord]
+
+
+SOURCE_DESTINATIONS: dict[str, tuple[SourceDisposition, tuple[str, ...]]] = {
+    "docs/agent_charter/README.md": (
+        "split",
+        ("core/architecture-levels.md", "core/agent-layers.md"),
+    ),
+    "docs/agent_charter/agent_construction_standard.md": (
+        "profile",
+        ("reference-profiles/pydantic-ai/construction.md",),
+    ),
+    "docs/agent_charter/agent_service_pattern.md": (
+        "split",
+        (
+            "core/agent-layers.md",
+            "delegation/agent-as-tool.md",
+            "reference-profiles/pydantic-ai/services-and-dependencies.md",
+        ),
+    ),
+    "docs/agent_charter/capabilities.md": (
+        "split",
+        (
+            "core/tools-and-capabilities.md",
+            "reference-profiles/pydantic-ai/tools-and-capabilities.md",
+        ),
+    ),
+    "docs/agent_charter/demo_apps.md": (
+        "profile",
+        ("reference-profiles/streamlit-demo-apps.md",),
+    ),
+    "docs/agent_charter/evals.md": ("extracted", ("core/evaluation.md",)),
+    "docs/agent_charter/file_organization.md": (
+        "extracted",
+        ("core/agent-layers.md",),
+    ),
+    "docs/agent_charter/maturity_tiers.md": (
+        "stub",
+        ("stubs/maturity-tiers.md",),
+    ),
+    "docs/agent_charter/mcp.md": ("extracted", ("core/mcp.md",)),
+    "docs/agent_charter/models_exceptions.md": (
+        "split",
+        (
+            "core/models-and-errors.md",
+            "reference-profiles/pydantic-ai/construction.md",
+        ),
+    ),
+    "docs/agent_charter/observability_logfire.md": (
+        "profile",
+        ("reference-profiles/logfire.md",),
+    ),
+    "docs/agent_charter/readme_templates.md": (
+        "template",
+        ("templates/readme-templates.md",),
+    ),
+    "docs/agent_charter/testing.md": ("stub", ("stubs/testing.md",)),
+    "docs/agent_charter/tool_design_guidelines.md": (
+        "split",
+        (
+            "core/tools-and-capabilities.md",
+            "reference-profiles/pydantic-ai/tools-and-capabilities.md",
+        ),
+    ),
+    "docs/agentic_workflows/README.md": (
+        "extracted",
+        ("orchestration/director-act-scene.md",),
+    ),
+    "docs/agentic_workflows/contracts.md": (
+        "extracted",
+        ("orchestration/handoff-contracts.md",),
+    ),
+    "docs/agentic_workflows/transitions.md": (
+        "split",
+        (
+            "orchestration/transitions.md",
+            "orchestration/persistence-and-resume.md",
+        ),
+    ),
+    "docs/agentic_workflows/anti_patterns.md": (
+        "extracted",
+        ("orchestration/anti-patterns.md",),
+    ),
+}
+
+EXCLUDED_SOURCES = {
+    "docs/agent_charter/auth_flow.md": (
+        "Authentication and internal request flow are outside the portable "
+        "reference-library scope."
+    ),
+    "docs/agent_charter/credentials_config.md": (
+        "Credential storage and local configuration are explicitly prohibited "
+        "migration material."
+    ),
+    "docs/agent_charter/todos.md": (
+        "Project-specific work tracking is not reference documentation."
+    ),
+}
+
+CORE_DOCUMENTS = {
+    "README.md",
+    "core/architecture-levels.md",
+    "core/agent-layers.md",
+    "core/models-and-errors.md",
+    "core/tools-and-capabilities.md",
+    "core/mcp.md",
+    "core/evaluation.md",
+}
+ORCHESTRATION_DOCUMENTS = {
+    "orchestration/director-act-scene.md",
+    "orchestration/handoff-contracts.md",
+    "orchestration/transitions.md",
+    "orchestration/persistence-and-resume.md",
+    "orchestration/anti-patterns.md",
+}
+DELEGATION_DOCUMENTS = {
+    "delegation/agent-as-tool.md",
+    "delegation/dynamic-subagents.md",
+    "delegation/isolation-matrix.md",
+}
+PROFILE_DOCUMENTS = {
+    "reference-profiles/README.md",
+    "reference-profiles/pydantic-ai/README.md",
+    "reference-profiles/pydantic-ai/construction.md",
+    "reference-profiles/pydantic-ai/services-and-dependencies.md",
+    "reference-profiles/pydantic-ai/tools-and-capabilities.md",
+    "reference-profiles/logfire.md",
+    "reference-profiles/streamlit-demo-apps.md",
+}
+TEMPLATE_DOCUMENTS = {"templates/readme-templates.md"}
+STUB_DOCUMENTS = {"stubs/testing.md", "stubs/maturity-tiers.md"}
+ALL_DOCUMENTS = (
+    CORE_DOCUMENTS
+    | ORCHESTRATION_DOCUMENTS
+    | DELEGATION_DOCUMENTS
+    | PROFILE_DOCUMENTS
+    | TEMPLATE_DOCUMENTS
+    | STUB_DOCUMENTS
+)
+
+KIND_AND_AUTHORITY = {
+    **{path: ("core", "normative") for path in CORE_DOCUMENTS},
+    **{
+        path: ("orchestration", "normative")
+        for path in ORCHESTRATION_DOCUMENTS
+    },
+    **{path: ("delegation", "normative") for path in DELEGATION_DOCUMENTS},
+    **{
+        path: ("reference-profile", "conditional") for path in PROFILE_DOCUMENTS
+    },
+    **{path: ("template", "informative") for path in TEMPLATE_DOCUMENTS},
+    **{path: ("stub", "non-normative-draft") for path in STUB_DOCUMENTS},
+}
+
+
+def load_provenance(repo_root: Path) -> ProvenanceManifest:
+    """Load the repository-owned audit manifest."""
+    loaded = yaml.safe_load(
+        (repo_root / PROVENANCE_MANIFEST).read_text(encoding="utf-8")
+    )
+    assert isinstance(loaded, dict)
+    return cast(ProvenanceManifest, loaded)
+
+
+def assert_relative_posix_path(value: str) -> None:
+    """Assert that a manifest path is normalized and repository-relative."""
+    pure = PurePosixPath(value)
+    assert value
+    assert "\\" not in value
+    assert not pure.is_absolute()
+    assert "." not in pure.parts
+    assert ".." not in pure.parts
+    assert value == pure.as_posix()
+
+
+def test_provenance_records_fixed_program_metadata(repo_root: Path) -> None:
+    """Pin the source snapshot and approved portability decision."""
+    manifest = load_provenance(repo_root)
+    assert list(manifest) == [
+        "source_repository",
+        "source_revision",
+        "approved_decision",
+        "portability_result",
+        "review_date",
+        "source_documents",
+        "documents",
+    ]
+    assert manifest["source_repository"] == "plato"
+    assert manifest["source_revision"] == SOURCE_REVISION
+    assert manifest["approved_decision"] == APPROVED_DECISION
+    assert manifest["portability_result"] == "portable-after-adaptation"
+    assert manifest["review_date"] == "2026-07-31"
+    assert_relative_posix_path(manifest["approved_decision"])
+
+
+def test_provenance_accounts_for_every_source_document(repo_root: Path) -> None:
+    """Give every source exactly one explicit disposition."""
+    manifest = load_provenance(repo_root)
+    records = manifest["source_documents"]
+    assert set(records) == set(SOURCE_DESTINATIONS) | set(EXCLUDED_SOURCES)
+
+    for source_path, (disposition, destinations) in SOURCE_DESTINATIONS.items():
+        assert_relative_posix_path(source_path)
+        record = records[source_path]
+        assert record == {
+            "disposition": disposition,
+            "destinations": list(destinations),
+        }
+        for destination in destinations:
+            assert_relative_posix_path(destination)
+
+    for source_path, reason in EXCLUDED_SOURCES.items():
+        assert_relative_posix_path(source_path)
+        assert records[source_path] == {"disposition": "excluded", "reason": reason}
+
+
+def test_provenance_accounts_for_every_destination_document(repo_root: Path) -> None:
+    """Record one authority and source mapping for every planned document."""
+    manifest = load_provenance(repo_root)
+    documents = manifest["documents"]
+    assert len(ALL_DOCUMENTS) == 25
+    assert set(documents) == ALL_DOCUMENTS
+
+    for destination, record in documents.items():
+        assert_relative_posix_path(destination)
+        assert (record["kind"], record["authority"]) == KIND_AND_AUTHORITY[
+            destination
+        ]
+        assert record["source_paths"]
+        assert set(record["source_roles"]) == set(record["source_paths"])
+        assert set(record["source_roles"].values()) <= {"primary", "supporting"}
+        assert record["transformation_note"].strip()
+        for source_path in record["source_paths"]:
+            assert_relative_posix_path(source_path)
+            assert source_path in manifest["source_documents"]
+        for evidence_path in record.get("evidence_paths", []):
+            assert_relative_posix_path(evidence_path)
