@@ -596,3 +596,46 @@ def test_composition_layer_defines_run_and_solution_semantics(
         "reproducibility bundle",
     ):
         assert concept in lowered
+
+
+def test_validation_boundaries_assign_failures_to_earliest_owner(
+    repo_root: Path,
+) -> None:
+    """Keep structural, numerical, and scientific checks distinct."""
+    text = read_document(repo_root, "validation-boundaries.md")
+    headings = (
+        "## Data Construction",
+        "## Composition",
+        "## Runtime Evaluation",
+        "## Solver",
+        "## Scientific Review",
+    )
+    for heading in headings:
+        assert heading in text
+    positions = [text.index(heading) for heading in headings]
+    assert positions == sorted(positions)
+
+    lowered = normalize_whitespace(text).lower()
+    for failure in (
+        "duplicate stable identity",
+        "invalid target",
+        "compound term",
+        "unknown block",
+        "unresolved external variable",
+        "missing parameter",
+        "missing initial condition",
+        "incompatible shared variables",
+        "ambiguous namespace",
+        "unknown mathematical name",
+        "invalid expression",
+        "non-finite contribution",
+        "invalid event boundary",
+        "integration cannot complete reliably",
+        "unstable trajectory",
+        "unit mismatch",
+        "conservation residual",
+        "impossible state",
+        "scientifically implausible result",
+        "diagnostic context",
+    ):
+        assert failure in lowered
