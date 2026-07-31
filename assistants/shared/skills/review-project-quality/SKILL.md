@@ -22,6 +22,11 @@ resolver:
 
 Sibling paths are packaging hints only. Invoke dependencies by canonical name.
 
+Read `references/ponytail-review-v1.json` before review. It is authoritative
+for the Ponytail invocation count, host availability, rule and severity
+mapping, transition provenance, and coverage states. `ponytail-review` is an
+external provider-owned skill, not a repository-owned shared-skill dependency.
+
 ## When to Use
 
 Use this skill when a resolved or resolvable change needs repository-selected
@@ -39,6 +44,12 @@ Accept:
 - one v1 `ChangeScope`, including its live in-memory reviewable diff;
 - one discovered standards and tool inventory with a stable identity; and
 - optional complete command evidence already produced for the identical scope.
+
+On Claude Code and Codex, the Ponytail simplicity sub-pass is required. Use the
+native `ponytail-review` skill or, only for the bounded transition encoded in
+its contract, the pinned published contract. Ponytail is not applicable on
+Cursor. An unknown or undetected host is unavailable; never infer that it is
+Cursor.
 
 Reuse supplied inputs only when their versions, identities, repository
 identity, path inventory, and digests validate. Otherwise invoke the named
@@ -161,17 +172,70 @@ Use blocker severity only when quality evidence makes the change unsafe or
 untrustworthy. Use actionable for material corrections and advisory for
 optional improvements. Preserve the source severity and rule when available.
 
-### 7. Revalidate scope
+### 7. Run the Ponytail simplicity sub-pass
+
+On Claude Code and Codex, invoke `ponytail-review` exactly once in diff mode.
+Supply the same immutable `ChangeScope`, `scope_identity`, standards inventory,
+and changed-path set used by this specialist. Never ask Ponytail to audit the
+repository, resolve a new scope, or review paths outside that set.
+
+Accept only output with changed-path findings, tight repository-relative
+locations, one declared Ponytail tag per finding, concrete evidence, and
+bounded remediation. Normalize tags exactly as the contract declares:
+
+| Ponytail tag | Rule | Severity |
+| --- | --- | --- |
+| `delete` | `ponytail/delete` | actionable |
+| `stdlib` | `ponytail/stdlib` | actionable |
+| `native` | `ponytail/native` | actionable |
+| `yagni` | `ponytail/yagni` | actionable |
+| `shrink` | `ponytail/shrink` | advisory |
+
+The exact lean signal `Lean already. Ship.` must be the sole semantic output to
+complete the sub-pass with no finding. An empty response, or that signal mixed
+with a finding, is malformed and incomplete. A missing required native skill
+is unavailable. Malformed, unbounded, unknown-tag, or out-of-scope output is
+incomplete; discard every candidate finding from that response rather than
+salvaging a partial result. Scope identity drift is blocked: mark the check
+coverage incomplete, add one skip for the same check with `effect: blocked`,
+and discard every candidate finding. Preserve these states in this
+specialist's outcome and verdict.
+
+On Cursor, do not invoke Ponytail. Record `ponytail-review-native` as a
+non-required check with `selected_scope: none` and `completion: skipped`; add
+no skip record, no finding, and no clean-verdict limitation for this
+not-applicable host. Treat an unknown host as unavailable required coverage.
+
+For a transition run that began before the native plugin could load, require
+the exact `explicit-pre-plugin-transition-request` selector before this skill
+starts, then use only the contract's pinned source commit and path. Record one
+required, completed, changed-scope coverage check named
+`ponytail-review-published-contract` and do not claim native invocation. The
+pre-start selector is the caller's authoritative transition assertion; no
+later missing-skill observation can create it. Host availability takes
+precedence, so Cursor remains not applicable and an unknown host remains
+unavailable even when the selector is present. The transition has zero native
+invocations and exactly one published-contract check. Do not represent it as a
+skip.
+
+Persist only normalized coverage and findings. Do not retain raw Ponytail
+output or its net-line score.
+
+### 8. Revalidate scope
 
 After commands that may refresh repository metadata or ordinary Jujutsu
 snapshot state, invoke `resolve-change-scope` again with the same request.
 Require the same scope identity, comparison identities, path inventory, and
 diff digest.
 
+This is an integrity comparison, not a replacement scope. Ponytail never
+invokes the resolver, and all accepted Ponytail evidence remains attributed to
+the originally supplied object.
+
 If revalidation differs, discard any clean conclusion and return blocked with
 integrity evidence. Do not attribute diagnostics from one scope to another.
 
-### 8. Normalize the common result
+### 9. Normalize the common result
 
 Return exactly one v1 review-result envelope. Use stable finding IDs from the
 common contract. Sort coverage checks, findings, skips, commands, and
@@ -200,8 +264,9 @@ clean verdict through incomplete coverage.
 Return exactly one common v1 review-result envelope for
 `review-project-quality`. Include the supplied scope and standards identities,
 applicability, outcome, owned coverage, normalized findings, explicit skips,
-sanitized command evidence, counts, and the specialist verdict. Never return
-only a conversational pass/fail.
+sanitized command evidence, the normalized Ponytail sub-pass, counts, and the
+specialist verdict. Never return only a conversational pass/fail or a separate
+fifth reviewer result.
 
 ## Quick Reference
 
@@ -213,13 +278,21 @@ only a conversational pass/fail.
 | Full check reports unrelated failures | Keep them in command evidence, not findings |
 | Full check aborts before changed paths | Mark coverage and outcome incomplete |
 | Type checker is configured | Inventory provenance and delegate execution |
+| Required host has native Ponytail | Invoke once in diff mode inside this result |
+| Ponytail reports `Lean already. Ship.` | Complete the sub-pass with no finding |
+| Required native Ponytail is missing | Mark its coverage unavailable |
+| Ponytail output is malformed or exceeds scope | Mark its coverage incomplete |
+| Cursor host | Mark Ponytail not applicable |
+| Unknown host | Mark required Ponytail coverage unavailable |
+| Pinned transition run | Record completed published-contract coverage; no native claim |
 | Scope identity changes after a command | Block; discard the prior conclusion |
 
 ## Boundaries
 
 This skill is report-only. Never edit tracked files, install tools, add
-suppressions, widen scope, or retain raw output, absolute paths, credentials,
-sessions, trust state, or generated plugin state.
+suppressions, widen scope, invoke Ponytail against a second scope, or retain
+raw output, net-line scores, absolute paths, credentials, sessions, trust
+state, or generated plugin state.
 
 ## Common Mistakes
 
@@ -229,6 +302,10 @@ sessions, trust state, or generated plugin state.
   require changed-path or change-attribution evidence.
 - Installing a missing checker to finish quickly. Record it as unavailable.
 - Running the Python type checker here. Inventory it, then delegate.
+- Returning Ponytail as a fifth reviewer or supplemental sidecar. Normalize
+  its single sub-pass inside `review-project-quality`.
+- Treating a pinned contract as a native invocation or a general fallback.
+  The transition is bounded to the pre-existing run encoded by the contract.
 - Calling a nonzero violation-reporting exit unavailable. It completed when it
   produced trustworthy diagnostics.
 - Returning clean after truncated output, partial scope, unknown
@@ -244,5 +321,7 @@ sessions, trust state, or generated plugin state.
   appropriateness review.
 - `review-project-tests` owns test design and behavioral coverage.
 - `review-python-types` owns Python type-check execution and findings.
+- Provider-owned `ponytail-review` supplies the bounded simplicity sub-pass;
+  this skill owns its invocation and normalization.
 - `conduct-self-review` composes specialist results and computes the aggregate
   verdict.
