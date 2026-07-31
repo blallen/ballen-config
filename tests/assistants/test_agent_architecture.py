@@ -52,6 +52,24 @@ class VersionReview(TypedDict):
     reviewed_on: str
 
 
+PYDANTIC_AI_REVIEW: VersionReview = {
+    "product": "PydanticAI",
+    "package": "pydantic-ai-slim",
+    "version": "2.18.0",
+    "primary_source": "https://ai.pydantic.dev/install/#slim-install",
+    "release_history": "https://github.com/pydantic/pydantic-ai/releases",
+    "reviewed_on": "2026-07-31",
+}
+SUBAGENTS_PYDANTIC_AI_REVIEW: VersionReview = {
+    "product": "subagents-pydantic-ai",
+    "package": "subagents-pydantic-ai",
+    "version": "0.2.7",
+    "primary_source": "https://github.com/vstorm-co/subagents-pydantic-ai#readme",
+    "release_history": "https://github.com/vstorm-co/subagents-pydantic-ai/releases",
+    "reviewed_on": "2026-07-31",
+}
+
+
 class SourceRecord(TypedDict):
     """Disposition of one source document."""
 
@@ -676,3 +694,107 @@ def test_isolation_matrix_covers_every_delegation_dimension(repo_root: Path) -> 
         assert f"| {dimension} |" in text
     assert "orthogonal choices" in text
     assert "Director/Act/Scene placement" in text
+
+
+PYDANTIC_AI_PROFILE_DOCUMENTS = (
+    "reference-profiles/pydantic-ai/README.md",
+    "reference-profiles/pydantic-ai/construction.md",
+    "reference-profiles/pydantic-ai/services-and-dependencies.md",
+    "reference-profiles/pydantic-ai/tools-and-capabilities.md",
+)
+
+
+@pytest.mark.parametrize("relative_path", PYDANTIC_AI_PROFILE_DOCUMENTS)
+def test_pydantic_ai_profile_is_conditional_and_normative(
+    repo_root: Path,
+    relative_path: str,
+) -> None:
+    """Keep framework guidance conditional while explaining every rule."""
+    text = read_document(repo_root, relative_path)
+    assert_document_shape(text)
+    assert "Conditional reference profile" in text
+    assert_explained_normative_rules(text)
+
+
+def test_pydantic_ai_profile_records_exact_version_reviews(repo_root: Path) -> None:
+    """Tie version-sensitive guidance to the reviewed Plato lock snapshot."""
+    documents = load_provenance(repo_root)["documents"]
+    for relative_path in PYDANTIC_AI_PROFILE_DOCUMENTS:
+        record = documents[relative_path]
+        assert record["evidence_paths"] == ["uv.lock"]
+        expected_reviews = [PYDANTIC_AI_REVIEW]
+        if relative_path.endswith("tools-and-capabilities.md"):
+            expected_reviews.append(SUBAGENTS_PYDANTIC_AI_REVIEW)
+        assert record["version_reviews"] == expected_reviews
+
+
+def test_pydantic_ai_profile_defines_adoption_boundary(repo_root: Path) -> None:
+    """State when the profile applies and which rules remain authoritative."""
+    text = read_document(repo_root, "reference-profiles/pydantic-ai/README.md")
+    for phrase in (
+        "pydantic-ai-slim 2.18.0",
+        "subagents-pydantic-ai 0.2.7",
+        "Reviewed on 2026-07-31",
+        "framework-neutral core",
+        "Repository configuration takes precedence",
+        "## References",
+    ):
+        assert phrase in text
+
+
+def test_pydantic_ai_construction_has_explicit_configuration_seams(
+    repo_root: Path,
+) -> None:
+    """Separate stable construction from intentional runtime variation."""
+    text = read_document(repo_root, "reference-profiles/pydantic-ai/construction.md")
+    for phrase in (
+        "startup-fixed",
+        "dynamic factory",
+        "model and provider",
+        "structured result",
+        "construction-time",
+        "run-time",
+        "exception translation",
+        "test seam",
+    ):
+        assert phrase in text
+
+
+def test_pydantic_ai_services_define_dependency_lifecycle(repo_root: Path) -> None:
+    """Keep framework mechanics behind typed service boundaries."""
+    text = read_document(
+        repo_root,
+        "reference-profiles/pydantic-ai/services-and-dependencies.md",
+    )
+    for phrase in (
+        "RunContext",
+        "typed dependency container",
+        "public service function",
+        "dynamic construction",
+        "clone or map",
+        "mutable resources",
+        "lifecycle ownership",
+    ):
+        assert phrase in text
+
+
+def test_pydantic_ai_tools_define_scoped_delegation(repo_root: Path) -> None:
+    """Cover typed tools and reviewed dynamic-subagent behavior."""
+    text = read_document(
+        repo_root,
+        "reference-profiles/pydantic-ai/tools-and-capabilities.md",
+    )
+    for phrase in (
+        "typed tool arguments",
+        "sequential execution",
+        "scoped toolsets",
+        "capability grants",
+        "separate child run",
+        "parent message history",
+        "dependency cloning",
+        "resource-sharing policy",
+        "Cancellation",
+        "Retry",
+        "result collection",
+    ):
+        assert phrase in text
