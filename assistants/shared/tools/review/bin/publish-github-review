@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eu
+tool_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
+cache_root=${XDG_CACHE_HOME:-"$HOME/.cache"}
+export UV_PROJECT_ENVIRONMENT="$cache_root/ballen-config/review-tools"
+exec uv run --frozen --project "$tool_root" publish-github-review "$@"
