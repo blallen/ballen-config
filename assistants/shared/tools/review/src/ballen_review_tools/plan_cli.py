@@ -7,8 +7,12 @@ import subprocess
 import tempfile
 from collections.abc import Sequence
 from pathlib import Path
+from urllib.parse import urlsplit
 
-from ballen_review_tools.canonical import canonical_digest, source_digest
+from ballen_review_tools.canonical import (
+    canonical_digest,
+    source_digest_bytes,
+)
 from ballen_review_tools.markdown import parse_review_markdown
 from ballen_review_tools.models import ReviewCommentPlan, ReviewIdentity
 from ballen_review_tools.workspace import validate_workspace
@@ -30,6 +34,56 @@ class GitWorkspaceProbe:
             check=False,
         )
         return result.returncode == 0
+
+    def _capture(self, *arguments: str) -> str | None:
+        """Return one bounded Git value without exposing command output."""
+        result = subprocess.run(
+            ["git", "-C", str(self._repo_root), *arguments],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            text=True,
+        )
+        if result.returncode != 0:
+            return None
+        value = result.stdout.strip()
+        return value or None
+
+    def current_head(self) -> str | None:
+        """Return the exact checked-out commit when Git can prove it."""
+        return self._capture("rev-parse", "--verify", "HEAD")
+
+    def remote_identity(self) -> tuple[str, str] | None:
+        """Return the origin host and repository path when available."""
+        remote = self._capture("remote", "get-url", "origin")
+        if remote is None:
+            return None
+        if remote.startswith("git@") and ":" in remote:
+            host, path = remote[4:].split(":", 1)
+        else:
+            parsed = urlsplit(remote)
+            remote_host = parsed.hostname
+            path = parsed.path
+            if remote_host is None:
+                return None
+            host = remote_host
+        return host, path.strip("/").removesuffix(".git")
+
+    def identity_matches(self, identity: ReviewIdentity) -> tuple[bool, str]:
+        """Bind provider identity and expected head to this checkout."""
+        remote = self.remote_identity()
+        if remote is None:
+            return False, "repository origin identity cannot be verified"
+        host, repository = remote
+        expected_repository = identity.repository.removesuffix(".git")
+        if host != identity.host or not (
+            repository == expected_repository
+            or repository.endswith(f"/{expected_repository}")
+        ):
+            return False, "repository origin does not match review identity"
+        if self.current_head() != identity.head_revision:
+            return False, "checked-out head does not match review identity"
+        return True, ""
 
     def is_ignored(self, relative: Path) -> bool:
         """Return whether Git ignores a path."""
@@ -107,20 +161,27 @@ def _write_json(path: Path, payload: object) -> None:
 def _compile_review(args: argparse.Namespace) -> int:
     """Compile a Markdown draft after safe-workspace preflight."""
     identity = ReviewIdentity.model_validate(_read_json(args.identity))
-    draft_text = args.draft.read_text(encoding="utf-8")
+    draft_bytes = args.draft.read_bytes()
+    draft_text = draft_bytes.decode("utf-8")
+    probe = GitWorkspaceProbe(args.repo_root)
+    identity_safe, identity_reason = probe.identity_matches(identity)
+    if not identity_safe:
+        raise ValueError(identity_reason)
     check = validate_workspace(
         repo_root=args.repo_root,
         destination=args.output.parent,
         proposed_file=args.output,
-        probe=GitWorkspaceProbe(args.repo_root),
+        probe=probe,
     )
     if not check.safe:
         raise ValueError(check.reason)
+    parsed = parse_review_markdown(draft_text, identity=identity)
     plan = ReviewCommentPlan(
         contract_version="review-comment-plan/v1",
         identity=identity,
-        source_draft_digest=source_digest(args.draft),
-        actions=parse_review_markdown(draft_text, identity=identity),
+        source_draft_digest=source_digest_bytes(draft_bytes),
+        actions=parsed.actions,
+        diagnostics=parsed.diagnostics,
     )
     _write_json(args.output, plan.model_dump(mode="json"))
     return 0
