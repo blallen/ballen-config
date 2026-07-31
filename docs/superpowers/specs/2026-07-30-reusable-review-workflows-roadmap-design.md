@@ -12,9 +12,10 @@ requests 6 through 9 and elaborates the review-related roadmap in the
 [Plato reusable skills detailed design](2026-07-28-plato-reusable-skills-design.md).
 The review-foundation train is refined by the approved
 [review foundation detailed design](2026-07-30-review-foundation-design.md).
-The forge review and response train is refined by the section-approved
-[forge review and response detailed design](2026-07-30-forge-review-response-design.md),
-which awaits written-spec review before implementation planning.
+The forge review and response train is refined by the approved
+[forge review and response detailed design](2026-07-30-forge-review-response-design.md)
+and its executable
+[implementation plan](../plans/2026-07-30-forge-review-response.md).
 
 ## Purpose
 
