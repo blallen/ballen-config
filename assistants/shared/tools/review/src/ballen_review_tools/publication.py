@@ -41,8 +41,25 @@ def _remote_state_digest(state: GitHubRemoteState) -> str:
             "head_sha": state.head_sha,
             "review_comments": [asdict(item) for item in state.review_comments],
             "issue_comments": [asdict(item) for item in state.issue_comments],
+            "valid_locations": sorted(state.valid_locations),
         }
     )
+
+
+def _current_location_valid(action: ReviewAction, state: GitHubRemoteState) -> bool:
+    """Return whether an inline action targets the current GitHub diff."""
+    if action.kind != "inline" or action.path is None or action.line is None:
+        return True
+    location = (action.path.as_posix(), action.line, action.side or "")
+    if location not in state.valid_locations:
+        return False
+    if action.start_line is None or action.start_side is None:
+        return True
+    return (
+        action.path.as_posix(),
+        action.start_line,
+        action.start_side,
+    ) in state.valid_locations
 
 
 def _remote_duplicate(action: ReviewAction, state: GitHubRemoteState) -> bool:
@@ -132,6 +149,16 @@ def preview_github_publication(
                     deduplication_key=action.deduplication_key,
                     state="blocked",
                     reason="remote head does not match plan head",
+                )
+            )
+            continue
+        if not _current_location_valid(action, state):
+            items.append(
+                PublicationItemPreview(
+                    action_id=action.action_id,
+                    deduplication_key=action.deduplication_key,
+                    state="blocked",
+                    reason="inline location is not present in the current diff",
                 )
             )
             continue
