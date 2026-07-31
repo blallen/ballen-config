@@ -1,0 +1,25 @@
+{
+  "contract_version": "review-response-plan/v1",
+  "identity": {
+    "provider": "github",
+    "host": "github.com",
+    "repository": "acme/ballen-config",
+    "change_number": 17,
+    "base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "head_revision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "source_threads_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "observed_head": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "items": [
+    {
+      "thread_id": "T001",
+      "classification": "actionable",
+      "evaluation": "The feedback is technically valid.",
+      "evidence": "The current branch still dereferences an empty result.",
+      "proposed_changes": ["Guard the empty result before iteration."],
+      "proposed_response": "I will add the guard and run the focused tests.",
+      "verification": ["focused unit test for the empty result"],
+      "selected_action": "propose-change"
+    }
+  ]
+}
