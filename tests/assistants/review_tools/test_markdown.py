@@ -72,6 +72,29 @@ def test_parser_supports_tilde_fences() -> None:
     assert [action.action_id for action in parsed.actions] == ["R001", "R002"]
 
 
+def test_parser_reports_an_unclosed_fence() -> None:
+    """Preserve incomplete coverage when a fence remains open at EOF."""
+    draft = """### R001: Explain the parser
+
+**Type:** general
+**POST:** YES
+
+```markdown
+### R002: This heading is swallowed by the open fence
+
+**Type:** general
+**POST:** YES
+
+This coverage cannot be classified safely.
+"""
+
+    parsed = parse_review_markdown(draft, identity=IDENTITY)
+
+    assert parsed.actions == ()
+    assert [diagnostic.action_id for diagnostic in parsed.diagnostics] == ["R001"]
+    assert "unclosed fenced block" in parsed.diagnostics[0].reason
+
+
 def test_parser_reports_all_malformed_sections() -> None:
     """Retain bounded diagnostics instead of stopping at the first error."""
     draft = """### R001: Missing line
