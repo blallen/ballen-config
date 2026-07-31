@@ -1,6 +1,7 @@
 """Managed installation contribution for shared review tooling."""
 
 from pathlib import Path
+from typing import Final
 
 from ballen_config.configure import (
     ConfigurationContribution,
@@ -8,8 +9,8 @@ from ballen_config.configure import (
     digest_tree,
 )
 
-_SUPPORTED_AGENTS = frozenset({"cursor", "claude-code", "codex"})
-_SOURCE = Path("assistants/shared/tools/review")
+_SUPPORTED_AGENTS: Final[frozenset[str]] = frozenset({"cursor", "claude-code", "codex"})
+_SOURCE: Final[Path] = Path("assistants/shared/tools/review")
 
 
 def review_tools_contribution(

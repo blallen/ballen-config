@@ -64,6 +64,12 @@ def test_inline_action_rejects_unsafe_relative_path(path: str) -> None:
         _inline_action(path=path)
 
 
+def test_inline_action_rejects_a_non_path_input() -> None:
+    """Return a bounded validation error for malformed JSON path values."""
+    with pytest.raises(ValidationError, match="string or POSIX path"):
+        _inline_action(path=17)
+
+
 def test_inline_action_rejects_missing_location() -> None:
     """Require a logical location for inline review actions."""
     with pytest.raises(ValidationError, match="line"):
