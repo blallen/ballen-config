@@ -87,6 +87,23 @@ def test_symlinked_workspace_is_blocked(tmp_path: Path) -> None:
         )
 
 
+def test_noncanonical_workspace_path_is_blocked(tmp_path: Path) -> None:
+    """Reject dot-segment traversal before repository-state probes run."""
+    repo = tmp_path / "repo"
+    workspace = repo / ".reviews"
+    nested = workspace / "nested"
+    nested.mkdir(parents=True)
+    proposed = nested / ".." / "review-plan.json"
+
+    with pytest.raises(ValueError, match="canonical"):
+        validate_workspace(
+            repo_root=repo,
+            destination=workspace,
+            proposed_file=proposed,
+            probe=FakeWorkspaceProbe(),
+        )
+
+
 def test_tracked_workspace_is_blocked(tmp_path: Path) -> None:
     """Refuse a tracked review artifact even when the directory is ignored."""
     repo = tmp_path / "repo"

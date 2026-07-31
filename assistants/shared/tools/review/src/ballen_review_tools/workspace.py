@@ -31,6 +31,8 @@ class WorkspaceCheck:
 
 def _relative_path(repo_root: Path, candidate: Path) -> Path:
     """Return a path relative to the repository without following links."""
+    if any(component in {".", ".."} for component in candidate.parts):
+        raise ValueError("workspace path must be canonical")
     root = repo_root.absolute()
     absolute = candidate.absolute()
     try:
