@@ -131,8 +131,8 @@ destinations:
       - Product and repository names
       - Domain-specific worked examples
       - Concrete package and class APIs
-    semantic_review: pending
-    privacy_review: pending
+    semantic_review: passed
+    privacy_review: passed
   - id: data-layer
     path: assistants/shared/mechanistic-modeling/data-layer.md
     kind: layer
@@ -151,8 +151,8 @@ destinations:
       - Field and container declarations
       - Validation-library mechanics
       - Concrete identifiers and naming formats
-    semantic_review: pending
-    privacy_review: pending
+    semantic_review: passed
+    privacy_review: passed
   - id: runtime-layer
     path: assistants/shared/mechanistic-modeling/runtime-layer.md
     kind: layer
@@ -171,8 +171,8 @@ destinations:
       - Expression-evaluator source code
       - Concrete math libraries and built-ins
       - Performance thresholds and cache APIs
-    semantic_review: pending
-    privacy_review: pending
+    semantic_review: passed
+    privacy_review: passed
   - id: composition-layer
     path: assistants/shared/mechanistic-modeling/composition-layer.md
     kind: layer
@@ -193,8 +193,8 @@ destinations:
       - Concrete event and protocol classes
       - Numerical-solver libraries and tolerances
       - Legacy conversion and cutover behavior
-    semantic_review: pending
-    privacy_review: pending
+    semantic_review: passed
+    privacy_review: passed
   - id: validation-boundaries
     path: assistants/shared/mechanistic-modeling/validation-boundaries.md
     kind: validation
@@ -217,10 +217,10 @@ destinations:
       - Domain-specific acceptance thresholds
       - Concrete exception classes
       - Product delivery and migration gates
-    semantic_review: pending
-    privacy_review: pending
+    semantic_review: passed
+    privacy_review: passed
 review:
   portability: portable_after_adaptation
-  semantic: pending
-  privacy: pending
-  approved_on: null
+  semantic: passed
+  privacy: passed
+  approved_on: "2026-07-31"

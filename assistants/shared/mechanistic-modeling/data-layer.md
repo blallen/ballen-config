@@ -80,8 +80,8 @@ part of the model's interpretability, not a transient runtime annotation.
 Extraction provenance serves a different purpose: it audits how this generic
 reference library was adapted from its sources. Extraction provenance does not
 travel with a scientific model. Both forms require privacy review, and neither
-should expose credentials, confidential source content, private local paths,
-or uncurated research material.
+should expose access secrets, confidential source content, private local
+paths, or uncurated research material.
 
 ## Derived Views
 
