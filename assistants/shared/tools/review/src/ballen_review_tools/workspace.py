@@ -68,6 +68,20 @@ def validate_workspace(
     """
     destination_relative = _relative_path(repo_root, destination)
     proposed_relative = _relative_path(repo_root, proposed_file)
+    if destination_relative == Path("."):
+        return WorkspaceCheck(
+            False, "workspace destination must not be repository root"
+        )
+    destination_absolute = destination.absolute()
+    proposed_absolute = proposed_file.absolute()
+    if proposed_absolute == destination_absolute:
+        return WorkspaceCheck(
+            False, "proposed file must be below workspace destination"
+        )
+    try:
+        proposed_absolute.relative_to(destination_absolute)
+    except ValueError:
+        return WorkspaceCheck(False, "proposed file is outside workspace destination")
     if not destination.exists():
         return WorkspaceCheck(False, "workspace destination does not exist")
     if not destination.is_dir():

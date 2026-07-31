@@ -1,6 +1,7 @@
 """Tests for installing the shared review-tool tree."""
 
 from pathlib import Path
+from stat import S_IXUSR
 
 from ballen_config.assistants.review_tools import review_tools_contribution
 from ballen_config.configure import ManagedTreeSpec, digest_tree
@@ -30,3 +31,12 @@ def test_review_tools_use_one_shared_managed_tree(repo_root: Path) -> None:
     assert spec.id == "shared-review-tools"
     assert spec.destination == Path(".local/share/ballen-config/review-tools")
     assert spec.expected_source_digest == digest_tree(source)
+
+
+def test_review_plan_launcher_is_executable(
+    repo_root: Path,
+) -> None:
+    """Keep the managed launcher executable in a source-controlled tree."""
+    launcher = repo_root / "assistants/shared/tools/review/bin/review-plan"
+
+    assert launcher.stat().st_mode & S_IXUSR
