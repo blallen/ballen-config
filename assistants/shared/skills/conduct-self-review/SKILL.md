@@ -50,6 +50,11 @@ Accept:
 - a scope request supported by `resolve-change-scope`; and
 - optional repository-relative `artifact_directory`.
 
+A caller-created `ChangeScope` is not authoritative orchestration input. When
+one is supplied as context, still require a supported scope request and invoke
+the resolver exactly once; never substitute or reuse the caller-created
+object.
+
 When no scope selector is supplied, request current-change mode. For stable
 post-checkpoint evidence, accept an explicit base and target. Do not silently
 replace current mode with a branch, `main`, a staging-only view, or an inferred
@@ -94,6 +99,10 @@ selector. Retain the exact v1 object in memory, including live reviewable
 content, immutable comparison identities, repository identity, path
 inventory, coverage, diagnostics, diff digest, and `scope_identity`.
 
+This is exactly one authoritative scope creation. A specialist may perform an
+integrity-only revalidation required by its own contract using the same
+request, but it cannot create, replace, or widen the authoritative scope.
+
 Do not let a specialist resolve a replacement scope. If the scope is partial,
 allow only explicitly bounded analysis of reviewable entries and preserve the
 partial coverage. If it is blocked, continue to standards discovery for the
@@ -135,6 +144,10 @@ Supply the identical in-memory `ChangeScope`, `scope_identity`, standards
 inventory, and `standards_inventory_ref` to every call. A specialist validates
 the supplied inputs but does not replace them.
 
+`review-project-quality` owns and normalizes one Ponytail simplicity sub-pass
+inside its common result. Do not invoke Ponytail as a fifth specialist, add a
+fifth reviewer record, or rerun it during aggregation.
+
 Require exactly one common v1 result from every specialist. Retain
 evidence-backed `not_applicable` results. Preserve unknown applicability,
 incomplete analysis, missing tools, skips, and blocked work without converting
@@ -148,6 +161,10 @@ when every reviewer is accounted for and all other clean preconditions hold.
 
 Each specialist owns only its declared commands. In particular,
 `review-python-types` is the sole owner of Python type-check execution.
+
+Apply the same single-owner rule to Ponytail even though its invocation is not
+shell-command evidence. Accept Ponytail coverage and findings only through the
+`review-project-quality` result; do not invoke or normalize it again.
 
 Before accepting duplicate command evidence, compare invocation identity,
 provenance, selected scope, completion, and semantic content. Reuse an exact
@@ -294,6 +311,7 @@ not a signed result and not permission to edit findings.
 | Scope is partial | Review bounded content; aggregate cannot be clean |
 | Reviewer is not applicable | Retain its evidence-backed result |
 | Required reviewer or tool unavailable | Preserve it; overall verdict is unavailable |
+| Quality result contains Ponytail coverage | Preserve it inside quality; keep four reviewers |
 | Duplicate finding evidence | Deduplicate exact semantic match and retain contributors |
 | Similar finding with different reasoning | Keep both findings |
 | Artifact path exists | Never overwrite; choose a later timestamp or fail |
@@ -321,6 +339,8 @@ project paths, histories, caches, indexes, or generated plugin state.
 - Deduplicating by path alone and losing materially different reasoning.
 - Dropping contributing reviewers from a true duplicate.
 - Letting quality review and type review both execute the type checker.
+- Invoking Ponytail directly as a fifth reviewer or rerunning its quality
+  sub-pass during aggregation.
 - Writing a prose-only report without the exact marker, JSON, and hashes.
 - Overwriting the prior artifact or treating the latest file as implicit input.
 - Returning a computed clean verdict after persistence failed.
