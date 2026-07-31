@@ -3,24 +3,29 @@
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass
+from typing import Final
 
 from ballen_review_tools.canonical import deduplication_key
 from ballen_review_tools.models import ReviewAction, ReviewDiagnostic, ReviewIdentity
 
-_HEADING = re.compile(r"^###\s+([A-Za-z0-9][A-Za-z0-9._-]*):\s+(.+?)\s*$")
-_FIELD = re.compile(r"^\*\*([^*]+):\*\*\s*(.*?)\s*$")
-_KNOWN_FIELDS = {
-    "Type",
-    "File",
-    "Line",
-    "Side",
-    "Start line",
-    "Start side",
-    "Discussion",
-    "Thread",
-    "POST",
-}
-_FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
+_HEADING: Final[re.Pattern[str]] = re.compile(
+    r"^###\s+([A-Za-z0-9][A-Za-z0-9._-]*):\s+(.+?)\s*$"
+)
+_FIELD: Final[re.Pattern[str]] = re.compile(r"^\*\*([^*]+):\*\*\s*(.*?)\s*$")
+_KNOWN_FIELDS: Final[frozenset[str]] = frozenset(
+    {
+        "Type",
+        "File",
+        "Line",
+        "Side",
+        "Start line",
+        "Start side",
+        "Discussion",
+        "Thread",
+        "POST",
+    }
+)
+_FENCE: Final[re.Pattern[str]] = re.compile(r"^ {0,3}(`{3,}|~{3,})")
 
 
 @dataclass(frozen=True)
@@ -71,6 +76,16 @@ def _sections(lines: list[str]) -> Iterable[tuple[str, list[str], str | None]]:
                 continue
         if current_id is not None:
             current_lines.append(line)
+    if fence_character is not None:
+        unclosed_fence = "unclosed fenced block"
+        if current_id is None:
+            yield "document", [], unclosed_fence
+            return
+        heading_error = (
+            unclosed_fence
+            if heading_error is None
+            else f"{heading_error}; {unclosed_fence}"
+        )
     if current_id is not None:
         yield current_id, current_lines, heading_error
 

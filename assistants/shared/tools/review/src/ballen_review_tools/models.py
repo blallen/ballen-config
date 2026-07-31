@@ -72,11 +72,16 @@ class ReviewAction(BaseModel):
 
     @field_validator("path", mode="before")
     @classmethod
-    def _validate_path(cls, value: str | PurePosixPath | None) -> PurePosixPath | None:
+    def _validate_path(cls, value: object) -> PurePosixPath | None:
         """Require repository-relative POSIX paths when present."""
         if value is None:
             return None
-        raw = value if isinstance(value, str) else value.as_posix()
+        if isinstance(value, str):
+            raw = value
+        elif isinstance(value, PurePosixPath):
+            raw = value.as_posix()
+        else:
+            raise ValueError("path must be a string or POSIX path")
         if (
             not raw
             or raw == "."
