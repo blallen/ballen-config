@@ -589,3 +589,90 @@ def test_anti_patterns_pair_symptoms_with_reasons_and_remedies(
     assert text.count("Symptom:") == len(expected_patterns)
     assert text.count("Why it fails:") == len(expected_patterns)
     assert text.count("Remedy:") == len(expected_patterns)
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    (
+        "delegation/agent-as-tool.md",
+        "delegation/dynamic-subagents.md",
+        "delegation/isolation-matrix.md",
+    ),
+)
+def test_delegation_documents_are_normative(
+    repo_root: Path,
+    relative_path: str,
+) -> None:
+    """Require explained static, dynamic, and isolation contracts."""
+    text = read_document(repo_root, relative_path)
+    assert_document_shape(text)
+    assert_explained_normative_rules(text)
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    ("delegation/agent-as-tool.md", "delegation/dynamic-subagents.md"),
+)
+def test_delegation_requires_explicit_context_and_authority_mapping(
+    repo_root: Path,
+    relative_path: str,
+) -> None:
+    """Prevent implicit inheritance across delegated runs."""
+    text = read_document(repo_root, relative_path)
+    assert "message history is not inherited" in text
+    assert "dependencies are not inherited" in text
+    assert "resources are not inherited" in text
+    assert "permissions are not inherited" in text
+
+
+def test_agent_as_tool_keeps_static_specialist_boundary(repo_root: Path) -> None:
+    """Define fixed typed delegation without inflating architecture level."""
+    text = read_document(repo_root, "delegation/agent-as-tool.md")
+    for phrase in (
+        "predeclared specialist",
+        "typed tool boundary",
+        "structured output",
+        "timeout",
+        "cancellation",
+        "error translation",
+        "does not make the parent an Orchestrator",
+    ):
+        assert phrase in text
+
+
+def test_dynamic_subagents_define_runtime_lifecycle(repo_root: Path) -> None:
+    """Define runtime worker creation independently of one package."""
+    text = read_document(repo_root, "delegation/dynamic-subagents.md")
+    for phrase in (
+        "runtime creation or selection",
+        "independent run identity",
+        "context mapping",
+        "capability grants",
+        "Concurrency",
+        "Cancellation",
+        "Retry",
+        "Persistence",
+    ):
+        assert phrase in text
+
+
+def test_isolation_matrix_covers_every_delegation_dimension(repo_root: Path) -> None:
+    """Compare explicit defaults for static and dynamic delegation."""
+    text = read_document(repo_root, "delegation/isolation-matrix.md")
+    for dimension in (
+        "Instructions",
+        "Message history",
+        "Input",
+        "Output",
+        "Dependencies",
+        "Shared resources",
+        "Tools",
+        "Permissions",
+        "Lifecycle",
+        "Persistence",
+        "Cancellation",
+        "Errors",
+    ):
+        assert f"| {dimension} |" in text
+    assert "orthogonal choices" in text
+    assert "Director/Act/Scene placement" in text
