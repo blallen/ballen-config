@@ -2,8 +2,9 @@
 
 ## Status
 
-Detailed design approved section by section on July 30, 2026. The written
-specification awaits final user review before implementation planning begins.
+Detailed design and written specification approved on July 30, 2026.
+Implementation is governed by the
+[forge review and response plan](../plans/2026-07-30-forge-review-response.md).
 
 This document refines the forge review and response train in the
 [reusable review workflows roadmap](2026-07-30-reusable-review-workflows-roadmap-design.md).

@@ -14,9 +14,10 @@ The review-foundation train is implemented by the shared review skills and
 their contract references. The
 [self-review artifact split design](2026-09-24-self-review-artifact-split-design.md)
 revises its artifact layout.
-The forge review and response train is refined by the section-approved
-[forge review and response detailed design](2026-07-30-forge-review-response-design.md),
-which awaits written-spec review before implementation planning.
+The forge review and response train is refined by the approved
+[forge review and response detailed design](2026-07-30-forge-review-response-design.md)
+and its executable
+[implementation plan](../plans/2026-07-30-forge-review-response.md).
 
 ## Purpose
 
