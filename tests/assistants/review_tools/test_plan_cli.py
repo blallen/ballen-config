@@ -118,3 +118,74 @@ def test_compile_review_binds_one_draft_byte_snapshot(tmp_path: Path) -> None:
 
     assert artifact["source_draft_digest"] == source_digest_bytes(draft_bytes)
     assert artifact["diagnostics"] == []
+
+
+def test_compile_response_writes_only_a_validated_plan(tmp_path: Path) -> None:
+    """Compile normalized feedback without constructing mutation tooling."""
+    repo = tmp_path / "repo"
+    head = _git_repository(repo)
+    workspace = repo / ".reviews"
+    workspace.mkdir()
+    threads = repo / "threads.json"
+    threads.write_text(
+        json.dumps(
+            {
+                "contract_version": "normalized-review-threads/v1",
+                "identity": {
+                    "provider": "github",
+                    "host": "github.com",
+                    "repository": "ballen-config",
+                    "change_number": 17,
+                    "base_revision": "a" * 40,
+                    "head_revision": head,
+                },
+                "observed_head": head,
+                "limitations": [],
+                "threads": [
+                    {
+                        "thread_id": "T001",
+                        "comment_ids": ["C001"],
+                        "state": "open",
+                        "author": "reviewer",
+                        "body": "Guard the empty case.",
+                        "chronology": ["C001"],
+                    }
+                ],
+            }
+        )
+    )
+    draft = repo / "response.md"
+    draft.write_text(
+        """### T001: Guard the empty case
+
+**Classification:** actionable
+**Selected action:** propose-change
+**Evaluation:** The feedback is valid.
+**Evidence:** The empty result is dereferenced.
+**Proposed changes:** Add a guard.
+**Proposed response:** I will add the guard.
+**Verification:** focused test
+"""
+    )
+    output = workspace / "response-plan.json"
+
+    assert (
+        main(
+            [
+                "compile-response",
+                "--threads",
+                str(threads),
+                "--draft",
+                str(draft),
+                "--output",
+                str(output),
+                "--repo-root",
+                str(repo),
+            ]
+        )
+        == 0
+    )
+    artifact = json.loads(output.read_text())
+
+    assert artifact["contract_version"] == "review-response-plan/v1"
+    assert artifact["items"][0]["selected_action"] == "propose-change"

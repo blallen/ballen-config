@@ -13,12 +13,14 @@ from ballen_review_tools.canonical import (
     canonical_digest,
     source_digest_bytes,
 )
-from ballen_review_tools.markdown import parse_review_markdown
+from ballen_review_tools.markdown import parse_response_markdown, parse_review_markdown
 from ballen_review_tools.models import (
+    NormalizedReviewThreads,
     PublicationPreview,
     PublicationReceipt,
     ReviewCommentPlan,
     ReviewIdentity,
+    ReviewResponsePlan,
 )
 from ballen_review_tools.workspace import validate_workspace
 
@@ -130,6 +132,8 @@ def _parser() -> argparse.ArgumentParser:
     digest.add_argument("--artifact", type=Path, required=True)
     validate = commands.add_parser("validate")
     validate.add_argument("--artifact", type=Path, required=True)
+    validate_threads = commands.add_parser("validate-threads")
+    validate_threads.add_argument("--threads", type=Path, required=True)
     workspace = commands.add_parser("workspace-check")
     workspace.add_argument("--repo-root", type=Path, required=True)
     workspace.add_argument("--destination", type=Path, required=True)
@@ -139,6 +143,11 @@ def _parser() -> argparse.ArgumentParser:
     compile_review.add_argument("--identity", type=Path, required=True)
     compile_review.add_argument("--output", type=Path, required=True)
     compile_review.add_argument("--repo-root", type=Path, required=True)
+    compile_response = commands.add_parser("compile-response")
+    compile_response.add_argument("--threads", type=Path, required=True)
+    compile_response.add_argument("--draft", type=Path, required=True)
+    compile_response.add_argument("--output", type=Path, required=True)
+    compile_response.add_argument("--repo-root", type=Path, required=True)
     return parser
 
 
@@ -192,6 +201,30 @@ def _compile_review(args: argparse.Namespace) -> int:
     return 0
 
 
+def _compile_response(args: argparse.Namespace) -> int:
+    """Compile a non-mutating response plan after workspace preflight."""
+    threads = NormalizedReviewThreads.model_validate(_read_json(args.threads))
+    draft_text = args.draft.read_text(encoding="utf-8")
+    check = validate_workspace(
+        repo_root=args.repo_root,
+        destination=args.output.parent,
+        proposed_file=args.output,
+        probe=GitWorkspaceProbe(args.repo_root),
+    )
+    if not check.safe:
+        raise ValueError(check.reason)
+    response = parse_response_markdown(draft_text, threads=threads)
+    plan = ReviewResponsePlan(
+        contract_version="review-response-plan/v1",
+        identity=threads.identity,
+        source_threads_digest=canonical_digest(threads.model_dump(mode="json")),
+        observed_head=threads.observed_head,
+        items=response,
+    )
+    _write_json(args.output, plan.model_dump(mode="json"))
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run one read-only planning or validation command."""
     args = _parser().parse_args(argv)
@@ -205,12 +238,20 @@ def main(argv: Sequence[str] | None = None) -> int:
         contract_version = payload.get("contract_version")
         if contract_version == "review-comment-plan/v1":
             ReviewCommentPlan.model_validate(payload)
+        elif contract_version == "normalized-review-threads/v1":
+            NormalizedReviewThreads.model_validate(payload)
+        elif contract_version == "review-response-plan/v1":
+            ReviewResponsePlan.model_validate(payload)
         elif contract_version == "publication-preview/v1":
             PublicationPreview.model_validate(payload)
         elif contract_version == "publication-receipt/v1":
             PublicationReceipt.model_validate(payload)
         else:
             raise ValueError("unsupported artifact contract")
+        print("valid")
+        return 0
+    if args.command == "validate-threads":
+        NormalizedReviewThreads.model_validate(_read_json(args.threads))
         print("valid")
         return 0
     if args.command == "workspace-check":
@@ -222,6 +263,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         print("safe" if result.safe else f"blocked: {result.reason}")
         return 0 if result.safe else 2
+    if args.command == "compile-response":
+        return _compile_response(args)
     return _compile_review(args)
 
 

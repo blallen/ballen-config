@@ -21,6 +21,15 @@ ActionOutcome = Literal[
 IntendedAction = Literal["create-inline", "create-general", "reply"]
 PublicationItemState = Literal["eligible", "duplicate", "blocked", "skipped"]
 PublicationStatus = Literal["ready", "blocked", "posted", "partial", "failed"]
+NormalizedThreadState = Literal["open", "resolved", "outdated", "missing"]
+ResponseClassification = Literal[
+    "actionable",
+    "question",
+    "discussion",
+    "resolved",
+    "informational",
+]
+ResponseAction = Literal["skip", "propose-change", "propose-response"]
 
 
 class ReviewIdentity(BaseModel):
@@ -177,6 +186,121 @@ class ReviewCommentPlan(BaseModel):
             raise ValueError("action IDs must be unique")
         if not self.actions and not self.diagnostics:
             raise ValueError("plan must contain actions or diagnostics")
+        return self
+
+
+class NormalizedThread(BaseModel):
+    """Provider-neutral view of one native review thread."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    thread_id: str = Field(min_length=1, max_length=256)
+    comment_ids: tuple[str, ...] = Field(min_length=1)
+    state: NormalizedThreadState
+    path: PurePosixPath | None = None
+    line: int | None = Field(default=None, gt=0)
+    side: ReviewSide | None = None
+    start_line: int | None = Field(default=None, gt=0)
+    start_side: ReviewSide | None = None
+    author: str = Field(min_length=1, max_length=256)
+    body: str = Field(min_length=1, max_length=10000)
+    chronology: tuple[str, ...] = Field(min_length=1)
+    limitations: tuple[str, ...] = ()
+
+    @field_validator("path", mode="before")
+    @classmethod
+    def _validate_thread_path(
+        cls, value: str | PurePosixPath | None
+    ) -> PurePosixPath | None:
+        """Require repository-relative POSIX paths when present."""
+        if value is None:
+            return None
+        raw = value if isinstance(value, str) else value.as_posix()
+        if (
+            not raw
+            or raw == "."
+            or raw.startswith("/")
+            or "\\" in raw
+            or any(part in {".", ".."} for part in raw.split("/"))
+        ):
+            raise ValueError("path must be repository-relative")
+        return PurePosixPath(raw)
+
+    @model_validator(mode="after")
+    def _validate_thread(self) -> "NormalizedThread":
+        """Keep location pairs and bounded normalization evidence coherent."""
+        if self.path is None and any(
+            value is not None
+            for value in (self.line, self.side, self.start_line, self.start_side)
+        ):
+            raise ValueError("thread location requires path")
+        if self.path is not None and (self.line is None) != (self.side is None):
+            raise ValueError("thread location requires line and side")
+        if (self.start_line is None) != (self.start_side is None):
+            raise ValueError("thread range requires both start fields")
+        if any(len(limitation) > 2000 for limitation in self.limitations):
+            raise ValueError("limitations are too long")
+        return self
+
+
+class NormalizedReviewThreads(BaseModel):
+    """Validated provider-neutral native thread observations."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    contract_version: Literal["normalized-review-threads/v1"]
+    identity: ReviewIdentity
+    observed_head: str = Field(min_length=1)
+    limitations: tuple[str, ...] = ()
+    threads: tuple[NormalizedThread, ...] = ()
+
+    @model_validator(mode="after")
+    def _validate_source(self) -> "NormalizedReviewThreads":
+        """Bind the normalized source to its provider/change head."""
+        if self.observed_head != self.identity.head_revision:
+            raise ValueError("normalized thread head does not match identity head")
+        if any(len(limitation) > 2000 for limitation in self.limitations):
+            raise ValueError("limitations are too long")
+        thread_ids = [thread.thread_id for thread in self.threads]
+        if len(thread_ids) != len(set(thread_ids)):
+            raise ValueError("thread IDs must be unique")
+        return self
+
+
+class ReviewResponseItem(BaseModel):
+    """One evaluated thread, including selected or skipped next action."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    thread_id: str = Field(min_length=1, max_length=256)
+    classification: ResponseClassification
+    evaluation: str = Field(min_length=1, max_length=4000)
+    evidence: str = Field(min_length=1, max_length=4000)
+    proposed_changes: tuple[str, ...] = ()
+    proposed_response: str | None = Field(default=None, max_length=4000)
+    verification: tuple[str, ...] = ()
+    selected_action: ResponseAction
+
+
+class ReviewResponsePlan(BaseModel):
+    """Non-mutating response plan bound to normalized thread observations."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    contract_version: Literal["review-response-plan/v1"]
+    identity: ReviewIdentity
+    source_threads_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    observed_head: str = Field(min_length=1)
+    items: tuple[ReviewResponseItem, ...] = ()
+
+    @model_validator(mode="after")
+    def _validate_response_source(self) -> "ReviewResponsePlan":
+        """Keep the response target and observed head immutable."""
+        if self.observed_head != self.identity.head_revision:
+            raise ValueError("response plan head does not match identity head")
+        item_ids = [item.thread_id for item in self.items]
+        if len(item_ids) != len(set(item_ids)):
+            raise ValueError("response thread IDs must be unique")
         return self
 
 
