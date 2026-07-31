@@ -4,9 +4,8 @@
 > repository has selected PydanticAI or a compatible integration.
 
 This profile maps the framework-neutral core to PydanticAI implementation
-choices. It does not replace the [framework-neutral core](../../core/architecture-levels.md),
-the [delegation contracts](../../delegation/isolation-matrix.md), or local
-repository policy.
+choices. It does not replace framework-neutral core requirements, delegation
+contracts, or local repository policy.
 
 ## Reviewed Versions
 
