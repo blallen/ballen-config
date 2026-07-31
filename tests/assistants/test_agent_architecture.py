@@ -468,3 +468,58 @@ def test_evaluation_separates_quality_dimensions_and_modes(repo_root: Path) -> N
         "Judge calibration",
     ):
         assert phrase in text
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    (
+        "orchestration/director-act-scene.md",
+        "orchestration/handoff-contracts.md",
+    ),
+)
+def test_orchestration_foundations_are_normative(
+    repo_root: Path,
+    relative_path: str,
+) -> None:
+    """Require explained contracts for orchestration roles and handoffs."""
+    text = read_document(repo_root, relative_path)
+    assert_document_shape(text)
+    assert_explained_normative_rules(text)
+
+
+def test_director_act_scene_keeps_primary_metaphor_and_translation(
+    repo_root: Path,
+) -> None:
+    """Translate the metaphor without replacing its primary vocabulary."""
+    text = read_document(repo_root, "orchestration/director-act-scene.md")
+    for row in (
+        "| Director | Control plane or scheduler |",
+        "| Act | Bounded stage or handoff boundary |",
+        "| Scene | Retryable step or checkpoint |",
+    ):
+        assert row in text
+    assert "orchestration responsibilities" in text
+    assert "not three independent model Agents" in text
+    assert "Capability confinement" in text
+    assert "Resumability" in text
+    assert "Gated progress" in text
+    assert "Context isolation" in text
+
+
+def test_handoff_contracts_preserve_typed_status_and_capability_boundaries(
+    repo_root: Path,
+) -> None:
+    """Require explicit entry points, envelopes, and dependencies."""
+    text = read_document(repo_root, "orchestration/handoff-contracts.md")
+    for phrase in (
+        "explicit entry point",
+        "Succeeded",
+        "Blocked",
+        "Failed",
+        "summary",
+        "artifact references",
+        "typed payload",
+        "explicitly scoped dependencies",
+        "compatibility",
+    ):
+        assert phrase in text
