@@ -331,6 +331,15 @@ documents:
     source_roles:
       docs/agent_charter/observability_logfire.md: primary
     transformation_note: Retains portable Logfire observability and privacy guidance while excluding credentials and infrastructure configuration.
+    evidence_paths:
+      - uv.lock
+    version_reviews:
+      - product: Logfire
+        package: logfire
+        version: "4.36.0"
+        primary_source: "https://pydantic.dev/docs/logfire/"
+        release_history: "https://github.com/pydantic/logfire/blob/main/CHANGELOG.md"
+        reviewed_on: "2026-07-31"
   reference-profiles/streamlit-demo-apps.md:
     kind: reference-profile
     authority: conditional
@@ -339,6 +348,15 @@ documents:
     source_roles:
       docs/agent_charter/demo_apps.md: primary
     transformation_note: Condenses direct-import Streamlit prototyping and framework-selection guidance without deployment or authentication material.
+    evidence_paths:
+      - uv.lock
+    version_reviews:
+      - product: Streamlit
+        package: streamlit
+        version: "1.54.0"
+        primary_source: "https://docs.streamlit.io/"
+        release_history: "https://docs.streamlit.io/develop/quick-reference/changelog"
+        reviewed_on: "2026-07-31"
   templates/readme-templates.md:
     kind: template
     authority: informative
