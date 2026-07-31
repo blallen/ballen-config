@@ -523,3 +523,69 @@ def test_handoff_contracts_preserve_typed_status_and_capability_boundaries(
         "compatibility",
     ):
         assert phrase in text
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    (
+        "orchestration/transitions.md",
+        "orchestration/persistence-and-resume.md",
+        "orchestration/anti-patterns.md",
+    ),
+)
+def test_orchestration_lifecycle_documents_are_normative(
+    repo_root: Path,
+    relative_path: str,
+) -> None:
+    """Require explained transition, recovery, and review guidance."""
+    text = read_document(repo_root, relative_path)
+    assert_document_shape(text)
+    assert_explained_normative_rules(text)
+
+
+def test_transitions_separate_policy_from_mechanism(repo_root: Path) -> None:
+    """Define portable outcomes without claiming implementation symbols."""
+    text = read_document(repo_root, "orchestration/transitions.md")
+    for outcome in ("Advance", "Retry", "Escalate", "Stop"):
+        assert f"| {outcome} |" in text
+    assert "conceptual outcomes, not required code symbols" in text
+    assert "intent, target, and reason" in text
+    assert "Policy computes" in text
+    assert "mechanism applies" in text
+
+
+def test_persistence_resumes_through_the_same_control_loop(repo_root: Path) -> None:
+    """Persist durable state without serializing live dependencies."""
+    text = read_document(repo_root, "orchestration/persistence-and-resume.md")
+    for phrase in (
+        "durable workflow position",
+        "Scene completion",
+        "same control loop",
+        "stale resume target",
+        "attempt identity",
+        "Idempotent replay",
+        "live dependency objects",
+    ):
+        assert phrase in text
+
+
+def test_anti_patterns_pair_symptoms_with_reasons_and_remedies(
+    repo_root: Path,
+) -> None:
+    """Make common orchestration failures actionable."""
+    text = read_document(repo_root, "orchestration/anti-patterns.md")
+    expected_patterns = (
+        "Ambient capabilities",
+        "Implicit workspace handoffs",
+        "Hidden history sharing",
+        "Mixed policy and mechanism",
+        "Untyped handoffs",
+        "Unbounded retries",
+        "Persisted live resources",
+        "Agent for every layer",
+    )
+    for pattern in expected_patterns:
+        assert f"## {pattern}" in text
+    assert text.count("Symptom:") == len(expected_patterns)
+    assert text.count("Why it fails:") == len(expected_patterns)
+    assert text.count("Remedy:") == len(expected_patterns)
