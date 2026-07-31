@@ -4,6 +4,7 @@ import re
 from pathlib import Path, PurePosixPath
 from typing import Literal, NotRequired, TypedDict, cast
 
+import pytest
 import yaml
 
 SOURCE_REVISION = "0d7699bb0cae3025097718126fcb8e413b6a49e0"  # pragma: allowlist secret
@@ -381,3 +382,89 @@ def test_agent_layers_define_inward_dependency_direction(repo_root: Path) -> Non
         assert heading in text
     assert "validated boundary data" in text
     assert "runtime resources" in text
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    (
+        "core/models-and-errors.md",
+        "core/tools-and-capabilities.md",
+        "core/mcp.md",
+        "core/evaluation.md",
+    ),
+)
+def test_remaining_core_documents_are_normative(
+    repo_root: Path,
+    relative_path: str,
+) -> None:
+    """Require each framework-neutral core contract and explained rules."""
+    text = read_document(repo_root, relative_path)
+    assert_document_shape(text)
+    assert_explained_normative_rules(text)
+
+
+def test_models_and_errors_separate_expected_outcomes(repo_root: Path) -> None:
+    """Distinguish boundary data, non-completion, and exceptional faults."""
+    text = read_document(repo_root, "core/models-and-errors.md")
+    for phrase in (
+        "validated boundary models",
+        "runtime dependency containers",
+        "expected non-completion",
+        "exceptional faults",
+        "partial failure",
+        "exception translation",
+    ):
+        assert phrase in text
+
+
+def test_tools_and_capabilities_name_effect_and_recovery_contracts(
+    repo_root: Path,
+) -> None:
+    """Make capability grants and consequential effects inspectable."""
+    text = read_document(repo_root, "core/tools-and-capabilities.md")
+    for phrase in (
+        "thin tool wrappers",
+        "Read",
+        "Write",
+        "External message",
+        "Destructive",
+        "Idempotency",
+        "Timeout",
+        "Cancellation",
+        "Approval",
+    ):
+        assert phrase in text
+
+
+def test_mcp_core_remains_framework_neutral(repo_root: Path) -> None:
+    """Keep MCP lifecycle and error guidance independent of one SDK."""
+    text = read_document(repo_root, "core/mcp.md")
+    for phrase in (
+        "typed request and response",
+        "Capability discovery",
+        "registration",
+        "transport faults",
+        "cancellation",
+    ):
+        assert phrase in text
+    for forbidden in ("RunContext", "Agent(", "MCPServerStdio"):
+        assert forbidden not in text
+
+
+def test_evaluation_separates_quality_dimensions_and_modes(repo_root: Path) -> None:
+    """Cover portable evaluation dimensions without fixed thresholds."""
+    text = read_document(repo_root, "core/evaluation.md")
+    for phrase in (
+        "Task success",
+        "Structural validity",
+        "Factual support",
+        "Safety",
+        "Latency",
+        "Cost",
+        "Golden sets",
+        "Offline",
+        "Pre-release",
+        "Production",
+        "Judge calibration",
+    ):
+        assert phrase in text
