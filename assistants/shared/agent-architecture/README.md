@@ -96,6 +96,17 @@ inputs and outputs inward through layers, then inspect authority, state,
 lifecycle, errors, and evaluation evidence. For coordinated systems, review
 Director/Act/Scene ownership, handoffs, persistence, and delegation isolation.
 
+## Related Reference Library
+
+The [mechanistic modeling reference library](../mechanistic-modeling/README.md)
+is a sibling contract for structured scientific models and numerical execution.
+Agent architecture owns orchestration, delegation, handoffs, and recovery;
+mechanistic modeling owns model semantics, evaluation, composition, solving,
+and result interpretation.
+
+An agentic workflow may author or carry a versioned model artifact without
+making this library authoritative for the artifact's scientific meaning.
+
 ## Authority Legend
 
 | Status | Meaning |

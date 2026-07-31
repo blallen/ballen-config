@@ -1,9 +1,11 @@
 """Contract tests for the shared mechanistic-modeling reference library."""
 
+import re
 from collections.abc import Mapping, Sequence
 from pathlib import Path, PurePosixPath
 from typing import Literal, NotRequired, TypedDict, cast
 
+import pytest
 import yaml
 
 SOURCE_REVISION = "0fa63b144251ca6b5c6fa99b49151c7e5d5ae276"  # pragma: allowlist secret
@@ -15,6 +17,28 @@ PROVENANCE_MANIFEST = Path(
     "docs/superpowers/specs/2026-07-31-plato-mechanistic-modeling-provenance.yaml"
 )
 LIBRARY_ROOT = Path("assistants/shared/mechanistic-modeling")
+AGENT_ARCHITECTURE_INDEX = Path("assistants/shared/agent-architecture/README.md")
+
+EXPECTED_DOCUMENTS = {
+    "README.md",
+    "data-layer.md",
+    "runtime-layer.md",
+    "composition-layer.md",
+    "validation-boundaries.md",
+}
+
+TERMINOLOGY_DEFINITIONS = (
+    "a `MechanisticModel` is the complete structured artifact;",
+    "an `Interaction` is a named process;",
+    "a `Variable` is a quantity that may be changed, read, or observed;",
+    "a `MathTerm` is one atomic contribution to one target equation;",
+    "a `Block` groups related model content;",
+    "a `Parameter` supplies a named quantity used by the mathematics;",
+    "a `ConservationLaw` declares a conserved relationship;",
+    "a `MechanisticModelComposer` assembles models and scenario data into one "
+    "runnable system; and",
+    "a `ModelSolution` carries named simulation results and derived diagnostics.",
+)
 
 SourceKind = Literal["repository_document", "design_page"]
 SourceAuthority = Literal["target_design", "package_contract", "corroboration"]
@@ -237,6 +261,35 @@ def index_by_id(
     return dict(zip(typed_ids, records, strict=True))
 
 
+def read_document(repo_root: Path, relative_path: str) -> str:
+    """Read one canonical mechanistic-modeling document."""
+    return (repo_root / LIBRARY_ROOT / relative_path).read_text(encoding="utf-8")
+
+
+def local_markdown_targets(text: str) -> list[str]:
+    """Extract non-web Markdown link targets from a document."""
+    targets: list[str] = []
+    for match in re.finditer(r"(?<!!)\[[^]]+\]\(([^)]+)\)", text):
+        target = match.group(1).strip()
+        if target.startswith(("http://", "https://", "mailto:", "#")):
+            continue
+        target = target.split("#", maxsplit=1)[0]
+        if target:
+            targets.append(target)
+    return targets
+
+
+def assert_document_shape(text: str) -> None:
+    """Require one visible title and no migration frontmatter."""
+    assert not text.startswith("---\n")
+    assert len(re.findall(r"^# [^#].+$", text, flags=re.MULTILINE)) == 1
+
+
+def normalize_whitespace(value: str) -> str:
+    """Collapse layout whitespace for exact prose-contract checks."""
+    return " ".join(value.split())
+
+
 def test_provenance_records_fixed_program_metadata(repo_root: Path) -> None:
     """Pin the approved design and reviewed source snapshot."""
     manifest = load_provenance(repo_root)
@@ -363,3 +416,72 @@ def test_provenance_source_and_destination_links_are_bidirectional(
             }
         }
         assert destinations_naming_source == destination_ids
+
+
+def test_library_tree_contains_only_expected_regular_files(repo_root: Path) -> None:
+    """Keep the passive library small and free of special files."""
+    root = repo_root / LIBRARY_ROOT
+    actual_paths = {
+        path.relative_to(root).as_posix() for path in root.rglob("*") if path.is_file()
+    }
+    assert actual_paths == EXPECTED_DOCUMENTS
+    for path in root.rglob("*"):
+        assert not path.is_symlink()
+        assert path.is_file()
+
+
+def test_every_document_has_one_title_and_no_frontmatter(repo_root: Path) -> None:
+    """Keep the library directly readable as ordinary Markdown."""
+    for relative_path in EXPECTED_DOCUMENTS:
+        assert_document_shape(read_document(repo_root, relative_path))
+
+
+def test_root_index_links_every_child_exactly_once(repo_root: Path) -> None:
+    """Make the root document a complete, unambiguous index."""
+    targets = local_markdown_targets(read_document(repo_root, "README.md"))
+    for relative_path in EXPECTED_DOCUMENTS - {"README.md"}:
+        assert targets.count(relative_path) == 1
+
+
+def test_all_reader_relative_links_resolve(repo_root: Path) -> None:
+    """Require every local reader-facing link to resolve to a regular file."""
+    reader_paths = [repo_root / LIBRARY_ROOT / path for path in EXPECTED_DOCUMENTS]
+    reader_paths.append(repo_root / AGENT_ARCHITECTURE_INDEX)
+    for document_path in reader_paths:
+        text = document_path.read_text(encoding="utf-8")
+        for target in local_markdown_targets(text):
+            resolved = (document_path.parent / target).resolve()
+            assert resolved.is_file(), f"broken link in {document_path}: {target}"
+
+
+@pytest.mark.parametrize("definition", TERMINOLOGY_DEFINITIONS)
+def test_root_preserves_exact_terminology(repo_root: Path, definition: str) -> None:
+    """Keep approved terms and definitions stable across line wrapping."""
+    text = normalize_whitespace(read_document(repo_root, "README.md"))
+    assert definition in text
+
+
+def test_root_explains_scope_layers_and_package_mechanics(repo_root: Path) -> None:
+    """Expose the complete conceptual map from the library entry point."""
+    text = read_document(repo_root, "README.md")
+    for heading in (
+        "## Authority and Scope",
+        "## Terminology",
+        "## Layer Map",
+        "## Package Mechanics",
+        "## Relationship to Agent Architecture",
+        "## Reading Order",
+    ):
+        assert heading in text
+
+
+def test_reference_libraries_cross_link_without_nesting_authority(
+    repo_root: Path,
+) -> None:
+    """Keep orchestration and mechanistic semantics as sibling contracts."""
+    model_index = read_document(repo_root, "README.md")
+    agent_index = (repo_root / AGENT_ARCHITECTURE_INDEX).read_text(encoding="utf-8")
+    assert model_index.count("../agent-architecture/README.md") == 1
+    assert agent_index.count("../mechanistic-modeling/README.md") == 1
+    assert "agent architecture owns orchestration" in model_index.lower()
+    assert "mechanistic modeling owns model semantics" in agent_index.lower()
