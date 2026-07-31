@@ -900,3 +900,93 @@ def test_streamlit_profile_records_review_and_demo_boundary(repo_root: Path) -> 
         "## References",
     ):
         assert phrase in text
+
+
+INFORMATIVE_DOCUMENTS = (
+    "templates/readme-templates.md",
+    "stubs/testing.md",
+    "stubs/maturity-tiers.md",
+)
+
+
+@pytest.mark.parametrize("relative_path", INFORMATIVE_DOCUMENTS)
+def test_templates_and_stubs_do_not_claim_normative_authority(
+    repo_root: Path,
+    relative_path: str,
+) -> None:
+    """Keep incomplete or copyable material outside the normative contract."""
+    text = read_document(repo_root, relative_path)
+    assert_document_shape(text)
+    assert not re.search(r"\b(?:MUST|SHOULD)\b", text)
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    ("stubs/testing.md", "stubs/maturity-tiers.md"),
+)
+def test_stubs_have_exact_non_normative_banner(
+    repo_root: Path,
+    relative_path: str,
+) -> None:
+    """Make unresolved guidance visibly non-normative at first glance."""
+    text = read_document(repo_root, relative_path)
+    assert text.splitlines()[2].startswith(
+        "> **Status:** Non-normative draft."
+    )
+
+
+def test_readme_template_has_complete_copy_and_adapt_outline(
+    repo_root: Path,
+) -> None:
+    """Provide one consistent documentation skeleton without compliance rules."""
+    text = read_document(repo_root, "templates/readme-templates.md")
+    headings = [
+        line.removeprefix("## ")
+        for line in text.splitlines()
+        if line.startswith("## ")
+    ]
+    assert headings == [
+        "Purpose",
+        "Architecture",
+        "Inputs and Outputs",
+        "Dependencies",
+        "Tools and Capabilities",
+        "State and Persistence",
+        "Control Flow",
+        "Errors",
+        "Testing and Evaluation",
+        "Limitations",
+        "References",
+    ]
+    assert "copy and adapt" in text
+    assert "Runnable" in text
+    assert "Illustrative" in text
+
+
+def test_testing_stub_preserves_layers_without_inventing_thresholds(
+    repo_root: Path,
+) -> None:
+    """Retain source-supported test layers and expose missing decisions."""
+    text = read_document(repo_root, "stubs/testing.md")
+    for layer in ("Unit", "Contract", "Integration", "Evaluation", "End-to-end"):
+        assert f"## {layer}" in text
+    assert "acceptance criteria" in text
+    assert "coverage thresholds" in text
+    assert "unresolved design inputs" in text
+
+
+def test_maturity_stub_preserves_labels_without_inventing_gates(
+    repo_root: Path,
+) -> None:
+    """Keep source maturity names while making missing governance explicit."""
+    text = read_document(repo_root, "stubs/maturity-tiers.md")
+    for tier in ("Experimental", "Preview", "Production"):
+        assert f"## {tier}" in text
+    for phrase in (
+        "promotion gates",
+        "owners",
+        "evidence requirements",
+        "rollback criteria",
+        "not yet defined",
+    ):
+        assert phrase in text
