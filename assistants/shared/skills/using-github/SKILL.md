@@ -57,6 +57,23 @@ gh api repos/{owner}/{repo}/pulls/<number>
 When neither a connector nor `gh` is available, stop and tell the user what is
 missing. Do not invent ad-hoc HTTP clients or scrape the web UI.
 
+## Review tool delegation
+
+`review-github-pull-request` and `publish-github-review` own review intent and
+approval boundaries. This skill owns GitHub provider identity, terminology,
+read transport, and mutation transport selection.
+
+- Use the managed `review-plan` command for deterministic local parsing and
+  artifact validation.
+- Prefer `gh` with fixed argument arrays when it is available.
+- If only a connected provider is available, execute the exact validated
+  request bundle after the skill obtains current approval, then validate the
+  normalized receipt.
+- If no mutation-capable transport is available, keep local review complete and
+  report publication as blocked.
+- Never put credentials, headers, raw provider responses, or auth state into
+  review artifacts.
+
 ## Provider setup vs workflow
 
 Separate provider setup from workflow guidance.
