@@ -1,0 +1,23 @@
+{
+  "contract_version": "publication-receipt/v1",
+  "plan_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "identity": {
+    "provider": "github",
+    "host": "github.com",
+    "repository": "acme/ballen-config",
+    "change_number": 17,
+    "base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "head_revision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "expected_head": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "observed_head": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "status": "posted",
+  "items": [
+    {
+      "action_id": "R001",
+      "deduplication_key": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "outcome": "posted",
+      "remote_id": 123
+    }
+  ]
+}
