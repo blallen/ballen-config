@@ -63,6 +63,17 @@ skills:
       5f78cc607ad100c72f6e173bc22620bcebd6c855 informed the guarded publisher.
     portability_status: reviewed-generic
 
+  - name: prepare-review-response
+    source: assistants/shared/skills/prepare-review-response
+    targets: [cursor, claude-code, codex]
+    profiles: [default]
+    dependencies: [discover-project-standards]
+    provenance: >-
+      Authored for ballen-config under the approved forge review and response
+      design; Plato response workflows at commit
+      5f78cc607ad100c72f6e173bc22620bcebd6c855 informed the evaluation flow.
+    portability_status: reviewed-generic
+
   - name: review-project-quality
     source: assistants/shared/skills/review-project-quality
     targets: [cursor, claude-code, codex]
