@@ -23,6 +23,10 @@ from ballen_review_tools.models import (
     ReviewResponsePlan,
 )
 from ballen_review_tools.providers.github import normalize_github_comments
+from ballen_review_tools.providers.gitlab import (
+    GitLabDiffRefs,
+    normalize_gitlab_threads,
+)
 from ballen_review_tools.workspace import validate_workspace
 
 
@@ -150,7 +154,9 @@ def _parser() -> argparse.ArgumentParser:
     compile_response.add_argument("--output", type=Path, required=True)
     compile_response.add_argument("--repo-root", type=Path, required=True)
     normalize_threads = commands.add_parser("normalize-threads")
-    normalize_threads.add_argument("--provider", choices=("github",), required=True)
+    normalize_threads.add_argument(
+        "--provider", choices=("github", "gitlab"), required=True
+    )
     normalize_threads.add_argument("--identity", type=Path, required=True)
     normalize_threads.add_argument("--input", type=Path, required=True)
     normalize_threads.add_argument("--output", type=Path, required=True)
@@ -233,15 +239,11 @@ def _compile_response(args: argparse.Namespace) -> int:
 
 
 def _normalize_threads(args: argparse.Namespace) -> int:
-    """Normalize supplied GitHub observations after workspace preflight."""
+    """Normalize supplied forge observations after workspace preflight."""
     identity = ReviewIdentity.model_validate(_read_json(args.identity))
     payload = _read_json(args.input)
     if not isinstance(payload, dict):
         raise ValueError("thread input must be a JSON object")
-    head_sha = payload.get("head_sha")
-    comments = payload.get("review_comments")
-    if not isinstance(head_sha, str) or not isinstance(comments, list):
-        raise ValueError("thread input must contain head_sha and review_comments")
     check = validate_workspace(
         repo_root=args.repo_root,
         destination=args.output.parent,
@@ -250,11 +252,37 @@ def _normalize_threads(args: argparse.Namespace) -> int:
     )
     if not check.safe:
         raise ValueError(check.reason)
-    normalized = normalize_github_comments(
-        identity=identity,
-        head_sha=head_sha,
-        comments=comments,
-    )
+    if args.provider == "github":
+        head_sha = payload.get("head_sha")
+        comments = payload.get("review_comments")
+        if not isinstance(head_sha, str) or not isinstance(comments, list):
+            raise ValueError("thread input must contain head_sha and review_comments")
+        normalized = normalize_github_comments(
+            identity=identity,
+            head_sha=head_sha,
+            comments=comments,
+        )
+    else:
+        diff_refs = payload.get("diff_refs")
+        discussions = payload.get("discussions")
+        if not isinstance(diff_refs, dict) or not isinstance(discussions, list):
+            raise ValueError("thread input must contain diff_refs and discussions")
+
+        def _diff_ref(name: str) -> str:
+            value = diff_refs.get(name)
+            if not isinstance(value, str) or not value:
+                raise ValueError("GitLab diff refs are incomplete")
+            return value
+
+        normalized = normalize_gitlab_threads(
+            raw_discussions=discussions,
+            identity=identity,
+            revisions=GitLabDiffRefs(
+                base_sha=_diff_ref("base_sha"),
+                start_sha=_diff_ref("start_sha"),
+                head_sha=_diff_ref("head_sha"),
+            ),
+        )
     _write_json(args.output, normalized.model_dump(mode="json"))
     return 0
 

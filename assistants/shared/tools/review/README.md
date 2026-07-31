@@ -19,3 +19,11 @@ mutation clients:
 review-plan validate-threads --threads PATH
 review-plan compile-response --threads PATH --draft PATH --output PATH --repo-root PATH
 ```
+
+For GitLab, `using-gitlab` supplies a captured MR response containing
+`diff_refs` and `discussions`; normalization remains local and read-only:
+
+```text
+review-plan normalize-threads --provider gitlab --identity PATH \
+  --input PATH --output PATH --repo-root PATH
+```
