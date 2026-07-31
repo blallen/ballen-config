@@ -1,0 +1,323 @@
+source_repository: plato
+source_revision: 0d7699bb0cae3025097718126fcb8e413b6a49e0  # pragma: allowlist secret
+approved_decision: docs/superpowers/specs/2026-07-31-plato-agent-architecture-design.md
+portability_result: portable-after-adaptation
+review_date: "2026-07-31"
+source_documents:
+  docs/agent_charter/README.md:
+    disposition: split
+    destinations:
+      - core/architecture-levels.md
+      - core/agent-layers.md
+  docs/agent_charter/agent_construction_standard.md:
+    disposition: profile
+    destinations:
+      - reference-profiles/pydantic-ai/construction.md
+  docs/agent_charter/agent_service_pattern.md:
+    disposition: split
+    destinations:
+      - core/agent-layers.md
+      - delegation/agent-as-tool.md
+      - reference-profiles/pydantic-ai/services-and-dependencies.md
+  docs/agent_charter/auth_flow.md:
+    disposition: excluded
+    reason: Authentication and internal request flow are outside the portable reference-library scope.
+  docs/agent_charter/capabilities.md:
+    disposition: split
+    destinations:
+      - core/tools-and-capabilities.md
+      - reference-profiles/pydantic-ai/tools-and-capabilities.md
+  docs/agent_charter/credentials_config.md:
+    disposition: excluded
+    reason: Credential storage and local configuration are explicitly prohibited migration material.
+  docs/agent_charter/demo_apps.md:
+    disposition: profile
+    destinations:
+      - reference-profiles/streamlit-demo-apps.md
+  docs/agent_charter/evals.md:
+    disposition: extracted
+    destinations:
+      - core/evaluation.md
+  docs/agent_charter/file_organization.md:
+    disposition: extracted
+    destinations:
+      - core/agent-layers.md
+  docs/agent_charter/maturity_tiers.md:
+    disposition: stub
+    destinations:
+      - stubs/maturity-tiers.md
+  docs/agent_charter/mcp.md:
+    disposition: extracted
+    destinations:
+      - core/mcp.md
+  docs/agent_charter/models_exceptions.md:
+    disposition: split
+    destinations:
+      - core/models-and-errors.md
+      - reference-profiles/pydantic-ai/construction.md
+  docs/agent_charter/observability_logfire.md:
+    disposition: profile
+    destinations:
+      - reference-profiles/logfire.md
+  docs/agent_charter/readme_templates.md:
+    disposition: template
+    destinations:
+      - templates/readme-templates.md
+  docs/agent_charter/testing.md:
+    disposition: stub
+    destinations:
+      - stubs/testing.md
+  docs/agent_charter/todos.md:
+    disposition: excluded
+    reason: Project-specific work tracking is not reference documentation.
+  docs/agent_charter/tool_design_guidelines.md:
+    disposition: split
+    destinations:
+      - core/tools-and-capabilities.md
+      - reference-profiles/pydantic-ai/tools-and-capabilities.md
+  docs/agentic_workflows/README.md:
+    disposition: extracted
+    destinations:
+      - orchestration/director-act-scene.md
+  docs/agentic_workflows/contracts.md:
+    disposition: extracted
+    destinations:
+      - orchestration/handoff-contracts.md
+  docs/agentic_workflows/transitions.md:
+    disposition: split
+    destinations:
+      - orchestration/transitions.md
+      - orchestration/persistence-and-resume.md
+  docs/agentic_workflows/anti_patterns.md:
+    disposition: extracted
+    destinations:
+      - orchestration/anti-patterns.md
+documents:
+  README.md:
+    kind: core
+    authority: normative
+    source_paths:
+      - docs/agent_charter/README.md
+      - docs/agentic_workflows/README.md
+    source_roles:
+      docs/agent_charter/README.md: supporting
+      docs/agentic_workflows/README.md: supporting
+    transformation_note: Synthesizes the adoption boundary, authority model, navigation, and reading order without project-specific instructions.
+  core/architecture-levels.md:
+    kind: core
+    authority: normative
+    source_paths:
+      - docs/agent_charter/README.md
+    source_roles:
+      docs/agent_charter/README.md: primary
+    transformation_note: Replaces numeric maturity shorthand with responsibility-based Workflow, Agent, and Orchestrator categories.
+  core/agent-layers.md:
+    kind: core
+    authority: normative
+    source_paths:
+      - docs/agent_charter/README.md
+      - docs/agent_charter/agent_service_pattern.md
+      - docs/agent_charter/file_organization.md
+    source_roles:
+      docs/agent_charter/README.md: supporting
+      docs/agent_charter/agent_service_pattern.md: primary
+      docs/agent_charter/file_organization.md: primary
+    transformation_note: Preserves portable layer and dependency-direction guidance while removing package names and runtime wrappers.
+  core/models-and-errors.md:
+    kind: core
+    authority: normative
+    source_paths:
+      - docs/agent_charter/models_exceptions.md
+    source_roles:
+      docs/agent_charter/models_exceptions.md: primary
+    transformation_note: Generalizes validated boundary models, runtime containers, result variants, and exception translation.
+  core/tools-and-capabilities.md:
+    kind: core
+    authority: normative
+    source_paths:
+      - docs/agent_charter/capabilities.md
+      - docs/agent_charter/tool_design_guidelines.md
+    source_roles:
+      docs/agent_charter/capabilities.md: primary
+      docs/agent_charter/tool_design_guidelines.md: primary
+    transformation_note: Separates portable tool and capability contracts from framework registration APIs and project capability catalogs.
+  core/mcp.md:
+    kind: core
+    authority: normative
+    source_paths:
+      - docs/agent_charter/mcp.md
+    source_roles:
+      docs/agent_charter/mcp.md: primary
+    transformation_note: Retains MCP request, response, lifecycle, registration, and error boundaries without framework-specific constructors or authentication.
+  core/evaluation.md:
+    kind: core
+    authority: normative
+    source_paths:
+      - docs/agent_charter/evals.md
+    source_roles:
+      docs/agent_charter/evals.md: primary
+    transformation_note: Extracts evaluation dimensions and modes while omitting project runners, sample counts, and fixed thresholds.
+  orchestration/director-act-scene.md:
+    kind: orchestration
+    authority: normative
+    source_paths:
+      - docs/agentic_workflows/README.md
+    source_roles:
+      docs/agentic_workflows/README.md: primary
+    transformation_note: Keeps Director, Act, and Scene as the primary metaphor and adds framework-neutral systems translations.
+  orchestration/handoff-contracts.md:
+    kind: orchestration
+    authority: normative
+    source_paths:
+      - docs/agentic_workflows/contracts.md
+    source_roles:
+      docs/agentic_workflows/contracts.md: primary
+    transformation_note: Generalizes typed handoff packages, explicit entry points, validation, and compatibility ownership.
+  orchestration/transitions.md:
+    kind: orchestration
+    authority: normative
+    source_paths:
+      - docs/agentic_workflows/transitions.md
+    source_roles:
+      docs/agentic_workflows/transitions.md: primary
+    transformation_note: Expresses transition outcomes conceptually and separates policy from workflow-engine mechanics.
+  orchestration/persistence-and-resume.md:
+    kind: orchestration
+    authority: normative
+    source_paths:
+      - docs/agentic_workflows/transitions.md
+      - docs/agentic_workflows/README.md
+    source_roles:
+      docs/agentic_workflows/transitions.md: primary
+      docs/agentic_workflows/README.md: supporting
+    transformation_note: Extracts durable position, checkpoint, retry context, replay, and same-loop resume invariants.
+  orchestration/anti-patterns.md:
+    kind: orchestration
+    authority: normative
+    source_paths:
+      - docs/agentic_workflows/anti_patterns.md
+    source_roles:
+      docs/agentic_workflows/anti_patterns.md: primary
+    transformation_note: Preserves portable orchestration failure modes while removing references to one implementation.
+  delegation/agent-as-tool.md:
+    kind: delegation
+    authority: normative
+    source_paths:
+      - docs/agent_charter/agent_service_pattern.md
+    source_roles:
+      docs/agent_charter/agent_service_pattern.md: primary
+    transformation_note: Defines a fixed specialist behind a typed tool boundary without framework-specific agent constructors.
+  delegation/dynamic-subagents.md:
+    kind: delegation
+    authority: normative
+    source_paths:
+      - docs/agent_charter/capabilities.md
+      - docs/agent_charter/agent_service_pattern.md
+    source_roles:
+      docs/agent_charter/capabilities.md: supporting
+      docs/agent_charter/agent_service_pattern.md: supporting
+    transformation_note: Synthesizes runtime specialist creation, lifecycle, and isolation contracts while moving package behavior to a profile.
+  delegation/isolation-matrix.md:
+    kind: delegation
+    authority: normative
+    source_paths:
+      - docs/agent_charter/capabilities.md
+      - docs/agent_charter/agent_service_pattern.md
+      - docs/agentic_workflows/README.md
+    source_roles:
+      docs/agent_charter/capabilities.md: supporting
+      docs/agent_charter/agent_service_pattern.md: supporting
+      docs/agentic_workflows/README.md: supporting
+    transformation_note: Makes static and dynamic delegation isolation explicit and independent of orchestration placement.
+  reference-profiles/README.md:
+    kind: reference-profile
+    authority: conditional
+    source_paths:
+      - docs/agent_charter/README.md
+    source_roles:
+      docs/agent_charter/README.md: supporting
+    transformation_note: Adds a conditional-adoption index for framework and presentation profiles.
+  reference-profiles/pydantic-ai/README.md:
+    kind: reference-profile
+    authority: conditional
+    source_paths:
+      - docs/agent_charter/agent_construction_standard.md
+      - docs/agent_charter/agent_service_pattern.md
+      - docs/agent_charter/capabilities.md
+      - docs/agent_charter/models_exceptions.md
+      - docs/agent_charter/tool_design_guidelines.md
+    source_roles:
+      docs/agent_charter/agent_construction_standard.md: primary
+      docs/agent_charter/agent_service_pattern.md: primary
+      docs/agent_charter/capabilities.md: supporting
+      docs/agent_charter/models_exceptions.md: supporting
+      docs/agent_charter/tool_design_guidelines.md: supporting
+    transformation_note: Defines the PydanticAI adoption boundary and routes readers to version-reviewed implementation guidance.
+  reference-profiles/pydantic-ai/construction.md:
+    kind: reference-profile
+    authority: conditional
+    source_paths:
+      - docs/agent_charter/agent_construction_standard.md
+      - docs/agent_charter/models_exceptions.md
+    source_roles:
+      docs/agent_charter/agent_construction_standard.md: primary
+      docs/agent_charter/models_exceptions.md: supporting
+    transformation_note: Keeps PydanticAI construction and structured-result guidance while excluding models, providers, and runtime wrappers.
+  reference-profiles/pydantic-ai/services-and-dependencies.md:
+    kind: reference-profile
+    authority: conditional
+    source_paths:
+      - docs/agent_charter/agent_service_pattern.md
+    source_roles:
+      docs/agent_charter/agent_service_pattern.md: primary
+    transformation_note: Adapts service entry points, RunContext dependencies, factories, and resource lifecycle to a portable profile.
+  reference-profiles/pydantic-ai/tools-and-capabilities.md:
+    kind: reference-profile
+    authority: conditional
+    source_paths:
+      - docs/agent_charter/capabilities.md
+      - docs/agent_charter/tool_design_guidelines.md
+    source_roles:
+      docs/agent_charter/capabilities.md: primary
+      docs/agent_charter/tool_design_guidelines.md: primary
+    transformation_note: Isolates PydanticAI registration, toolset, sequential mutation, and delegation examples from core requirements.
+  reference-profiles/logfire.md:
+    kind: reference-profile
+    authority: conditional
+    source_paths:
+      - docs/agent_charter/observability_logfire.md
+    source_roles:
+      docs/agent_charter/observability_logfire.md: primary
+    transformation_note: Retains portable Logfire observability and privacy guidance while excluding credentials and infrastructure configuration.
+  reference-profiles/streamlit-demo-apps.md:
+    kind: reference-profile
+    authority: conditional
+    source_paths:
+      - docs/agent_charter/demo_apps.md
+    source_roles:
+      docs/agent_charter/demo_apps.md: primary
+    transformation_note: Condenses direct-import Streamlit prototyping and framework-selection guidance without deployment or authentication material.
+  templates/readme-templates.md:
+    kind: template
+    authority: informative
+    source_paths:
+      - docs/agent_charter/readme_templates.md
+    source_roles:
+      docs/agent_charter/readme_templates.md: primary
+    transformation_note: Consolidates the source patterns into one copy-and-adapt README skeleton with explicit sample status.
+  stubs/testing.md:
+    kind: stub
+    authority: non-normative-draft
+    source_paths:
+      - docs/agent_charter/testing.md
+    source_roles:
+      docs/agent_charter/testing.md: primary
+    transformation_note: Preserves only the source-supported testing layers and visibly marks missing criteria as unresolved.
+  stubs/maturity-tiers.md:
+    kind: stub
+    authority: non-normative-draft
+    source_paths:
+      - docs/agent_charter/maturity_tiers.md
+    source_roles:
+      docs/agent_charter/maturity_tiers.md: primary
+    transformation_note: Preserves the three maturity labels while withholding normative promotion gates not supported by the source.
