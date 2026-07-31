@@ -44,30 +44,43 @@ def canonical_digest(value: Any) -> str:
 
 def source_digest(path: Path) -> str:
     """Return the SHA-256 digest of one exact source file."""
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    return source_digest_bytes(path.read_bytes())
+
+
+def source_digest_bytes(value: bytes) -> str:
+    """Return the SHA-256 digest of one exact byte snapshot."""
+    return hashlib.sha256(value).hexdigest()
 
 
 def deduplication_key(
     *,
     provider: str,
+    host: str,
     repository: str,
     change_number: int,
     kind: str,
     body: str,
     path: str | None = None,
     line: int | None = None,
+    side: str | None = None,
+    start_line: int | None = None,
+    start_side: str | None = None,
     thread_id: str | None = None,
 ) -> str:
     """Return a stable key for one provider-targeted logical action."""
     return canonical_digest(
         {
             "provider": provider,
+            "host": host,
             "repository": repository,
             "change_number": change_number,
             "kind": kind,
             "body": body,
             "path": path,
             "line": line,
+            "side": side,
+            "start_line": start_line,
+            "start_side": start_side,
             "thread_id": thread_id,
         }
     )
