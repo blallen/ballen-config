@@ -59,15 +59,17 @@ which it was evaluated.
 
 ## Runtime Failures
 
-Evaluation fails explicitly when a required value is absent, a mathematical
-name or operation is unsupported, a target cannot be resolved, or a term
-produces a non-finite contribution. The failure should identify the relevant
-model entity and preserve enough diagnostic context to locate the bad input or
-expression.
+Evaluation fails explicitly when a declared source cannot supply its value at
+the current point, a mathematical name is missing or ambiguous within the
+restricted evaluation namespace, an expression uses an unsupported operation,
+or a term produces a non-finite contribution. The failure should identify the
+relevant model entity and preserve enough diagnostic context to locate the bad
+input or expression.
 
-The evaluator does not repair incomplete composition, substitute silent
-defaults, or reinterpret malformed model content. Those failures belong to an
-earlier boundary and should be rejected before solver integration begins.
+The evaluator does not resolve structural targets, repair incomplete
+composition, substitute silent defaults, or reinterpret malformed model
+content. Those failures belong to an earlier boundary and should be rejected
+before solver integration begins.
 
 ## Transient Runtime State
 
