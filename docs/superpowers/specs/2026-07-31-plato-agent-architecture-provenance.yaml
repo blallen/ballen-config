@@ -253,6 +253,15 @@ documents:
       docs/agent_charter/models_exceptions.md: supporting
       docs/agent_charter/tool_design_guidelines.md: supporting
     transformation_note: Defines the PydanticAI adoption boundary and routes readers to version-reviewed implementation guidance.
+    evidence_paths:
+      - uv.lock
+    version_reviews:
+      - product: PydanticAI
+        package: pydantic-ai-slim
+        version: "2.18.0"
+        primary_source: "https://ai.pydantic.dev/install/#slim-install"
+        release_history: "https://github.com/pydantic/pydantic-ai/releases"
+        reviewed_on: "2026-07-31"
   reference-profiles/pydantic-ai/construction.md:
     kind: reference-profile
     authority: conditional
@@ -263,6 +272,15 @@ documents:
       docs/agent_charter/agent_construction_standard.md: primary
       docs/agent_charter/models_exceptions.md: supporting
     transformation_note: Keeps PydanticAI construction and structured-result guidance while excluding models, providers, and runtime wrappers.
+    evidence_paths:
+      - uv.lock
+    version_reviews:
+      - product: PydanticAI
+        package: pydantic-ai-slim
+        version: "2.18.0"
+        primary_source: "https://ai.pydantic.dev/install/#slim-install"
+        release_history: "https://github.com/pydantic/pydantic-ai/releases"
+        reviewed_on: "2026-07-31"
   reference-profiles/pydantic-ai/services-and-dependencies.md:
     kind: reference-profile
     authority: conditional
@@ -271,6 +289,15 @@ documents:
     source_roles:
       docs/agent_charter/agent_service_pattern.md: primary
     transformation_note: Adapts service entry points, RunContext dependencies, factories, and resource lifecycle to a portable profile.
+    evidence_paths:
+      - uv.lock
+    version_reviews:
+      - product: PydanticAI
+        package: pydantic-ai-slim
+        version: "2.18.0"
+        primary_source: "https://ai.pydantic.dev/install/#slim-install"
+        release_history: "https://github.com/pydantic/pydantic-ai/releases"
+        reviewed_on: "2026-07-31"
   reference-profiles/pydantic-ai/tools-and-capabilities.md:
     kind: reference-profile
     authority: conditional
@@ -281,6 +308,21 @@ documents:
       docs/agent_charter/capabilities.md: primary
       docs/agent_charter/tool_design_guidelines.md: primary
     transformation_note: Isolates PydanticAI registration, toolset, sequential mutation, and delegation examples from core requirements.
+    evidence_paths:
+      - uv.lock
+    version_reviews:
+      - product: PydanticAI
+        package: pydantic-ai-slim
+        version: "2.18.0"
+        primary_source: "https://ai.pydantic.dev/install/#slim-install"
+        release_history: "https://github.com/pydantic/pydantic-ai/releases"
+        reviewed_on: "2026-07-31"
+      - product: subagents-pydantic-ai
+        package: subagents-pydantic-ai
+        version: "0.2.7"
+        primary_source: "https://github.com/vstorm-co/subagents-pydantic-ai#readme"
+        release_history: "https://github.com/vstorm-co/subagents-pydantic-ai/releases"
+        reviewed_on: "2026-07-31"
   reference-profiles/logfire.md:
     kind: reference-profile
     authority: conditional
