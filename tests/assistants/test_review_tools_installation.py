@@ -40,3 +40,10 @@ def test_review_plan_launcher_is_executable(
     launcher = repo_root / "assistants/shared/tools/review/bin/review-plan"
 
     assert launcher.stat().st_mode & S_IXUSR
+
+
+def test_gitlab_publication_launcher_is_executable(repo_root: Path) -> None:
+    """Keep the GitLab publication launcher executable in the shared tree."""
+    launcher = repo_root / "assistants/shared/tools/review/bin/publish-gitlab-review"
+
+    assert launcher.stat().st_mode & S_IXUSR
