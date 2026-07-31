@@ -525,3 +525,31 @@ def test_data_layer_preserves_model_semantics(repo_root: Path) -> None:
         "extraction provenance",
     ):
         assert concept in lowered
+
+
+def test_runtime_layer_defines_deterministic_evaluation(repo_root: Path) -> None:
+    """Keep evaluator responsibilities and transient state explicit."""
+    text = read_document(repo_root, "runtime-layer.md")
+    for heading in (
+        "## Evaluator Responsibility",
+        "## Restricted Mathematical Expressions",
+        "## Determinism and Identity",
+        "## Rate Accumulation and Ledger",
+        "## Runtime Failures",
+        "## Transient Runtime State",
+    ):
+        assert heading in text
+
+    for term in ("`MechanisticModel`", "`MathTerm`", "`Variable`"):
+        assert term in text
+
+    lowered = normalize_whitespace(text).lower()
+    for concept in (
+        "one point in time",
+        "per-variable change map",
+        "named rate ledger",
+        "restricted mathematical expressions",
+        "topology weights",
+        "transient runtime state",
+    ):
+        assert concept in lowered
