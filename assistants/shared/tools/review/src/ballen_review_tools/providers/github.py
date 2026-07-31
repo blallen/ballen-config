@@ -1,6 +1,7 @@
 """GitHub REST transport and provider-native payload construction."""
 
 import json
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Literal, NotRequired, TypedDict
@@ -10,6 +11,34 @@ from ballen_review_tools.providers.base import CommandRunner
 
 API_VERSION = "2026-03-10"
 _ACCEPT = "Accept: application/vnd.github+json"
+_HUNK = re.compile(r"^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@")
+
+
+def _diff_locations(path: str, patch: str) -> set[tuple[str, int, str]]:
+    """Extract current diff line locations without persisting the patch."""
+    locations: set[tuple[str, int, str]] = set()
+    old_line: int | None = None
+    new_line: int | None = None
+    for line in patch.splitlines():
+        hunk = _HUNK.match(line)
+        if hunk is not None:
+            old_line = int(hunk.group(1))
+            new_line = int(hunk.group(2))
+            continue
+        if old_line is None or new_line is None or line.startswith("\\"):
+            continue
+        if line.startswith("+"):
+            locations.add((path, new_line, "RIGHT"))
+            new_line += 1
+        elif line.startswith("-"):
+            locations.add((path, old_line, "LEFT"))
+            old_line += 1
+        elif line.startswith(" "):
+            locations.add((path, old_line, "LEFT"))
+            locations.add((path, new_line, "RIGHT"))
+            old_line += 1
+            new_line += 1
+    return locations
 
 
 class GitHubReviewCommentPayload(TypedDict):
@@ -60,6 +89,7 @@ class GitHubRemoteState:
     head_sha: str
     review_comments: tuple[GitHubRemoteComment, ...]
     issue_comments: tuple[GitHubRemoteIssueComment, ...]
+    valid_locations: frozenset[tuple[str, int, str]]
 
 
 class GitHubProviderError(ValueError):
@@ -151,22 +181,37 @@ class GitHubProvider:
             f"repos/{root}/issues/{self.identity.change_number}/comments",
             paginate=True,
         )
+        files = self._read(
+            f"repos/{root}/pulls/{self.identity.change_number}/files",
+            paginate=True,
+        )
         if not isinstance(pull, dict) or not isinstance(pull.get("head"), dict):
             raise GitHubProviderError("GitHub pull request identity was incomplete")
         head_sha = pull["head"].get("sha")
         number = pull.get("number")
         if not isinstance(head_sha, str) or number != self.identity.change_number:
             raise GitHubProviderError("GitHub pull request identity did not match")
-        if not isinstance(review_comments, list) or not isinstance(
-            issue_comments, list
+        if (
+            not isinstance(review_comments, list)
+            or not isinstance(issue_comments, list)
+            or not isinstance(files, list)
         ):
             raise GitHubProviderError("GitHub comment response was malformed")
+        valid_locations: set[tuple[str, int, str]] = set()
+        for file in files:
+            if not isinstance(file, dict):
+                raise GitHubProviderError("GitHub changed-file response was malformed")
+            path = file.get("filename")
+            patch = file.get("patch")
+            if isinstance(path, str) and isinstance(patch, str):
+                valid_locations.update(_diff_locations(path, patch))
         return GitHubRemoteState(
             head_sha=head_sha,
             review_comments=tuple(
                 self._review_comment(item) for item in review_comments
             ),
             issue_comments=tuple(self._issue_comment(item) for item in issue_comments),
+            valid_locations=frozenset(valid_locations),
         )
 
     def review_payload(
