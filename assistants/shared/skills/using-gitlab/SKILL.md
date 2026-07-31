@@ -41,6 +41,22 @@ Prefer read-only inspection before any mutation. Typical read flows:
 - Inspect pipelines or job status
 - Fetch project metadata
 
+## Shared review-plan boundary
+
+Read-only MR review skills may hand a captured GitLab response to the shared
+`review-plan` tool after `using-gitlab` has resolved the current MR and diff
+refs:
+
+```text
+review-plan normalize-threads --provider gitlab --identity IDENTITY.json \
+  --input gitlab-discussions.json --output .reviews/threads.json \
+  --repo-root REPOSITORY
+```
+
+The normalized artifact is provider-neutral and local. Keep transport,
+authentication, pagination, and project identity here; keep parsing and plan
+contracts in `review-plan`.
+
 ## CLI fallback
 
 Document CLI fallback with `glab` when no connector is available.
