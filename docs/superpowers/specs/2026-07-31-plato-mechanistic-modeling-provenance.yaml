@@ -1,0 +1,226 @@
+schema_version: 1
+design: docs/superpowers/specs/2026-07-31-plato-mechanistic-modeling-design.md
+source_repositories:
+  - id: plato
+    revision: 0fa63b144251ca6b5c6fa99b49151c7e5d5ae276  # pragma: allowlist secret
+    reviewed_on: "2026-07-31"
+design_sources:
+  - id: mechanistic-model-overview
+    title: QSP Wizard Meets Mechanistic Model
+    retrieved_on: "2026-07-31"
+    locator: notion:364043d22fe38182b0c6c602c82079ae
+  - id: mechanistic-model-data-layer
+    title: Data Layer
+    retrieved_on: "2026-07-31"
+    locator: notion:364043d22fe381c18c90eefe537031b0
+  - id: mechanistic-model-runtime-layer
+    title: Runtime Layer
+    retrieved_on: "2026-07-31"
+    locator: notion:364043d22fe381f39e66d15b7fb143b0
+  - id: mechanistic-model-composition-layer
+    title: Composition Layer
+    retrieved_on: "2026-07-31"
+    locator: notion:364043d22fe381b09129fdb76ff3c818
+sources:
+  - id: overview-design
+    kind: design_page
+    locator: notion:364043d22fe38182b0c6c602c82079ae
+    authority: target_design
+    disposition: adapt
+    destinations:
+      - composition-layer
+      - data-layer
+      - index
+      - runtime-layer
+      - validation-boundaries
+    notes: >-
+      Adapt the desired layer boundaries, cross-layer flow, and generic
+      mechanistic-modeling intent without retaining domain examples or APIs.
+  - id: data-layer-design
+    kind: design_page
+    locator: notion:364043d22fe381c18c90eefe537031b0
+    authority: target_design
+    disposition: adapt
+    destinations:
+      - data-layer
+      - validation-boundaries
+    notes: >-
+      Adapt entity roles, atomic contributions, provenance, derived views,
+      serialization, and the construction-validation boundary.
+  - id: runtime-layer-design
+    kind: design_page
+    locator: notion:364043d22fe381f39e66d15b7fb143b0
+    authority: target_design
+    disposition: adapt
+    destinations:
+      - runtime-layer
+      - validation-boundaries
+    notes: >-
+      Adapt deterministic evaluation, named contributions, accumulation,
+      transient state, and runtime failures without copying evaluator code.
+  - id: composition-layer-design
+    kind: design_page
+    locator: notion:364043d22fe381b09129fdb76ff3c818
+    authority: target_design
+    disposition: adapt
+    destinations:
+      - composition-layer
+      - validation-boundaries
+    notes: >-
+      Adapt composition, scenario, solver, solution, and run-serialization
+      boundaries while excluding concrete protocols and solver APIs.
+  - id: package-readme
+    kind: repository_document
+    repository: plato
+    path: src/plato/mechanistic_model/README.md
+    authority: package_contract
+    disposition: adapt
+    destinations:
+      - composition-layer
+      - data-layer
+      - index
+      - runtime-layer
+      - validation-boundaries
+    notes: >-
+      Adapt the process-centered mental model, stable entity terminology,
+      derived-view contract, and validation ownership from the package prose.
+  - id: crate-readme
+    kind: repository_document
+    repository: plato
+    path: src/plato/crate/mechanistic_model/README.md
+    authority: corroboration
+    disposition: qualify
+    destinations:
+      - composition-layer
+      - index
+    notes: >-
+      Use only as historical corroboration for the unified-artifact metaphor;
+      exclude compatibility, migration, package, and conversion mechanics.
+verification_evidence:
+  - id: integration-status
+    kind: repository_file
+    repository: plato
+    path: src/plato/mechanistic_model/INTEGRATION_STATUS.md
+    revision: 0fa63b144251ca6b5c6fa99b49151c7e5d5ae276  # pragma: allowlist secret
+    claim: >-
+      The data foundation is implemented, while the complete target runtime,
+      composition, validation, and export architecture is not current behavior.
+  - id: agtc-1038-status
+    kind: work_item
+    locator: jira:AGTC-1038
+    reviewed_on: "2026-07-31"
+    claim: >-
+      Delivery and dependency status verifies current-versus-target boundaries
+      but does not contribute generic architecture wording.
+destinations:
+  - id: index
+    path: assistants/shared/mechanistic-modeling/README.md
+    kind: index
+    authority: conceptual_contract
+    sources:
+      - id: overview-design
+        role: primary
+      - id: package-readme
+        role: supporting
+      - id: crate-readme
+        role: supporting
+    transformation: >-
+      Preserve the approved vocabulary and package-layer metaphor in concise,
+      implementation-neutral prose.
+    exclusions:
+      - Product and repository names
+      - Domain-specific worked examples
+      - Concrete package and class APIs
+    semantic_review: passed
+    privacy_review: passed
+  - id: data-layer
+    path: assistants/shared/mechanistic-modeling/data-layer.md
+    kind: layer
+    authority: conceptual_contract
+    sources:
+      - id: data-layer-design
+        role: primary
+      - id: overview-design
+        role: supporting
+      - id: package-readme
+        role: supporting
+    transformation: >-
+      Explain durable model entities, roles, derived views, provenance, and
+      serialization without reproducing schemas or source declarations.
+    exclusions:
+      - Field and container declarations
+      - Validation-library mechanics
+      - Concrete identifiers and naming formats
+    semantic_review: passed
+    privacy_review: passed
+  - id: runtime-layer
+    path: assistants/shared/mechanistic-modeling/runtime-layer.md
+    kind: layer
+    authority: conceptual_contract
+    sources:
+      - id: runtime-layer-design
+        role: primary
+      - id: overview-design
+        role: supporting
+      - id: package-readme
+        role: supporting
+    transformation: >-
+      Explain model-level deterministic evaluation, per-term attribution, and
+      transient runtime state without copying executable implementation details.
+    exclusions:
+      - Expression-evaluator source code
+      - Concrete math libraries and built-ins
+      - Performance thresholds and cache APIs
+    semantic_review: passed
+    privacy_review: passed
+  - id: composition-layer
+    path: assistants/shared/mechanistic-modeling/composition-layer.md
+    kind: layer
+    authority: conceptual_contract
+    sources:
+      - id: composition-layer-design
+        role: primary
+      - id: overview-design
+        role: supporting
+      - id: package-readme
+        role: supporting
+      - id: crate-readme
+        role: supporting
+    transformation: >-
+      Explain composition, scenarios, solving, durable results, and
+      reproducibility as conceptual responsibilities rather than APIs.
+    exclusions:
+      - Concrete event and protocol classes
+      - Numerical-solver libraries and tolerances
+      - Legacy conversion and cutover behavior
+    semantic_review: passed
+    privacy_review: passed
+  - id: validation-boundaries
+    path: assistants/shared/mechanistic-modeling/validation-boundaries.md
+    kind: validation
+    authority: conceptual_contract
+    sources:
+      - id: overview-design
+        role: primary
+      - id: data-layer-design
+        role: supporting
+      - id: runtime-layer-design
+        role: supporting
+      - id: composition-layer-design
+        role: supporting
+      - id: package-readme
+        role: supporting
+    transformation: >-
+      Assign representative failures to the earliest responsible validation
+      boundary while preserving later scientific review as a separate concern.
+    exclusions:
+      - Domain-specific acceptance thresholds
+      - Concrete exception classes
+      - Product delivery and migration gates
+    semantic_review: passed
+    privacy_review: passed
+review:
+  portability: portable_after_adaptation
+  semantic: passed
+  privacy: passed
+  approved_on: "2026-07-31"
