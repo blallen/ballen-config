@@ -68,6 +68,26 @@ SUBAGENTS_PYDANTIC_AI_REVIEW: VersionReview = {
     "release_history": "https://github.com/vstorm-co/subagents-pydantic-ai/releases",
     "reviewed_on": "2026-07-31",
 }
+LOGFIRE_REVIEW: VersionReview = {
+    "product": "Logfire",
+    "package": "logfire",
+    "version": "4.36.0",
+    "primary_source": "https://pydantic.dev/docs/logfire/",
+    "release_history": (
+        "https://github.com/pydantic/logfire/blob/main/CHANGELOG.md"
+    ),
+    "reviewed_on": "2026-07-31",
+}
+STREAMLIT_REVIEW: VersionReview = {
+    "product": "Streamlit",
+    "package": "streamlit",
+    "version": "1.54.0",
+    "primary_source": "https://docs.streamlit.io/",
+    "release_history": (
+        "https://docs.streamlit.io/develop/quick-reference/changelog"
+    ),
+    "reviewed_on": "2026-07-31",
+}
 
 
 class SourceRecord(TypedDict):
@@ -796,5 +816,87 @@ def test_pydantic_ai_tools_define_scoped_delegation(repo_root: Path) -> None:
         "Cancellation",
         "Retry",
         "result collection",
+    ):
+        assert phrase in text
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    (
+        "reference-profiles/README.md",
+        "reference-profiles/logfire.md",
+        "reference-profiles/streamlit-demo-apps.md",
+    ),
+)
+def test_remaining_profiles_are_conditional_and_normative(
+    repo_root: Path,
+    relative_path: str,
+) -> None:
+    """Keep adoption guidance conditional and every rule explained."""
+    text = read_document(repo_root, relative_path)
+    assert_document_shape(text)
+    assert "Conditional reference profile" in text
+    assert_explained_normative_rules(text)
+
+
+def test_profile_index_links_each_supported_profile_once(repo_root: Path) -> None:
+    """Expose one discoverable entry point for every conditional profile."""
+    text = read_document(repo_root, "reference-profiles/README.md")
+    for target in (
+        "pydantic-ai/README.md",
+        "logfire.md",
+        "streamlit-demo-apps.md",
+    ):
+        assert text.count(f"]({target})") == 1
+    assert "core contracts still apply" in text
+
+
+def test_logfire_profile_records_review_and_security_boundaries(
+    repo_root: Path,
+) -> None:
+    """Pin Logfire guidance and make sensitive capture opt-in."""
+    record = load_provenance(repo_root)["documents"][
+        "reference-profiles/logfire.md"
+    ]
+    assert record["evidence_paths"] == ["uv.lock"]
+    assert record["version_reviews"] == [LOGFIRE_REVIEW]
+
+    text = read_document(repo_root, "reference-profiles/logfire.md")
+    for phrase in (
+        "logfire 4.36.0",
+        "Reviewed on 2026-07-31",
+        "low-cardinality",
+        "exception recording",
+        "bounded input and output capture",
+        "scrubbing",
+        "privacy review",
+        "optional framework instrumentation",
+        "payload capture",
+        "user identity propagation",
+        "explicit security decisions",
+        "## References",
+    ):
+        assert phrase in text
+
+
+def test_streamlit_profile_records_review_and_demo_boundary(repo_root: Path) -> None:
+    """Keep Streamlit guidance small, direct, and limited to demos."""
+    record = load_provenance(repo_root)["documents"][
+        "reference-profiles/streamlit-demo-apps.md"
+    ]
+    assert record["evidence_paths"] == ["uv.lock"]
+    assert record["version_reviews"] == [STREAMLIT_REVIEW]
+
+    text = read_document(repo_root, "reference-profiles/streamlit-demo-apps.md")
+    for phrase in (
+        "streamlit 1.54.0",
+        "Reviewed on 2026-07-31",
+        "direct import",
+        "input, invocation, and result rendering",
+        "Direct import versus MCP",
+        "Runnable snippet",
+        "Illustrative snippet",
+        "production deployment",
+        "## References",
     ):
         assert phrase in text
