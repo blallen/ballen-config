@@ -17,7 +17,7 @@ marketplaces:
     profiles: [default]
   - name: ponytail
     source: DietrichGebert/ponytail
-    targets: [claude-code]
+    targets: [claude-code, codex]
     profiles: [default]
   - name: prime-radiant-marketplace
     source: prime-radiant-inc/prime-radiant-marketplace
@@ -74,7 +74,7 @@ plugins:
   - kind: native-marketplace
     id: ponytail@ponytail
     marketplace: ponytail
-    targets: [claude-code]
+    targets: [claude-code, codex]
     profiles: [default]
     required: true
   - kind: native-marketplace
