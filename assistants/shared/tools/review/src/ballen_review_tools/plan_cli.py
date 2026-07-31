@@ -14,7 +14,12 @@ from ballen_review_tools.canonical import (
     source_digest_bytes,
 )
 from ballen_review_tools.markdown import parse_review_markdown
-from ballen_review_tools.models import ReviewCommentPlan, ReviewIdentity
+from ballen_review_tools.models import (
+    PublicationPreview,
+    PublicationReceipt,
+    ReviewCommentPlan,
+    ReviewIdentity,
+)
 from ballen_review_tools.workspace import validate_workspace
 
 
@@ -194,7 +199,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(canonical_digest(_read_json(args.artifact)))
         return 0
     if args.command == "validate":
-        ReviewCommentPlan.model_validate(_read_json(args.artifact))
+        payload = _read_json(args.artifact)
+        if not isinstance(payload, dict):
+            raise ValueError("artifact must be a JSON object")
+        contract_version = payload.get("contract_version")
+        if contract_version == "review-comment-plan/v1":
+            ReviewCommentPlan.model_validate(payload)
+        elif contract_version == "publication-preview/v1":
+            PublicationPreview.model_validate(payload)
+        elif contract_version == "publication-receipt/v1":
+            PublicationReceipt.model_validate(payload)
+        else:
+            raise ValueError("unsupported artifact contract")
         print("valid")
         return 0
     if args.command == "workspace-check":
