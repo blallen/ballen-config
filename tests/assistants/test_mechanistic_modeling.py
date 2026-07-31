@@ -485,3 +485,43 @@ def test_reference_libraries_cross_link_without_nesting_authority(
     assert agent_index.count("../mechanistic-modeling/README.md") == 1
     assert "agent architecture owns orchestration" in model_index.lower()
     assert "mechanistic modeling owns model semantics" in agent_index.lower()
+
+
+def test_data_layer_preserves_model_semantics(repo_root: Path) -> None:
+    """Keep persistent entities and variable roles explicit."""
+    text = read_document(repo_root, "data-layer.md")
+    for heading in (
+        "## Process-Centered Model",
+        "## Targeted and External Variables",
+        "## Atomic `MathTerm` Contributions",
+        "## `Block`, `Parameter`, and `ConservationLaw`",
+        "## Entity Provenance",
+        "## Derived Views",
+        "## Serialization",
+        "## Construction Boundary",
+    ):
+        assert heading in text
+
+    for term in (
+        "`MechanisticModel`",
+        "`Interaction`",
+        "`Variable`",
+        "`MathTerm`",
+        "`Block`",
+        "`Parameter`",
+        "`ConservationLaw`",
+    ):
+        assert term in text
+
+    lowered = text.lower()
+    for concept in (
+        "targeted variables",
+        "external variables",
+        "derived equations",
+        "variable registry",
+        "parameter registry",
+        "schema version",
+        "entity provenance",
+        "extraction provenance",
+    ):
+        assert concept in lowered
