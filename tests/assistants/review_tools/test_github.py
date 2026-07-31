@@ -100,6 +100,7 @@ def test_github_read_vectors_use_gh_api_without_shell() -> None:
             ),
             CompletedCommand(0, "[]", ""),
             CompletedCommand(0, "[]", ""),
+            CompletedCommand(0, "[]", ""),
         ]
     )
     provider = GitHubProvider(identity=_identity(), runner=runner)
@@ -131,6 +132,16 @@ def test_github_read_vectors_use_gh_api_without_shell() -> None:
             "gh",
             "api",
             "repos/acme/ballen-config/issues/17/comments",
+            "--paginate",
+            "--header",
+            "Accept: application/vnd.github+json",
+            "--header",
+            "X-GitHub-Api-Version: 2026-03-10",
+        ),
+        (
+            "gh",
+            "api",
+            "repos/acme/ballen-config/pulls/17/files",
             "--paginate",
             "--header",
             "Accept: application/vnd.github+json",
