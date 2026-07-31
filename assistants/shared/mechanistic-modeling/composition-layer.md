@@ -17,6 +17,8 @@ advanced. A variable that is read but not targeted by any included model is
 external-only: it is a required input, not hidden solver state. If compatible
 models contribute to the same targeted variable, their rates form a natural
 sum while the individual contributions remain traceable in the runtime ledger.
+`ConservationLaw` declarations and diagnostic metadata are aggregated as
+composed views while retaining the identity of their originating declarations.
 
 Composition is a conceptual responsibility rather than a required class or
 interface shape. An implementation may expose it through any suitable package
@@ -98,12 +100,20 @@ solution normally carries:
 - model, scenario, and composition identities with schema versions;
 - resolved input identities and either their values or immutable references
   and digests; and
-- derived diagnostics, including conservation information where applicable.
+- derived diagnostics, including conservation information where applicable;
+  and
+- runtime compatibility information needed to interpret evaluator and solver
+  semantics.
+
+Named-rate, conservation, and other derived diagnostics may be stored as
+snapshots or recomputed when the originating composition and a compatible
+runtime remain available.
 
 Independent interpretation is not the same as guaranteed rerun capability. A
 full reproducibility bundle also contains the serialized model, the complete
 run specification, required immutable external artifacts, and enough runtime
-compatibility information to reconstruct the calculation.
+compatibility information to reconstruct the calculation rather than only
+interpret it.
 
 ## Composition Serialization
 

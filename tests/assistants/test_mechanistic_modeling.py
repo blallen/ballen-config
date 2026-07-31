@@ -40,6 +40,33 @@ TERMINOLOGY_DEFINITIONS = (
     "a `ModelSolution` carries named simulation results and derived diagnostics.",
 )
 
+FORBIDDEN_READER_PATTERNS = (
+    re.compile(r"/Users/"),
+    re.compile(r"(?<!\w)/(?:home|private|tmp|var|opt)/", re.IGNORECASE),
+    re.compile(r"[A-Za-z]:\\"),
+    re.compile(r"src/plato/", re.IGNORECASE),
+    re.compile(r"\b(?:from|import)\s+plato\b", re.IGNORECASE),
+    re.compile(
+        r"\b(?:Plato|AMi|Avogadro|QSP Autopilot|QSP|PK/PD|TMDD)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(r"\bAGTC-\d+\b"),
+    re.compile(r"flagshippioneering\.atlassian\.net", re.IGNORECASE),
+    re.compile(r"(?:app\.)?notion\.com", re.IGNORECASE),
+    re.compile(r"gitlab\.com", re.IGNORECASE),
+    re.compile(r"\bMR\s*!?\d+\b", re.IGNORECASE),
+    re.compile(r"\bmerge request\b", re.IGNORECASE),
+    re.compile(r"\bcommit\s+[0-9a-f]{7,40}\b", re.IGNORECASE),
+    re.compile(r"\bbranch\s+[A-Za-z0-9._/-]+\b", re.IGNORECASE),
+    re.compile(r"notion:[0-9a-f]+", re.IGNORECASE),
+    re.compile(
+        r"\b(?:credentials?|authentication|access tokens?|session history|"
+        r"generated plugin state)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(r"```(?:python|py|javascript|typescript|bash|shell)?\s*\n"),
+)
+
 SourceKind = Literal["repository_document", "design_page"]
 SourceAuthority = Literal["target_design", "package_contract", "corroboration"]
 Disposition = Literal["adapt", "qualify", "exclude", "verify_only"]
@@ -189,6 +216,15 @@ SOURCE_DESTINATIONS = {
     "crate-readme": {"index", "composition-layer"},
 }
 
+SOURCE_POLICIES = {
+    "overview-design": ("target_design", "adapt"),
+    "data-layer-design": ("target_design", "adapt"),
+    "runtime-layer-design": ("target_design", "adapt"),
+    "composition-layer-design": ("target_design", "adapt"),
+    "package-readme": ("package_contract", "adapt"),
+    "crate-readme": ("corroboration", "qualify"),
+}
+
 EXPECTED_DESTINATIONS = {
     "index": "assistants/shared/mechanistic-modeling/README.md",
     "data-layer": "assistants/shared/mechanistic-modeling/data-layer.md",
@@ -312,13 +348,26 @@ def test_provenance_records_fixed_program_metadata(repo_root: Path) -> None:
             "reviewed_on": REVIEW_DATE,
         }
     ]
-    assert manifest["review"] == {
-        "portability": "portable_after_adaptation",
-        "semantic": "pending",
-        "privacy": "pending",
-        "approved_on": None,
+    assert set(manifest["review"]) == {
+        "portability",
+        "semantic",
+        "privacy",
+        "approved_on",
     }
     assert_relative_posix_path(manifest["design"])
+
+
+def test_design_status_distinguishes_library_delivery_from_target_adoption(
+    repo_root: Path,
+) -> None:
+    """Keep the implemented reference library distinct from target behavior."""
+    text = normalize_whitespace(
+        (repo_root / APPROVED_DESIGN).read_text(encoding="utf-8")
+    )
+    assert "Implementation has not started" not in text
+    assert "Implementation remains pending" not in text
+    assert "reference library is implemented in `ballen-config`" in text
+    assert "does not imply that the target architecture is implemented" in text
 
 
 def test_provenance_records_design_and_verification_sources(repo_root: Path) -> None:
@@ -336,6 +385,9 @@ def test_provenance_records_design_and_verification_sources(repo_root: Path) -> 
     assert set(sources) == set(SOURCE_DESTINATIONS)
     for source_id, record in sources.items():
         assert record["destinations"] == sorted(SOURCE_DESTINATIONS[source_id])
+        assert (record["authority"], record["disposition"]) == SOURCE_POLICIES[
+            source_id
+        ]
         assert isinstance(record["notes"], str) and record["notes"]
         if record["kind"] == "design_page":
             assert set(record) == {
@@ -387,8 +439,6 @@ def test_provenance_accounts_for_every_destination(repo_root: Path) -> None:
         assert record["path"] == expected_path
         assert_relative_posix_path(cast(str, record["path"]))
         assert record["authority"] == "conceptual_contract"
-        assert record["semantic_review"] == "pending"
-        assert record["privacy_review"] == "pending"
         assert isinstance(record["transformation"], str) and record["transformation"]
         assert isinstance(record["exclusions"], list) and record["exclusions"]
         actual_roles = {
@@ -625,7 +675,7 @@ def test_validation_boundaries_assign_failures_to_earliest_owner(
         "missing parameter",
         "missing initial condition",
         "incompatible shared variables",
-        "ambiguous namespace",
+        "ambiguous mathematical namespace",
         "unknown mathematical name",
         "invalid expression",
         "non-finite contribution",
@@ -639,3 +689,127 @@ def test_validation_boundaries_assign_failures_to_earliest_owner(
         "diagnostic context",
     ):
         assert failure in lowered
+
+
+def test_resolution_failures_stay_at_the_earliest_boundary(repo_root: Path) -> None:
+    """Distinguish model, composition, and mathematical name resolution."""
+    text = normalize_whitespace(
+        read_document(repo_root, "validation-boundaries.md")
+    ).lower()
+    data_start = text.index("## data construction")
+    composition_start = text.index("## composition")
+    runtime_start = text.index("## runtime evaluation")
+    solver_start = text.index("## solver")
+
+    data_section = text[data_start:composition_start]
+    composition_section = text[composition_start:runtime_start]
+    runtime_section = text[runtime_start:solver_start]
+    assert "invalid target" in data_section
+    assert "ambiguous cross-model entity reference" in composition_section
+    assert "ambiguous mathematical namespace" in runtime_section
+
+    runtime_layer = normalize_whitespace(
+        read_document(repo_root, "runtime-layer.md")
+    ).lower()
+    assert "a target cannot be resolved" not in runtime_layer
+
+
+def test_reader_documents_are_portable_and_prose_only(repo_root: Path) -> None:
+    """Exclude internal locators, copied code, and local state."""
+    reader_paths = [LIBRARY_ROOT / path for path in EXPECTED_DOCUMENTS]
+    reader_paths.append(AGENT_ARCHITECTURE_INDEX)
+    for relative_path in reader_paths:
+        text = (repo_root / relative_path).read_text(encoding="utf-8")
+        for pattern in FORBIDDEN_READER_PATTERNS:
+            assert pattern.search(text) is None, (
+                f"{relative_path} contains prohibited content: {pattern.pattern}"
+            )
+
+
+def test_package_direction_and_mechanics_are_explicit(repo_root: Path) -> None:
+    """Keep package ownership and dependency direction visible to readers."""
+    index = read_document(repo_root, "README.md")
+    layer_markers = (
+        "1. The [data layer]",
+        "2. The [runtime layer]",
+        "3. The [composition layer]",
+        "4. Downstream consumers",
+    )
+    positions = [index.index(marker) for marker in layer_markers]
+    assert positions == sorted(positions)
+    assert "## Package Mechanics" in index
+
+    data = read_document(repo_root, "data-layer.md")
+    runtime = read_document(repo_root, "runtime-layer.md")
+    composition = read_document(repo_root, "composition-layer.md")
+    assert "## Serialization" in data
+    assert "## Evaluator Responsibility" in runtime
+    assert "## Solver Boundary" in composition
+    assert "## Composition Serialization" in composition
+
+
+def test_persistent_transient_and_scenario_boundaries_are_distinct(
+    repo_root: Path,
+) -> None:
+    """Separate model identity, run inputs, and reconstructible state."""
+    all_model_text = normalize_whitespace(
+        "\n".join(read_document(repo_root, path) for path in EXPECTED_DOCUMENTS)
+    ).lower()
+    for concept in (
+        "durable `mechanisticmodel` artifact",
+        "transient runtime state",
+        "compiled evaluators",
+        "callbacks",
+        "caches",
+        "live solver objects",
+    ):
+        assert concept in all_model_text
+
+    composition = normalize_whitespace(
+        read_document(repo_root, "composition-layer.md")
+    ).lower()
+    assert "the model describes scientific structure" in composition
+    assert "a scenario describes one intended use" in composition
+    assert "does not create a new `parameter` or rewrite the model" in composition
+
+
+def test_sibling_libraries_link_once_without_copying_model_definitions(
+    repo_root: Path,
+) -> None:
+    """Keep cross-library references informative rather than authoritative."""
+    model_index = read_document(repo_root, "README.md")
+    agent_index = (repo_root / AGENT_ARCHITECTURE_INDEX).read_text(encoding="utf-8")
+    assert model_index.count("../agent-architecture/README.md") == 1
+    assert agent_index.count("../mechanistic-modeling/README.md") == 1
+    normalized_agent_index = normalize_whitespace(agent_index)
+    for definition in TERMINOLOGY_DEFINITIONS:
+        assert definition not in normalized_agent_index
+
+
+def test_manifest_destination_paths_match_reader_files(repo_root: Path) -> None:
+    """Map every provenance destination to exactly one canonical document."""
+    manifest = load_provenance(repo_root)
+    destination_paths = [
+        Path(cast(str, destination["path"])) for destination in manifest["destinations"]
+    ]
+    expected_paths = {LIBRARY_ROOT / path for path in EXPECTED_DOCUMENTS}
+    assert len(destination_paths) == len(set(destination_paths))
+    assert set(destination_paths) == expected_paths
+    for relative_path in destination_paths:
+        full_path = repo_root / relative_path
+        assert full_path.is_file()
+        assert not full_path.is_symlink()
+
+
+def test_provenance_reviews_are_complete(repo_root: Path) -> None:
+    """Record semantic and privacy approval only after final review."""
+    manifest = load_provenance(repo_root)
+    for destination in manifest["destinations"]:
+        assert destination["semantic_review"] == "passed"
+        assert destination["privacy_review"] == "passed"
+    assert manifest["review"] == {
+        "portability": "portable_after_adaptation",
+        "semantic": "passed",
+        "privacy": "passed",
+        "approved_on": REVIEW_DATE,
+    }

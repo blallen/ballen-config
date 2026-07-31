@@ -3,16 +3,19 @@
 ## Status
 
 The conceptual sibling-library design and this written specification are
-approved. Implementation has not started.
+approved. The passive reference library is implemented in `ballen-config`
+under the
+[implementation plan](../plans/2026-07-31-plato-mechanistic-modeling.md).
+Its current semantic and privacy approval state is recorded in the
+[provenance manifest](2026-07-31-plato-mechanistic-modeling-provenance.yaml).
 
 This specification defines a passive, implementation-neutral mechanistic
 modeling reference library for `ballen-config`. It adapts the generic model,
 runtime, and composition concepts currently documented in Plato and its
-canonical design sources. It does not change Plato, copy Plato source code, or
-claim that the complete target architecture is implemented there today.
-
-Implementation remains pending a separate implementation plan and execution
-approval.
+canonical design sources. The reference library records the intended
+architecture; its existence does not imply that the target architecture is
+implemented in Plato or any other consuming system. This work does not change
+Plato or copy Plato source code.
 
 ## Context
 

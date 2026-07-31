@@ -40,8 +40,8 @@ a scenario are brought together. It rejects:
 - a missing initial condition for targeted state;
 - incompatible shared variables whose meanings, units, or shapes cannot be
   reconciled; and
-- an ambiguous namespace in which one reference could resolve to more than one
-  entity.
+- an ambiguous cross-model entity reference that could resolve to more than one
+  compatible declaration.
 
 Composition also checks parameter precedence, cross-model identity alignment,
 event declarations, and the coverage of exogenous inputs. It may report
@@ -51,9 +51,10 @@ back to their owning boundary rather than inventing a scenario-level repair.
 ## Runtime Evaluation
 
 Runtime evaluation validates the instantaneous calculation against resolved
-values. It rejects an unknown mathematical name, an invalid expression that
-cannot be evaluated within the restricted mathematical vocabulary, and any
-non-finite contribution produced by a term.
+values. It rejects an unknown mathematical name, an ambiguous mathematical
+namespace, an invalid expression that cannot be evaluated within the
+restricted mathematical vocabulary, and any non-finite contribution produced
+by a term.
 
 Names and expression forms should be checked earlier whenever they can be
 decided statically. Runtime remains responsible for failures that depend on the
