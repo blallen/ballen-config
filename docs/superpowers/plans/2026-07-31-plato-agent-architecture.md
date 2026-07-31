@@ -817,7 +817,7 @@ explain their navigation role.
     `https://github.com/pydantic/logfire/blob/main/CHANGELOG.md`
     - Streamlit primary documentation: `https://docs.streamlit.io/`
     - Streamlit release notes:
-    `https://docs.streamlit.io/develop/quick-reference/changelog`
+    `https://docs.streamlit.io/develop/quick-reference/release-notes/2026`
 
 - [ ] Add exact Logfire and Streamlit `version_reviews` records to provenance.
   Add failing tests for both records, all three files, profile banners, profile

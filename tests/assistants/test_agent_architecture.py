@@ -73,9 +73,7 @@ LOGFIRE_REVIEW: VersionReview = {
     "package": "logfire",
     "version": "4.36.0",
     "primary_source": "https://pydantic.dev/docs/logfire/",
-    "release_history": (
-        "https://github.com/pydantic/logfire/blob/main/CHANGELOG.md"
-    ),
+    "release_history": ("https://github.com/pydantic/logfire/blob/main/CHANGELOG.md"),
     "reviewed_on": "2026-07-31",
 }
 STREAMLIT_REVIEW: VersionReview = {
@@ -84,7 +82,7 @@ STREAMLIT_REVIEW: VersionReview = {
     "version": "1.54.0",
     "primary_source": "https://docs.streamlit.io/",
     "release_history": (
-        "https://docs.streamlit.io/develop/quick-reference/changelog"
+        "https://docs.streamlit.io/develop/quick-reference/release-notes/2026"
     ),
     "reviewed_on": "2026-07-31",
 }
@@ -125,17 +123,28 @@ class ProvenanceManifest(TypedDict):
 SOURCE_DESTINATIONS: dict[str, tuple[SourceDisposition, tuple[str, ...]]] = {
     "docs/agent_charter/README.md": (
         "split",
-        ("core/architecture-levels.md", "core/agent-layers.md"),
+        (
+            "README.md",
+            "core/architecture-levels.md",
+            "core/agent-layers.md",
+            "reference-profiles/README.md",
+        ),
     ),
     "docs/agent_charter/agent_construction_standard.md": (
         "profile",
-        ("reference-profiles/pydantic-ai/construction.md",),
+        (
+            "reference-profiles/pydantic-ai/README.md",
+            "reference-profiles/pydantic-ai/construction.md",
+        ),
     ),
     "docs/agent_charter/agent_service_pattern.md": (
         "split",
         (
             "core/agent-layers.md",
             "delegation/agent-as-tool.md",
+            "delegation/dynamic-subagents.md",
+            "delegation/isolation-matrix.md",
+            "reference-profiles/pydantic-ai/README.md",
             "reference-profiles/pydantic-ai/services-and-dependencies.md",
         ),
     ),
@@ -143,6 +152,9 @@ SOURCE_DESTINATIONS: dict[str, tuple[SourceDisposition, tuple[str, ...]]] = {
         "split",
         (
             "core/tools-and-capabilities.md",
+            "delegation/dynamic-subagents.md",
+            "delegation/isolation-matrix.md",
+            "reference-profiles/pydantic-ai/README.md",
             "reference-profiles/pydantic-ai/tools-and-capabilities.md",
         ),
     ),
@@ -164,6 +176,7 @@ SOURCE_DESTINATIONS: dict[str, tuple[SourceDisposition, tuple[str, ...]]] = {
         "split",
         (
             "core/models-and-errors.md",
+            "reference-profiles/pydantic-ai/README.md",
             "reference-profiles/pydantic-ai/construction.md",
         ),
     ),
@@ -180,12 +193,18 @@ SOURCE_DESTINATIONS: dict[str, tuple[SourceDisposition, tuple[str, ...]]] = {
         "split",
         (
             "core/tools-and-capabilities.md",
+            "reference-profiles/pydantic-ai/README.md",
             "reference-profiles/pydantic-ai/tools-and-capabilities.md",
         ),
     ),
     "docs/agentic_workflows/README.md": (
         "extracted",
-        ("orchestration/director-act-scene.md",),
+        (
+            "README.md",
+            "delegation/isolation-matrix.md",
+            "orchestration/director-act-scene.md",
+            "orchestration/persistence-and-resume.md",
+        ),
     ),
     "docs/agentic_workflows/contracts.md": (
         "extracted",
@@ -261,14 +280,9 @@ ALL_DOCUMENTS = (
 
 KIND_AND_AUTHORITY = {
     **{path: ("core", "normative") for path in CORE_DOCUMENTS},
-    **{
-        path: ("orchestration", "normative")
-        for path in ORCHESTRATION_DOCUMENTS
-    },
+    **{path: ("orchestration", "normative") for path in ORCHESTRATION_DOCUMENTS},
     **{path: ("delegation", "normative") for path in DELEGATION_DOCUMENTS},
-    **{
-        path: ("reference-profile", "conditional") for path in PROFILE_DOCUMENTS
-    },
+    **{path: ("reference-profile", "conditional") for path in PROFILE_DOCUMENTS},
     **{path: ("template", "informative") for path in TEMPLATE_DOCUMENTS},
     **{path: ("stub", "non-normative-draft") for path in STUB_DOCUMENTS},
 }
@@ -394,9 +408,7 @@ def test_provenance_accounts_for_every_destination_document(repo_root: Path) -> 
 
     for destination, record in documents.items():
         assert_relative_posix_path(destination)
-        assert (record["kind"], record["authority"]) == KIND_AND_AUTHORITY[
-            destination
-        ]
+        assert (record["kind"], record["authority"]) == KIND_AND_AUTHORITY[destination]
         assert record["source_paths"]
         assert set(record["source_roles"]) == set(record["source_paths"])
         assert set(record["source_roles"].values()) <= {"primary", "supporting"}
@@ -763,7 +775,10 @@ def test_pydantic_ai_profile_records_exact_version_reviews(repo_root: Path) -> N
         record = documents[relative_path]
         assert record["evidence_paths"] == ["uv.lock"]
         expected_reviews = [PYDANTIC_AI_REVIEW]
-        if relative_path.endswith("tools-and-capabilities.md"):
+        if relative_path in {
+            "reference-profiles/pydantic-ai/README.md",
+            "reference-profiles/pydantic-ai/tools-and-capabilities.md",
+        }:
             expected_reviews.append(SUBAGENTS_PYDANTIC_AI_REVIEW)
         assert record["version_reviews"] == expected_reviews
 
@@ -875,9 +890,7 @@ def test_logfire_profile_records_review_and_security_boundaries(
     repo_root: Path,
 ) -> None:
     """Pin Logfire guidance and make sensitive capture opt-in."""
-    record = load_provenance(repo_root)["documents"][
-        "reference-profiles/logfire.md"
-    ]
+    record = load_provenance(repo_root)["documents"]["reference-profiles/logfire.md"]
     assert record["evidence_paths"] == ["uv.lock"]
     assert record["version_reviews"] == [LOGFIRE_REVIEW]
 
@@ -950,9 +963,7 @@ def test_stubs_have_exact_non_normative_banner(
 ) -> None:
     """Make unresolved guidance visibly non-normative at first glance."""
     text = read_document(repo_root, relative_path)
-    assert text.splitlines()[2].startswith(
-        "> **Status:** Non-normative draft."
-    )
+    assert text.splitlines()[2].startswith("> **Status:** Non-normative draft.")
 
 
 def test_readme_template_has_complete_copy_and_adapt_outline(
@@ -961,9 +972,7 @@ def test_readme_template_has_complete_copy_and_adapt_outline(
     """Provide one consistent documentation skeleton without compliance rules."""
     text = read_document(repo_root, "templates/readme-templates.md")
     headings = [
-        line.removeprefix("## ")
-        for line in text.splitlines()
-        if line.startswith("## ")
+        line.removeprefix("## ") for line in text.splitlines() if line.startswith("## ")
     ]
     assert headings == [
         "Purpose",
@@ -1016,8 +1025,7 @@ def test_library_tree_matches_the_complete_manifest(repo_root: Path) -> None:
     """Keep the passive library at the approved 25-document boundary."""
     library_root = repo_root / LIBRARY_ROOT
     on_disk = {
-        path.relative_to(library_root).as_posix()
-        for path in library_root.rglob("*.md")
+        path.relative_to(library_root).as_posix() for path in library_root.rglob("*.md")
     }
     assert len(on_disk) == 25
     assert on_disk == ALL_DOCUMENTS
@@ -1097,14 +1105,22 @@ def test_provenance_matches_sources_manifest_and_disk(repo_root: Path) -> None:
     documents = manifest["documents"]
     library_root = repo_root / LIBRARY_ROOT
     on_disk = {
-        path.relative_to(library_root).as_posix()
-        for path in library_root.rglob("*.md")
+        path.relative_to(library_root).as_posix() for path in library_root.rglob("*.md")
     }
 
-    for record in manifest["source_documents"].values():
+    reverse_destinations = {
+        source_path: set() for source_path in manifest["source_documents"]
+    }
+    for destination, record in documents.items():
+        for source_path in record["source_paths"]:
+            reverse_destinations[source_path].add(destination)
+
+    for source_path, record in manifest["source_documents"].items():
         if record["disposition"] == "excluded":
             continue
-        assert set(record["destinations"]) <= set(documents)
+        destinations = set(record["destinations"])
+        assert destinations <= set(documents)
+        assert destinations == reverse_destinations[source_path]
 
     assert set(documents) == on_disk
     assert set(documents) == ALL_DOCUMENTS
