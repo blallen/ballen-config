@@ -553,3 +553,46 @@ def test_runtime_layer_defines_deterministic_evaluation(repo_root: Path) -> None
         "transient runtime state",
     ):
         assert concept in lowered
+
+
+def test_composition_layer_defines_run_and_solution_semantics(
+    repo_root: Path,
+) -> None:
+    """Keep composition, solver, and result ownership explicit."""
+    text = read_document(repo_root, "composition-layer.md")
+    for heading in (
+        "## `MechanisticModelComposer`",
+        "## Composition Validation",
+        "## Scenario Boundary",
+        "## Solver Boundary",
+        "## Events and Interventions",
+        "## One Composition Path",
+        "## `ModelSolution`",
+        "## Composition Serialization",
+    ):
+        assert heading in text
+
+    for term in (
+        "`MechanisticModelComposer`",
+        "`MechanisticModel`",
+        "`Variable`",
+        "`Parameter`",
+        "`ConservationLaw`",
+        "`ModelSolution`",
+    ):
+        assert term in text
+
+    lowered = normalize_whitespace(text).lower()
+    for concept in (
+        "targeted state",
+        "external-only",
+        "peer model",
+        "scenario input",
+        "natural sum",
+        "conflicting defaults",
+        "initial-condition override",
+        "same composition path",
+        "independently interpretable",
+        "reproducibility bundle",
+    ):
+        assert concept in lowered
