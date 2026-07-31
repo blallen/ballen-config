@@ -1,0 +1,13 @@
+{
+  "contract_version": "response-vectors/v1",
+  "vectors": [
+    {
+      "name": "resolved-evidence-retained",
+      "assertions": ["resolved thread remains visible", "selected action is skip"]
+    },
+    {
+      "name": "provider-input-is-exclusive",
+      "assertions": ["one normalized source", "no simultaneous provider dependency"]
+    }
+  ]
+}

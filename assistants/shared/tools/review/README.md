@@ -84,3 +84,12 @@ Git must ignore it and track nothing in it:
 ```
 
 The second command prints `valid`.
+
+The same locked project validates normalized thread snapshots and compiles
+provider-neutral response plans. These commands do not construct provider
+mutation clients:
+
+```text
+review-plan validate-threads --threads PATH
+review-plan compile-response --threads PATH --draft PATH --output PATH --repo-root PATH
+```
