@@ -1,5 +1,6 @@
 """Contract tests for the shared agent-architecture reference library."""
 
+import re
 from pathlib import Path, PurePosixPath
 from typing import Literal, NotRequired, TypedDict, cast
 
@@ -254,6 +255,36 @@ def assert_relative_posix_path(value: str) -> None:
     assert value == pure.as_posix()
 
 
+def read_document(repo_root: Path, relative_path: str) -> str:
+    """Read one canonical library document."""
+    return (repo_root / LIBRARY_ROOT / relative_path).read_text(encoding="utf-8")
+
+
+def assert_document_shape(text: str) -> None:
+    """Require one visible title and no migration frontmatter."""
+    assert text.startswith("# ")
+    assert not text.startswith("---")
+    assert sum(line.startswith("# ") for line in text.splitlines()) == 1
+
+
+def assert_explained_normative_rules(text: str) -> None:
+    """Require rationale, scope, and exceptions for each normative rule."""
+    lines = text.splitlines()
+    for index, line in enumerate(lines):
+        if not re.search(r"\b(?:MUST|SHOULD)\b", line):
+            continue
+        assert line.startswith("Requirement:")
+        section_end = len(lines)
+        for candidate in range(index + 1, len(lines)):
+            if lines[candidate].startswith("#"):
+                section_end = candidate
+                break
+        section = lines[index:section_end]
+        assert any(item.startswith("Rationale:") for item in section)
+        assert any(item.startswith("Scope:") for item in section)
+        assert any(item.startswith("Exceptions:") for item in section)
+
+
 def test_provenance_records_fixed_program_metadata(repo_root: Path) -> None:
     """Pin the source snapshot and approved portability decision."""
     manifest = load_provenance(repo_root)
@@ -316,3 +347,37 @@ def test_provenance_accounts_for_every_destination_document(repo_root: Path) -> 
             assert source_path in manifest["source_documents"]
         for evidence_path in record.get("evidence_paths", []):
             assert_relative_posix_path(evidence_path)
+
+
+def test_architecture_foundations_define_responsibility_categories(
+    repo_root: Path,
+) -> None:
+    """Replace numeric shorthand with three responsibility categories."""
+    text = read_document(repo_root, "core/architecture-levels.md")
+    assert_document_shape(text)
+    assert_explained_normative_rules(text)
+    assert "## Workflow" in text
+    assert "## Agent" in text
+    assert "## Orchestrator" in text
+    assert "fixed specialist" in text
+    assert "does not make the parent an Orchestrator" in text
+    assert not re.search(r"\bP[0-3]\b", text)
+
+
+def test_agent_layers_define_inward_dependency_direction(repo_root: Path) -> None:
+    """Keep framework mechanics behind stable service boundaries."""
+    text = read_document(repo_root, "core/agent-layers.md")
+    assert_document_shape(text)
+    assert_explained_normative_rules(text)
+    for heading in (
+        "## Construction",
+        "## Models and expected errors",
+        "## Tools and capabilities",
+        "## Service entry points",
+        "## External adapters",
+        "## Dependency direction",
+        "## Public API",
+    ):
+        assert heading in text
+    assert "validated boundary data" in text
+    assert "runtime resources" in text
