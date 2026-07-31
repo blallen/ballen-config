@@ -5,8 +5,8 @@
 > case.
 
 Reference profiles translate portable architecture requirements into
-technology-specific guidance. The [core contracts still apply](../core/architecture-levels.md)
-after a profile is adopted; a profile cannot weaken their boundaries.
+technology-specific guidance. The core contracts still apply after a profile
+is adopted; a profile cannot weaken their boundaries.
 
 ## Adoption
 

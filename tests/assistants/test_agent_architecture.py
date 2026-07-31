@@ -313,15 +313,35 @@ def assert_explained_normative_rules(text: str) -> None:
         if not re.search(r"\b(?:MUST|SHOULD)\b", line):
             continue
         assert line.startswith("Requirement:")
+        heading_level = 1
+        for candidate in reversed(lines[:index]):
+            match = re.match(r"^(#{1,6}) ", candidate)
+            if match:
+                heading_level = len(match.group(1))
+                break
         section_end = len(lines)
         for candidate in range(index + 1, len(lines)):
-            if lines[candidate].startswith("#"):
+            match = re.match(r"^(#{1,6}) ", lines[candidate])
+            if match and len(match.group(1)) <= heading_level:
                 section_end = candidate
                 break
         section = lines[index:section_end]
         assert any(item.startswith("Rationale:") for item in section)
         assert any(item.startswith("Scope:") for item in section)
         assert any(item.startswith("Exceptions:") for item in section)
+
+
+def local_markdown_targets(text: str) -> list[str]:
+    """Extract non-web Markdown link targets from a document."""
+    targets: list[str] = []
+    for match in re.finditer(r"(?<!!)\[[^]]+\]\(([^)]+)\)", text):
+        target = match.group(1).strip()
+        if target.startswith(("http://", "https://", "mailto:", "#")):
+            continue
+        target = target.split("#", maxsplit=1)[0]
+        if target:
+            targets.append(target)
+    return targets
 
 
 def test_provenance_records_fixed_program_metadata(repo_root: Path) -> None:
@@ -990,3 +1010,101 @@ def test_maturity_stub_preserves_labels_without_inventing_gates(
         "not yet defined",
     ):
         assert phrase in text
+
+
+def test_library_tree_matches_the_complete_manifest(repo_root: Path) -> None:
+    """Keep the passive library at the approved 25-document boundary."""
+    library_root = repo_root / LIBRARY_ROOT
+    on_disk = {
+        path.relative_to(library_root).as_posix()
+        for path in library_root.rglob("*.md")
+    }
+    assert len(on_disk) == 25
+    assert on_disk == ALL_DOCUMENTS
+
+
+def test_indexes_link_every_other_library_document_once(repo_root: Path) -> None:
+    """Give every document exactly one owning index entry."""
+    index_documents = (
+        "README.md",
+        "reference-profiles/README.md",
+        "reference-profiles/pydantic-ai/README.md",
+    )
+    counts = {path: 0 for path in ALL_DOCUMENTS - {"README.md"}}
+    library_root = (repo_root / LIBRARY_ROOT).resolve()
+
+    for index_path in index_documents:
+        text = read_document(repo_root, index_path)
+        index_parent = (library_root / index_path).parent
+        for target in local_markdown_targets(text):
+            resolved = (index_parent / target).resolve()
+            try:
+                relative = resolved.relative_to(library_root).as_posix()
+            except ValueError:
+                continue
+            if relative in counts:
+                counts[relative] += 1
+
+    assert counts == dict.fromkeys(counts, 1)
+
+
+def test_every_local_library_link_resolves(repo_root: Path) -> None:
+    """Reject stale or misspelled relative documentation links."""
+    library_root = repo_root / LIBRARY_ROOT
+    for relative_path in ALL_DOCUMENTS:
+        text = read_document(repo_root, relative_path)
+        document_parent = (library_root / relative_path).parent
+        for target in local_markdown_targets(text):
+            assert (document_parent / target).resolve().is_file(), (
+                relative_path,
+                target,
+            )
+
+
+def test_every_library_rule_has_explanation(repo_root: Path) -> None:
+    """Apply the normative-language contract across the integrated library."""
+    for relative_path in ALL_DOCUMENTS:
+        assert_explained_normative_rules(read_document(repo_root, relative_path))
+
+
+def test_library_rejects_project_specific_and_local_material(repo_root: Path) -> None:
+    """Keep the extracted library portable and free of prohibited source state."""
+    forbidden_patterns = (
+        r"/Users/",
+        r"~/\.(?:aws|agents|claude|cursor)\b",
+        r"\bfrom\s+plato\b",
+        r"\bimport\s+plato\b",
+        r"\bplato\.",
+        r"\bAGTC-\d+\b",
+        r"X-Amzn-Oidc",
+        r"\bLocalBackend\b",
+        r"\bDesignManifestStore\b",
+        r"https?://[^\s)\"']*codeartifact[^\s)\"']*",
+        r"\bP[0-3]\b",
+    )
+    for relative_path in ALL_DOCUMENTS:
+        text = read_document(repo_root, relative_path)
+        for pattern in forbidden_patterns:
+            assert not re.search(pattern, text, flags=re.IGNORECASE), (
+                relative_path,
+                pattern,
+            )
+
+
+def test_provenance_matches_sources_manifest_and_disk(repo_root: Path) -> None:
+    """Keep source dispositions, destination records, and files one-to-one."""
+    manifest = load_provenance(repo_root)
+    documents = manifest["documents"]
+    library_root = repo_root / LIBRARY_ROOT
+    on_disk = {
+        path.relative_to(library_root).as_posix()
+        for path in library_root.rglob("*.md")
+    }
+
+    for record in manifest["source_documents"].values():
+        if record["disposition"] == "excluded":
+            continue
+        assert set(record["destinations"]) <= set(documents)
+
+    assert set(documents) == on_disk
+    assert set(documents) == ALL_DOCUMENTS
