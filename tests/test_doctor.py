@@ -158,6 +158,98 @@ def test_declared_application_path_satisfies_component(fake_home: Path) -> None:
     assert finding.status is FindingStatus.READY
 
 
+def test_declared_application_path_without_matching_receipt_is_missing(
+    fake_home: Path,
+) -> None:
+    """A vendor-provided path is insufficient without the declared receipt.
+
+    BasicTeX provides the same ``latex`` binary as full MacTeX, so the
+    receipt prefix is what distinguishes them. Without a matching receipt,
+    the application path alone must not report the component as ready.
+    """
+    component = Component(
+        id="mactex",
+        manager=Manager.BREW_CASK,
+        package="mactex",
+        application_paths=("/Library/TeX/texbin/latex",),
+        receipt_prefixes=("org.tug.mactex.gui",),
+    )
+    runner = FakeRunner(
+        {
+            ("pkgutil", "--pkgs"): {
+                "returncode": 0,
+                "stdout": "org.tug.texlive2025\n",
+                "stderr": "",
+            }
+        }
+    )
+    doctor = Doctor(
+        runner,
+        fake_home,
+        path_exists=lambda path: path == Path("/Library/TeX/texbin/latex"),
+    )
+    finding = doctor.component_checks((component,))[0]
+    assert finding.status is FindingStatus.MISSING
+
+
+def test_declared_application_path_with_matching_receipt_is_ready(
+    fake_home: Path,
+) -> None:
+    """A vendor-provided path with the declared receipt is ready."""
+    component = Component(
+        id="mactex",
+        manager=Manager.BREW_CASK,
+        package="mactex",
+        application_paths=("/Library/TeX/texbin/latex",),
+        receipt_prefixes=("org.tug.mactex.gui",),
+    )
+    runner = FakeRunner(
+        {
+            ("pkgutil", "--pkgs"): {
+                "returncode": 0,
+                "stdout": "org.tug.mactex.gui2025\norg.tug.texlive2025\n",
+                "stderr": "",
+            }
+        }
+    )
+    doctor = Doctor(
+        runner,
+        fake_home,
+        path_exists=lambda path: path == Path("/Library/TeX/texbin/latex"),
+    )
+    finding = doctor.component_checks((component,))[0]
+    assert finding.status is FindingStatus.READY
+
+
+def test_no_application_paths_with_failing_brew_list_is_missing(
+    fake_home: Path,
+) -> None:
+    """A component without declared application paths never vacuously passes.
+
+    Regression guard: ``all()`` over an empty ``application_paths`` tuple is
+    vacuously ``True``. The presence check must require a non-empty tuple
+    before using ``all()``, or every path-less component would report ready
+    regardless of ``brew list`` failing.
+    """
+    component = Component(
+        id="gh",
+        manager=Manager.BREW_FORMULA,
+        package="gh",
+    )
+    runner = FakeRunner(
+        {
+            ("brew", "list", "--formula", "gh"): {
+                "returncode": 1,
+                "stdout": "",
+                "stderr": "",
+            }
+        }
+    )
+    doctor = Doctor(runner, fake_home)
+    finding = doctor.component_checks((component,))[0]
+    assert finding.status is FindingStatus.MISSING
+
+
 def test_git_component_requires_non_symlink_git_checkout(
     fake_home: Path,
     tmp_path: Path,

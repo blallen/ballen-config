@@ -155,15 +155,32 @@ class Doctor:
                 Manager.BREW_FORMULA,
                 Manager.BREW_CASK,
             }:
-                type_flag = (
-                    "--formula"
-                    if component.manager is Manager.BREW_FORMULA
-                    else "--cask"
-                )
-                result = self.runner.run(("brew", "list", type_flag, component.package))
-                present = result["returncode"] == 0 or any(
+                present = False
+                if component.application_paths and all(
                     self.path_exists(Path(path)) for path in component.application_paths
-                )
+                ):
+                    if not component.receipt_prefixes:
+                        present = True
+                    else:
+                        receipts = self.runner.run(("pkgutil", "--pkgs"))
+                        installed_receipts = receipts["stdout"].splitlines()
+                        present = receipts["returncode"] == 0 and all(
+                            any(
+                                receipt.startswith(prefix)
+                                for receipt in installed_receipts
+                            )
+                            for prefix in component.receipt_prefixes
+                        )
+                if not present:
+                    type_flag = (
+                        "--formula"
+                        if component.manager is Manager.BREW_FORMULA
+                        else "--cask"
+                    )
+                    result = self.runner.run(
+                        ("brew", "list", type_flag, component.package)
+                    )
+                    present = result["returncode"] == 0
             elif component.manager is Manager.UV_TOOL:
                 result = self.runner.run(("uv", "tool", "list"))
                 present = result["returncode"] == 0 and uv_tool_listed(
