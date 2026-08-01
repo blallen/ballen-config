@@ -56,3 +56,15 @@ def test_non_git_component_rejects_revision() -> None:
             package="uv",
             revision=_REVISION,
         )
+
+
+def test_uv_tool_manager_is_supported() -> None:
+    """Tools installed by uv are expressible as components."""
+    assert Manager("uv_tool") is Manager.UV_TOOL
+    component = Component(
+        id="pre-commit",
+        manager=Manager.UV_TOOL,
+        package="pre-commit",
+        depends_on=("uv",),
+    )
+    assert component.manager is Manager.UV_TOOL
