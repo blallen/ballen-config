@@ -60,6 +60,7 @@ from ballen_config.planning import (
     build_resolved_plan,
     format_plan,
 )
+from ballen_config.probes import uv_tool_listed
 from ballen_config.runner import Runner, SubprocessRunner
 from ballen_config.runtime import RuntimePaths
 from ballen_config.state import StateStore
@@ -168,10 +169,7 @@ class ResolvedInspector:
             return (
                 ComponentState.PRESENT
                 if result["returncode"] == 0
-                and any(
-                    line.split(" ", 1)[0] == component.package
-                    for line in result["stdout"].splitlines()
-                )
+                and uv_tool_listed(result["stdout"], component.package)
                 else ComponentState.MISSING
             )
         if component.destination is None:

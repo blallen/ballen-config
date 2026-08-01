@@ -16,6 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ballen_config.models import Component, Manager, ResolvedSetup
 from ballen_config.paths import assert_contained, assert_no_symlink_components
+from ballen_config.probes import uv_tool_listed
 from ballen_config.runner import CommandResult, Runner
 from ballen_config.runtime import RuntimePaths
 from ballen_config.state import InstallRecord, StateStore
@@ -359,9 +360,8 @@ class Installer:
     def _uv_tool(self, component: Component) -> InstallOutcome:
         """Return present or install a uv-managed tool."""
         listed = self.runner.run(("uv", "tool", "list"))
-        if listed["returncode"] == 0 and any(
-            line.split(" ", 1)[0] == component.package
-            for line in listed["stdout"].splitlines()
+        if listed["returncode"] == 0 and uv_tool_listed(
+            listed["stdout"], component.package
         ):
             return InstallOutcome(component_id=component.id, state="present")
         installed = self.runner.run(("uv", "tool", "install", component.package))

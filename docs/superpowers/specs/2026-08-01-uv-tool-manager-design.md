@@ -106,6 +106,18 @@ its presence check. Add the `uv_tool` case there so the three dispatch sites
 stay consistent. Keeping these three in sync is the main maintenance cost of
 the design, and a reviewer should check all three together.
 
+**Update:** after all three sites landed, this triplication was reversed.
+The `uv tool list` parsing rule was extracted into
+`src/ballen_config/probes.py` as `uv_tool_listed`, called from all three
+sites; the returncode check and each site's own presence semantics stayed
+put. Reasons: the "no cross-module coupling" argument for keeping it
+triplicated didn't hold, since `cli.py` already imports from `doctor.py` and
+`install.py`; the parallel brew probe, left triplicated, had already drifted
+across the three files (`install.py` checks returncode only, `doctor.py` ORs
+in `application_paths`, `cli.py` checks `application_paths` before
+dispatching); and the parsing rule encodes an assumption about `uv tool
+list`'s output format that should live in one place rather than three.
+
 ### Manifest changes
 
 In `manifests/packages.yaml`, change `pre-commit` from `brew_formula` to

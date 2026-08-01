@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, field_validator
 
 from ballen_config.configure import ConfigurationEngine, ManagedSpec
 from ballen_config.models import Component, Manager, ResolvedSetup
+from ballen_config.probes import uv_tool_listed
 from ballen_config.runner import Runner
 from ballen_config.runtime import RuntimePaths
 
@@ -165,9 +166,8 @@ class Doctor:
                 )
             elif component.manager is Manager.UV_TOOL:
                 result = self.runner.run(("uv", "tool", "list"))
-                present = result["returncode"] == 0 and any(
-                    line.split(" ", 1)[0] == component.package
-                    for line in result["stdout"].splitlines()
+                present = result["returncode"] == 0 and uv_tool_listed(
+                    result["stdout"], component.package
                 )
             else:
                 if component.destination is None:
