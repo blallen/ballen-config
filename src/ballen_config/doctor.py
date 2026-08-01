@@ -163,6 +163,12 @@ class Doctor:
                 present = result["returncode"] == 0 or any(
                     self.path_exists(Path(path)) for path in component.application_paths
                 )
+            elif component.manager is Manager.UV_TOOL:
+                result = self.runner.run(("uv", "tool", "list"))
+                present = result["returncode"] == 0 and any(
+                    line.split(" ", 1)[0] == component.package
+                    for line in result["stdout"].splitlines()
+                )
             else:
                 if component.destination is None:
                     raise ValueError(f"git component lacks destination: {component.id}")
