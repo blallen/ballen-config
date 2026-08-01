@@ -2,11 +2,16 @@
 
 ## Status
 
-Proposed design for adding a `uv_tool` component manager to the bootstrap.
-Written 2026-08-01. Not yet implemented.
+Implemented on 2026-08-01 in the `uv-tool-manager` branch, across the model,
+install, doctor, CLI, and manifest changes described below. The accompanying
+[implementation plan](../plans/2026-08-01-uv-tool-manager.md) records one task
+withdrawn during execution.
 
-Two scope decisions are assumed rather than confirmed, and either can be
-narrowed without changing the design:
+The one-time local cleanup in the Migration section is a human action and is
+deliberately not part of the branch.
+
+Both scope decisions below were assumed at design time and confirmed during
+implementation:
 
 - The manager owns both `pre-commit` and `ruff`.
 - Manifest entries name a tool, not a pinned version.
