@@ -10,7 +10,11 @@ from pydantic import BaseModel, ConfigDict, field_validator
 
 from ballen_config.configure import ConfigurationEngine, ManagedSpec
 from ballen_config.models import Component, Manager, ResolvedSetup
-from ballen_config.probes import uv_tool_listed
+from ballen_config.probes import (
+    application_paths_present,
+    receipts_match,
+    uv_tool_listed,
+)
 from ballen_config.runner import Runner
 from ballen_config.runtime import RuntimePaths
 
@@ -156,20 +160,15 @@ class Doctor:
                 Manager.BREW_CASK,
             }:
                 present = False
-                if component.application_paths and all(
-                    self.path_exists(Path(path)) for path in component.application_paths
+                if application_paths_present(
+                    component.application_paths, self.path_exists
                 ):
                     if not component.receipt_prefixes:
                         present = True
                     else:
                         receipts = self.runner.run(("pkgutil", "--pkgs"))
-                        installed_receipts = receipts["stdout"].splitlines()
-                        present = receipts["returncode"] == 0 and all(
-                            any(
-                                receipt.startswith(prefix)
-                                for receipt in installed_receipts
-                            )
-                            for prefix in component.receipt_prefixes
+                        present = receipts["returncode"] == 0 and receipts_match(
+                            receipts["stdout"], component.receipt_prefixes
                         )
                 if not present:
                     type_flag = (

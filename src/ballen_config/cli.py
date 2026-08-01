@@ -60,7 +60,11 @@ from ballen_config.planning import (
     build_resolved_plan,
     format_plan,
 )
-from ballen_config.probes import uv_tool_listed
+from ballen_config.probes import (
+    application_paths_present,
+    receipts_match,
+    uv_tool_listed,
+)
 from ballen_config.runner import Runner, SubprocessRunner
 from ballen_config.runtime import RuntimePaths
 from ballen_config.state import StateStore
@@ -153,16 +157,12 @@ class ResolvedInspector:
         """
         component = self.components[component_id]
         if component.manager in {Manager.BREW_FORMULA, Manager.BREW_CASK}:
-            if component.application_paths and all(
-                Path(path).exists() for path in component.application_paths
-            ):
+            if application_paths_present(component.application_paths, Path.exists):
                 if not component.receipt_prefixes:
                     return ComponentState.PRESENT
                 receipts = self.runner.run(("pkgutil", "--pkgs"))
-                installed_receipts = receipts["stdout"].splitlines()
-                if receipts["returncode"] == 0 and all(
-                    any(receipt.startswith(prefix) for receipt in installed_receipts)
-                    for prefix in component.receipt_prefixes
+                if receipts["returncode"] == 0 and receipts_match(
+                    receipts["stdout"], component.receipt_prefixes
                 ):
                     return ComponentState.PRESENT
             flag = (
