@@ -366,6 +366,22 @@ def test_required_uv_tool_failure_raises(tmp_path: Path) -> None:
     ]
 
 
+def test_uv_tool_entrypoint_line_does_not_produce_false_present(
+    tmp_path: Path,
+) -> None:
+    """An entrypoint line's dash prefix never matches a package name."""
+    runner = FakeRunner(
+        [result(stdout="ruff v0.6.0\n- ruff\n- pre-commit\n"), result()]
+    )
+    outcome = Installer(runner, tmp_path).install(_uv_component())
+    assert outcome.state != "present"
+    assert outcome.state == "installed"
+    assert runner.commands == [
+        ("uv", "tool", "list"),
+        ("uv", "tool", "install", "pre-commit"),
+    ]
+
+
 def test_optional_failure_is_reported_without_raising(tmp_path: Path) -> None:
     """Optional package failures become reportable outcomes rather than errors."""
     runner = FakeRunner([result(1), result(1, stderr="native failure")])
