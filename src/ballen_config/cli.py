@@ -152,9 +152,19 @@ class ResolvedInspector:
             safe Git checkout exists; otherwise missing.
         """
         component = self.components[component_id]
-        if any(Path(path).exists() for path in component.application_paths):
-            return ComponentState.PRESENT
         if component.manager in {Manager.BREW_FORMULA, Manager.BREW_CASK}:
+            if component.application_paths and all(
+                Path(path).exists() for path in component.application_paths
+            ):
+                if not component.receipt_prefixes:
+                    return ComponentState.PRESENT
+                receipts = self.runner.run(("pkgutil", "--pkgs"))
+                installed_receipts = receipts["stdout"].splitlines()
+                if receipts["returncode"] == 0 and all(
+                    any(receipt.startswith(prefix) for receipt in installed_receipts)
+                    for prefix in component.receipt_prefixes
+                ):
+                    return ComponentState.PRESENT
             flag = (
                 "--formula" if component.manager is Manager.BREW_FORMULA else "--cask"
             )
