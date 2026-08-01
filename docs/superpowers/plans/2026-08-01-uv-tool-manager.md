@@ -93,53 +93,16 @@ rtk jj new
 No production code changes. This task pins the behavior the design depends on,
 so a later refactor cannot silently remove it.
 
-**Files:**
+**Withdrawn.** This task originally added the two ordering tests here and left
+them failing until Task 6. That contradicted Tasks 3, 4, and 5, each of which
+requires a green suite before committing: every later task would have met two
+known-red tests and either stalled or fixed them out of scope.
 
-- Test: `tests/test_manifests.py`
+The ordering tests are the red step for the manifest change, so they now live
+in Task 6 alongside it. Nothing is lost — the guarantee is still pinned, and
+every commit stays green.
 
-**Step 1: Write two failing tests**
-
-- [ ] Add to `tests/test_manifests.py`, following the fixture style already
-      used by `test_shell_parent_precedes_nested_git_components`:
-
-```python
-def test_uv_tool_component_orders_after_uv(
-    manifest_repository: ManifestRepository,
-) -> None:
-    """uv installs before any tool it owns."""
-    ordered = [
-        component.id
-        for component in manifest_repository.resolve(
-            ResolutionRequest(profile="default")
-        ).components
-    ]
-    assert ordered.index("uv") < ordered.index("pre-commit")
-
-
-def test_uv_tool_requires_uv_to_be_selected(
-    manifest_repository: ManifestRepository,
-) -> None:
-    """A tool cannot resolve when its manager is skipped."""
-    with pytest.raises(ValueError, match="requires unselected uv"):
-        manifest_repository.resolve(
-            ResolutionRequest(profile="default", skips=("uv",))
-        )
-```
-
-**Step 2: Run and observe**
-
-- [ ] Run: `uv run --frozen pytest tests/test_manifests.py -q`
-- [ ] Expected: both FAIL. The first because `pre-commit` is still a
-      `brew_formula` with no `depends_on`, so ordering is incidental rather
-      than guaranteed. The second because nothing declares the dependency yet.
-- [ ] If `ResolutionRequest` does not accept `skips`, read its definition in
-      `src/ballen_config/manifests.py` and use the actual keyword. Do not
-      change the production signature to fit the test.
-
-**Step 3: Leave both failing**
-
-- [ ] Do not implement anything. Task 6 makes these pass by changing the
-      manifest. Note them as expected failures and continue.
+Task numbering is unchanged so the tasks below keep their original names.
 
 ---
 
@@ -384,14 +347,55 @@ rtk jj new
 
 ## Task 6: Move the manifest to uv
 
-This is the task that makes Task 2 pass.
+This task carries the ordering tests withdrawn from Task 2, so it follows the
+same red-then-green shape as the tasks before it.
 
 **Files:**
 
 - Modify: `manifests/packages.yaml:9`
 - Test: `tests/test_manifests.py`
 
-**Step 1: Change the entries**
+**Step 1: Write the two failing tests**
+
+- [ ] Add to `tests/test_manifests.py`, following the fixture style already
+      used by `test_shell_parent_precedes_nested_git_components`:
+
+```python
+def test_uv_tool_component_orders_after_uv(
+    manifest_repository: ManifestRepository,
+) -> None:
+    """uv installs before any tool it owns."""
+    ordered = [
+        component.id
+        for component in manifest_repository.resolve(
+            ResolutionRequest(profile="default")
+        ).components
+    ]
+    assert ordered.index("uv") < ordered.index("pre-commit")
+
+
+def test_uv_tool_requires_uv_to_be_selected(
+    manifest_repository: ManifestRepository,
+) -> None:
+    """A tool cannot resolve when its manager is skipped."""
+    with pytest.raises(ValueError, match="requires unselected uv"):
+        manifest_repository.resolve(
+            ResolutionRequest(profile="default", skips=("uv",))
+        )
+```
+
+- [ ] If `ResolutionRequest` does not accept `skips`, read its definition in
+      `src/ballen_config/manifests.py` and use the actual keyword. Do not
+      change the production signature to fit the test.
+
+**Step 2: Run and confirm they fail**
+
+- [ ] Run: `uv run --frozen pytest tests/test_manifests.py -q`
+- [ ] Expected: both FAIL. The first because `pre-commit` is still a
+      `brew_formula` with no `depends_on`, so ordering is incidental rather
+      than guaranteed. The second because nothing declares the dependency yet.
+
+**Step 3: Change the entries**
 
 - [ ] Replace the `pre-commit` line with:
 
@@ -405,25 +409,25 @@ This is the task that makes Task 2 pass.
   - {id: ruff, manager: uv_tool, package: ruff, depends_on: [uv], profiles: [default]}
 ```
 
-**Step 2: Run the tests deferred from Task 2**
+**Step 4: Confirm they pass**
 
 - [ ] Run: `uv run --frozen pytest tests/test_manifests.py -q`
 - [ ] Expected: both previously failing tests now pass
 
-**Step 3: Confirm nothing regressed**
+**Step 5: Confirm nothing regressed**
 
 - [ ] Run: `uv run --frozen pytest -q`
 - [ ] Expected: all pass, including
       `test_work_profile_extends_default`, which asserts `pre-commit`
       resolves. It is unaffected because only the manager changed.
 
-**Step 4: Verify the plan end to end**
+**Step 6: Verify the plan end to end**
 
 - [ ] Run: `./bootstrap plan --skip codex --skip cursor`
 - [ ] Expected: `pre-commit` and `ruff` appear as install actions ordered
       after `uv`, and no `brew` action references either.
 
-**Step 5: Commit**
+**Step 7: Commit**
 
 - [ ] Run:
 
