@@ -147,8 +147,8 @@ class ResolvedInspector:
             component_id: Resolved component identifier.
 
         Returns:
-            Present when an app path, Homebrew package, or safe Git checkout
-            exists; otherwise missing.
+            Present when an app path, Homebrew package, uv-managed tool, or
+            safe Git checkout exists; otherwise missing.
         """
         component = self.components[component_id]
         if any(Path(path).exists() for path in component.application_paths):
@@ -161,6 +161,17 @@ class ResolvedInspector:
             return (
                 ComponentState.PRESENT
                 if result["returncode"] == 0
+                else ComponentState.MISSING
+            )
+        if component.manager is Manager.UV_TOOL:
+            result = self.runner.run(("uv", "tool", "list"))
+            return (
+                ComponentState.PRESENT
+                if result["returncode"] == 0
+                and any(
+                    line.split(" ", 1)[0] == component.package
+                    for line in result["stdout"].splitlines()
+                )
                 else ComponentState.MISSING
             )
         if component.destination is None:
