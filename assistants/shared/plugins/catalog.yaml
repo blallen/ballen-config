@@ -3,17 +3,15 @@ marketplaces:
     source: bigspinai/toolkit
     targets: [claude-code, codex]
     profiles: [default]
-  - name: claude-context-mode
-    source: mksglu/claude-context-mode
-    targets: [claude-code]
-    profiles: [default]
   - name: claude-plugins-official
     source: anthropics/claude-plugins-official
     targets: [claude-code, codex]
     profiles: [default]
+  # Claude registers this marketplace under the name in its upstream manifest,
+  # which is context-mode; a second alias for the same source never resolves.
   - name: context-mode
     source: mksglu/claude-context-mode
-    targets: [codex]
+    targets: [claude-code, codex]
     profiles: [default]
   - name: ponytail
     source: DietrichGebert/ponytail
@@ -36,15 +34,9 @@ plugins:
     profiles: [default]
     required: true
   - kind: native-marketplace
-    id: context-mode@claude-context-mode
-    marketplace: claude-context-mode
-    targets: [claude-code]
-    profiles: [default]
-    required: true
-  - kind: native-marketplace
     id: context-mode@context-mode
     marketplace: context-mode
-    targets: [codex]
+    targets: [claude-code, codex]
     profiles: [default]
     required: true
   - kind: native-marketplace

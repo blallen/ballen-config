@@ -4,9 +4,4 @@ elif [[ -x /usr/local/bin/brew ]]; then
   eval "$(/usr/local/bin/brew shellenv zsh)"
 fi
 
-# Keg-only formulae are not linked into the prefix; add their bin directories.
-if [[ -n "$HOMEBREW_PREFIX" && -d "$HOMEBREW_PREFIX/opt/node@22/bin" ]]; then
-  export PATH="$HOMEBREW_PREFIX/opt/node@22/bin:$PATH"
-fi
-
 export PATH="$HOME/.local/bin:$PATH"
