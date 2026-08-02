@@ -180,10 +180,14 @@ class StatefulAssistantFake:
         if normalized in self.results:
             return self.results[normalized]
         if normalized == ("uv", "tool", "list"):
+            # Real `uv tool list` follows each tool with its indented `- name`
+            # entrypoint lines. Reproduce them so integration coverage exercises
+            # the same output shape the presence probe has to filter.
             return {
                 "returncode": 0,
-                "stdout": "\n".join(
-                    f"{package} v0.0.0" for package in sorted(self.uv_tools)
+                "stdout": "".join(
+                    f"{package} v0.0.0\n- {package}\n"
+                    for package in sorted(self.uv_tools)
                 ),
                 "stderr": "",
             }
