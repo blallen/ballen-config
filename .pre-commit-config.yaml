@@ -16,15 +16,26 @@ repos:
     hooks:
       - id: detect-secrets
 
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.1
-    hooks:
-      - id: ruff-check
-        args: [--fix]
-      - id: ruff-format
-
   - repo: local
     hooks:
+      # Ruff runs from the locked environment rather than a pinned hook rev, so
+      # uv.lock is the single source of the version. A pinned rev here would be
+      # a second declaration that can drift from the dev dependency group, and
+      # a formatter that disagrees with CI silently rewrites files.
+      # --force-exclude makes Ruff honour extend-exclude even though pre-commit
+      # passes explicit filenames.
+      - id: ruff-check
+        name: ruff check
+        entry: uv run --frozen --no-sync ruff check --force-exclude --fix
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+      - id: ruff-format
+        name: ruff format
+        entry: uv run --frozen --no-sync ruff format --force-exclude
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
       - id: ballen-config-policy
         name: ballen-config policy
         entry: uv run --frozen --no-sync python -m ballen_config.policy

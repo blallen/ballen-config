@@ -7,9 +7,9 @@ components:
   - {id: ripgrep, manager: brew_formula, package: ripgrep, profiles: [default]}
   - {id: rtk, manager: brew_formula, package: rtk, profiles: [default]}
   # uv_tool entries name a tool, never a version. These are global convenience
-  # copies and are expected to lag the repository pins, which are authoritative
-  # and live in the pyproject dev dependency group and .pre-commit-config.yaml.
-  # CI and `uv run --frozen` resolve from those, never from a tool installed
+  # copies and are expected to lag the repository versions, which are
+  # authoritative and resolved from uv.lock. CI, the pre-commit hooks, and
+  # `uv run --frozen` all use the locked environment, never a tool installed
   # here. Pinning would also need a field separate from `package`, because the
   # presence probe matches `uv tool list` on the bare tool name.
   - {id: pre-commit, manager: uv_tool, package: pre-commit, depends_on: [uv], profiles: [default]}
