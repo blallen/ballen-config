@@ -4,9 +4,11 @@ import pytest
 
 from ballen_config.probes import (
     application_paths_present,
+    brew_artifact_present,
     receipts_match,
     uv_tool_listed,
 )
+from ballen_config.runner import CommandResult
 
 
 @pytest.mark.parametrize(
@@ -166,3 +168,107 @@ def test_receipts_match_nesting_direction_is_all_prefixes_any_receipts() -> None
     stdout = "org.tug.mactex.gui2025\norg.tug.texlive2025\n"
     prefixes = ("org.tug.mactex.gui", "org.tug.texlive")
     assert receipts_match(stdout, prefixes) is True
+
+
+class RecordingReceipts:
+    """Return one canned ``pkgutil --pkgs`` result and count the reads."""
+
+    def __init__(self, result: CommandResult) -> None:
+        """Initialize with the result every read should return."""
+        self.result = result
+        self.reads = 0
+
+    def __call__(self) -> CommandResult:
+        """Return the canned result and record that a read happened."""
+        self.reads += 1
+        return self.result
+
+
+def _receipts(stdout: str = "", returncode: int = 0) -> RecordingReceipts:
+    """Return a recording reader for one captured pkgutil result."""
+    return RecordingReceipts({"returncode": returncode, "stdout": stdout, "stderr": ""})
+
+
+def test_brew_artifact_present_requires_every_declared_path() -> None:
+    """A missing declared path is not proof, and costs no pkgutil call."""
+    reader = _receipts("org.tug.mactex.gui2025\n")
+    assert (
+        brew_artifact_present(
+            ("/Applications/MacTeX.app", "/Library/TeX/texbin/latex"),
+            ("org.tug.mactex.gui",),
+            lambda path: str(path) == "/Applications/MacTeX.app",
+            reader,
+        )
+        is False
+    )
+    assert reader.reads == 0
+
+
+def test_brew_artifact_present_without_prefixes_reads_no_receipts() -> None:
+    """Declared paths alone suffice when no receipt prefix is declared."""
+    reader = _receipts()
+    assert (
+        brew_artifact_present(
+            ("/Applications/Brave Browser.app",),
+            (),
+            lambda _path: True,
+            reader,
+        )
+        is True
+    )
+    assert reader.reads == 0
+
+
+def test_brew_artifact_present_requires_matching_receipt() -> None:
+    """A declared path with a non-matching receipt is not proof.
+
+    BasicTeX provides the same ``latex`` binary as full MacTeX, so the
+    receipt prefix is the only thing that distinguishes them.
+    """
+    reader = _receipts("org.tug.texlive2025\n")
+    assert (
+        brew_artifact_present(
+            ("/Library/TeX/texbin/latex",),
+            ("org.tug.mactex.gui",),
+            lambda _path: True,
+            reader,
+        )
+        is False
+    )
+    assert reader.reads == 1
+
+
+def test_brew_artifact_present_accepts_path_with_matching_receipt() -> None:
+    """A declared path plus its declared receipt is proof of presence."""
+    reader = _receipts("org.tug.mactex.gui2025\norg.tug.texlive2025\n")
+    assert (
+        brew_artifact_present(
+            ("/Library/TeX/texbin/latex",),
+            ("org.tug.mactex.gui",),
+            lambda _path: True,
+            reader,
+        )
+        is True
+    )
+    assert reader.reads == 1
+
+
+def test_brew_artifact_present_rejects_unreadable_receipts() -> None:
+    """An unreadable listing is not proof, even when stdout names a match."""
+    reader = _receipts("org.tug.mactex.gui2025\n", returncode=127)
+    assert (
+        brew_artifact_present(
+            ("/Library/TeX/texbin/latex",),
+            ("org.tug.mactex.gui",),
+            lambda _path: True,
+            reader,
+        )
+        is False
+    )
+
+
+def test_brew_artifact_present_without_declared_paths_is_never_proof() -> None:
+    """No declared artifacts cannot prove presence, whatever pkgutil says."""
+    reader = _receipts("org.tug.mactex.gui2025\n")
+    assert brew_artifact_present((), (), lambda _path: True, reader) is False
+    assert reader.reads == 0

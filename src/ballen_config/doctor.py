@@ -10,11 +10,7 @@ from pydantic import BaseModel, ConfigDict, field_validator
 
 from ballen_config.configure import ConfigurationEngine, ManagedSpec
 from ballen_config.models import Component, Manager, ResolvedSetup
-from ballen_config.probes import (
-    application_paths_present,
-    receipts_match,
-    uv_tool_listed,
-)
+from ballen_config.probes import brew_artifact_present, uv_tool_listed
 from ballen_config.runner import CommandResult, Runner
 from ballen_config.runtime import RuntimePaths
 
@@ -162,17 +158,12 @@ class Doctor:
                 Manager.BREW_FORMULA,
                 Manager.BREW_CASK,
             }:
-                present = False
-                if application_paths_present(
-                    component.application_paths, self.path_exists
-                ):
-                    if not component.receipt_prefixes:
-                        present = True
-                    else:
-                        receipts = self.runner.run(("pkgutil", "--pkgs"))
-                        present = receipts["returncode"] == 0 and receipts_match(
-                            receipts["stdout"], component.receipt_prefixes
-                        )
+                present = brew_artifact_present(
+                    component.application_paths,
+                    component.receipt_prefixes,
+                    self.path_exists,
+                    lambda: self.runner.run(("pkgutil", "--pkgs")),
+                )
                 if not present:
                     type_flag = (
                         "--formula"

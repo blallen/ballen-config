@@ -16,11 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ballen_config.models import Component, Manager, ResolvedSetup
 from ballen_config.paths import assert_contained, assert_no_symlink_components
-from ballen_config.probes import (
-    application_paths_present,
-    receipts_match,
-    uv_tool_listed,
-)
+from ballen_config.probes import brew_artifact_present, uv_tool_listed
 from ballen_config.runner import CommandResult, Runner
 from ballen_config.runtime import RuntimePaths
 from ballen_config.state import InstallRecord, StateStore
@@ -336,14 +332,13 @@ class Installer:
 
     def _brew(self, component: Component) -> InstallOutcome:
         """Return present or install a Homebrew formula or cask."""
-        if application_paths_present(component.application_paths, self.path_exists):
-            if not component.receipt_prefixes:
-                return InstallOutcome(component_id=component.id, state="present")
-            receipts = self.runner.run(("pkgutil", "--pkgs"))
-            if receipts["returncode"] == 0 and receipts_match(
-                receipts["stdout"], component.receipt_prefixes
-            ):
-                return InstallOutcome(component_id=component.id, state="present")
+        if brew_artifact_present(
+            component.application_paths,
+            component.receipt_prefixes,
+            self.path_exists,
+            lambda: self.runner.run(("pkgutil", "--pkgs")),
+        ):
+            return InstallOutcome(component_id=component.id, state="present")
         type_flag = (
             "--formula" if component.manager is Manager.BREW_FORMULA else "--cask"
         )

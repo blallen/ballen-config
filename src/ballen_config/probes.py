@@ -1,13 +1,18 @@
-"""Pure, side-effect-free predicates over native command output.
+"""Shared predicates and presence rules over native command output.
 
 These helpers isolate assumptions about the output format of external tools
 so that a format change only needs updating in one place, and so that the
 match rule cannot silently drift between the install, doctor, and CLI
 dispatch sites that all need it.
+
+The predicates take their effects as arguments rather than performing them,
+so the rules stay testable without a subprocess or a filesystem.
 """
 
 from collections.abc import Callable, Sequence
 from pathlib import Path
+
+from ballen_config.runner import CommandResult
 
 
 def application_paths_present(
@@ -67,6 +72,47 @@ def receipts_match(stdout: str, prefixes: Sequence[str]) -> bool:
     return all(
         any(receipt.startswith(prefix) for receipt in installed_receipts)
         for prefix in prefixes
+    )
+
+
+def brew_artifact_present(
+    application_paths: Sequence[str],
+    receipt_prefixes: Sequence[str],
+    path_exists: Callable[[Path], bool],
+    read_receipts: Callable[[], CommandResult],
+) -> bool:
+    """Return whether declared artifacts prove a Homebrew component installed.
+
+    This is the whole declared-artifact rule, not one of its parts. A
+    component is proven present when every declared application path exists
+    and, when it also declares ``receipt_prefixes``, a readable
+    ``pkgutil --pkgs`` matches all of them. Declared paths without a matching
+    receipt are not proof: BasicTeX provides the same ``latex`` binary as full
+    MacTeX, so the receipt is what distinguishes them.
+
+    A negative answer means only that the declared artifacts did not prove
+    presence. Callers fall back to their own package query, so the component
+    may still be installed.
+
+    ``read_receipts`` is called only when it is needed, so a component that
+    declares no prefixes costs no subprocess.
+
+    Args:
+        application_paths: A component's declared application paths.
+        receipt_prefixes: A component's declared receipt prefixes.
+        path_exists: Injected existence check, so this function stays pure.
+        read_receipts: Injected ``pkgutil --pkgs`` reader, called at most once.
+
+    Returns:
+        Whether the declared artifacts prove the component is installed.
+    """
+    if not application_paths_present(application_paths, path_exists):
+        return False
+    if not receipt_prefixes:
+        return True
+    receipts = read_receipts()
+    return receipts["returncode"] == 0 and receipts_match(
+        receipts["stdout"], receipt_prefixes
     )
 
 
