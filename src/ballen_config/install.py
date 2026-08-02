@@ -16,7 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ballen_config.models import Component, Manager, ResolvedSetup
 from ballen_config.paths import assert_contained, assert_no_symlink_components
-from ballen_config.probes import uv_tool_listed
+from ballen_config.probes import brew_artifact_present, uv_tool_listed
 from ballen_config.runner import CommandResult, Runner
 from ballen_config.runtime import RuntimePaths
 from ballen_config.state import InstallRecord, StateStore
@@ -241,6 +241,10 @@ class Installer:
         self.private_temp_root = (
             private_temp_root or home / ".local/state/ballen-config/tmp"
         )
+        # `uv tool list` returns every installed tool, so one call answers every
+        # uv_tool component. Installing one tool cannot make another appear, so
+        # a listing captured before any install stays correct for the rest.
+        self._uv_listing: CommandResult | None = None
 
     def install(self, component: Component) -> InstallOutcome:
         """Install one component, returning only its normalized outcome."""
@@ -328,18 +332,13 @@ class Installer:
 
     def _brew(self, component: Component) -> InstallOutcome:
         """Return present or install a Homebrew formula or cask."""
-        if component.application_paths and all(
-            self.path_exists(Path(path)) for path in component.application_paths
+        if brew_artifact_present(
+            application_paths=component.application_paths,
+            receipt_prefixes=component.receipt_prefixes,
+            path_exists=self.path_exists,
+            read_receipts=lambda: self.runner.run(("pkgutil", "--pkgs")),
         ):
-            if not component.receipt_prefixes:
-                return InstallOutcome(component_id=component.id, state="present")
-            receipts = self.runner.run(("pkgutil", "--pkgs"))
-            installed_receipts = receipts["stdout"].splitlines()
-            if receipts["returncode"] == 0 and all(
-                any(receipt.startswith(prefix) for receipt in installed_receipts)
-                for prefix in component.receipt_prefixes
-            ):
-                return InstallOutcome(component_id=component.id, state="present")
+            return InstallOutcome(component_id=component.id, state="present")
         type_flag = (
             "--formula" if component.manager is Manager.BREW_FORMULA else "--cask"
         )
@@ -359,7 +358,9 @@ class Installer:
 
     def _uv_tool(self, component: Component) -> InstallOutcome:
         """Return present or install a uv-managed tool."""
-        listed = self.runner.run(("uv", "tool", "list"))
+        if self._uv_listing is None:
+            self._uv_listing = self.runner.run(("uv", "tool", "list"))
+        listed = self._uv_listing
         if listed["returncode"] == 0 and uv_tool_listed(
             listed["stdout"], component.package
         ):

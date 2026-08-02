@@ -382,6 +382,21 @@ def test_uv_tool_entrypoint_line_does_not_produce_false_present(
     ]
 
 
+def test_uv_tool_list_is_resolved_once_across_components(tmp_path: Path) -> None:
+    """One listing answers every uv_tool component an installer handles."""
+    runner = FakeRunner([result(stdout="ruff v0.15.1\n- ruff\n"), result()])
+    installer = Installer(runner, tmp_path)
+    present = installer.install(
+        Component(id="ruff", manager=Manager.UV_TOOL, package="ruff")
+    )
+    installed = installer.install(_uv_component())
+    assert (present.state, installed.state) == ("present", "installed")
+    assert runner.commands == [
+        ("uv", "tool", "list"),
+        ("uv", "tool", "install", "pre-commit"),
+    ]
+
+
 def test_unreadable_uv_tool_list_installs_rather_than_assuming_present(
     tmp_path: Path,
 ) -> None:

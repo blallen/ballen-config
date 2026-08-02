@@ -10,8 +10,8 @@ from pydantic import BaseModel, ConfigDict, field_validator
 
 from ballen_config.configure import ConfigurationEngine, ManagedSpec
 from ballen_config.models import Component, Manager, ResolvedSetup
-from ballen_config.probes import uv_tool_listed
-from ballen_config.runner import Runner
+from ballen_config.probes import brew_artifact_present, uv_tool_listed
+from ballen_config.runner import CommandResult, Runner
 from ballen_config.runtime import RuntimePaths
 
 
@@ -150,24 +150,35 @@ class Doctor:
             One normalized check per component in input order.
         """
         checks: list[DoctorFinding] = []
+        # `uv tool list` returns every installed tool, so one call answers every
+        # uv_tool component. Resolve it lazily and at most once per check pass.
+        uv_listing: CommandResult | None = None
         for component in components:
             if component.manager in {
                 Manager.BREW_FORMULA,
                 Manager.BREW_CASK,
             }:
-                type_flag = (
-                    "--formula"
-                    if component.manager is Manager.BREW_FORMULA
-                    else "--cask"
+                present = brew_artifact_present(
+                    application_paths=component.application_paths,
+                    receipt_prefixes=component.receipt_prefixes,
+                    path_exists=self.path_exists,
+                    read_receipts=lambda: self.runner.run(("pkgutil", "--pkgs")),
                 )
-                result = self.runner.run(("brew", "list", type_flag, component.package))
-                present = result["returncode"] == 0 or any(
-                    self.path_exists(Path(path)) for path in component.application_paths
-                )
+                if not present:
+                    type_flag = (
+                        "--formula"
+                        if component.manager is Manager.BREW_FORMULA
+                        else "--cask"
+                    )
+                    result = self.runner.run(
+                        ("brew", "list", type_flag, component.package)
+                    )
+                    present = result["returncode"] == 0
             elif component.manager is Manager.UV_TOOL:
-                result = self.runner.run(("uv", "tool", "list"))
-                present = result["returncode"] == 0 and uv_tool_listed(
-                    result["stdout"], component.package
+                if uv_listing is None:
+                    uv_listing = self.runner.run(("uv", "tool", "list"))
+                present = uv_listing["returncode"] == 0 and uv_tool_listed(
+                    uv_listing["stdout"], component.package
                 )
             else:
                 if component.destination is None:

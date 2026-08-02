@@ -194,6 +194,28 @@ def test_state_uv_tool_entrypoint_line_does_not_produce_false_present(
     assert runner.commands == [("uv", "tool", "list")]
 
 
+def test_state_resolves_uv_tool_list_once_across_components(fake_home: Path) -> None:
+    """One listing answers every uv_tool component this inspector is asked about."""
+    components = tuple(
+        Component(id=name, manager=Manager.UV_TOOL, package=name)
+        for name in ("pre-commit", "ruff")
+    )
+    runner = FakeRunner(
+        [
+            {
+                "returncode": 0,
+                "stdout": "pre-commit v4.6.0\n- pre-commit\nruff v0.15.1\n- ruff\n",
+                "stderr": "",
+            }
+        ]
+    )
+    inspector = cli.ResolvedInspector(runner, components, fake_home)
+
+    assert inspector.state("pre-commit") is ComponentState.PRESENT
+    assert inspector.state("ruff") is ComponentState.PRESENT
+    assert runner.commands == [("uv", "tool", "list")]
+
+
 def test_state_unreadable_uv_tool_list_is_missing(fake_home: Path) -> None:
     """An unreadable listing is missing even when stdout names the tool."""
     component = Component(
@@ -210,6 +232,116 @@ def test_state_unreadable_uv_tool_list_is_missing(fake_home: Path) -> None:
             }
         ]
     )
+    inspector = cli.ResolvedInspector(runner, (component,), fake_home)
+
+    assert inspector.state("pre-commit") is ComponentState.MISSING
+    assert runner.commands == [("uv", "tool", "list")]
+
+
+def test_state_declared_application_path_without_matching_receipt_is_missing(
+    fake_home: Path,
+    tmp_path: Path,
+) -> None:
+    """A vendor-provided path is insufficient without the declared receipt.
+
+    BasicTeX provides the same ``latex`` binary as full MacTeX, so the
+    receipt prefix is what distinguishes them. Without a matching receipt,
+    the application path alone must not resolve to present.
+    """
+    latex_path = tmp_path / "latex"
+    latex_path.write_text("")
+    component = Component(
+        id="mactex",
+        manager=Manager.BREW_CASK,
+        package="mactex",
+        application_paths=(str(latex_path),),
+        receipt_prefixes=("org.tug.mactex.gui",),
+    )
+    runner = FakeRunner(
+        [
+            {"returncode": 0, "stdout": "org.tug.texlive2025\n", "stderr": ""},
+            {"returncode": 1, "stdout": "", "stderr": ""},
+        ]
+    )
+    inspector = cli.ResolvedInspector(runner, (component,), fake_home)
+
+    assert inspector.state("mactex") is ComponentState.MISSING
+    assert runner.commands == [
+        ("pkgutil", "--pkgs"),
+        ("brew", "list", "--cask", "mactex"),
+    ]
+
+
+def test_state_declared_application_path_with_matching_receipt_is_present(
+    fake_home: Path,
+    tmp_path: Path,
+) -> None:
+    """A vendor-provided path with the declared receipt resolves to present."""
+    latex_path = tmp_path / "latex"
+    latex_path.write_text("")
+    component = Component(
+        id="mactex",
+        manager=Manager.BREW_CASK,
+        package="mactex",
+        application_paths=(str(latex_path),),
+        receipt_prefixes=("org.tug.mactex.gui",),
+    )
+    runner = FakeRunner(
+        [
+            {
+                "returncode": 0,
+                "stdout": "org.tug.mactex.gui2025\norg.tug.texlive2025\n",
+                "stderr": "",
+            }
+        ]
+    )
+    inspector = cli.ResolvedInspector(runner, (component,), fake_home)
+
+    assert inspector.state("mactex") is ComponentState.PRESENT
+    assert runner.commands == [("pkgutil", "--pkgs")]
+
+
+def test_state_no_application_paths_with_failing_brew_list_is_missing(
+    fake_home: Path,
+) -> None:
+    """A component without declared application paths never vacuously passes.
+
+    Regression guard: ``all()`` over an empty ``application_paths`` tuple is
+    vacuously ``True``. The presence check must require a non-empty tuple
+    before using ``all()``, or every path-less component would resolve to
+    present regardless of ``brew list`` failing.
+    """
+    component = Component(
+        id="gh",
+        manager=Manager.BREW_FORMULA,
+        package="gh",
+    )
+    runner = FakeRunner([{"returncode": 1, "stdout": "", "stderr": ""}])
+    inspector = cli.ResolvedInspector(runner, (component,), fake_home)
+
+    assert inspector.state("gh") is ComponentState.MISSING
+    assert runner.commands == [("brew", "list", "--formula", "gh")]
+
+
+def test_state_uv_tool_application_path_never_short_circuits_the_uv_check(
+    fake_home: Path,
+    tmp_path: Path,
+) -> None:
+    """A declared application path on a non-brew component is never consulted.
+
+    Nothing in the manifests declares application_paths on a uv_tool or git
+    component today, but the dispatch must still check the manager-specific
+    state rather than an incidental application path.
+    """
+    stray_path = tmp_path / "stray"
+    stray_path.write_text("")
+    component = Component(
+        id="pre-commit",
+        manager=Manager.UV_TOOL,
+        package="pre-commit",
+        application_paths=(str(stray_path),),
+    )
+    runner = FakeRunner([{"returncode": 0, "stdout": "", "stderr": ""}])
     inspector = cli.ResolvedInspector(runner, (component,), fake_home)
 
     assert inspector.state("pre-commit") is ComponentState.MISSING

@@ -1,8 +1,14 @@
-"""Tests for the shared uv tool list parsing predicate."""
+"""Tests for the shared presence predicates over native command output."""
 
 import pytest
 
-from ballen_config.probes import uv_tool_listed
+from ballen_config.probes import (
+    application_paths_present,
+    brew_artifact_present,
+    receipts_match,
+    uv_tool_listed,
+)
+from ballen_config.runner import CommandResult
 
 
 @pytest.mark.parametrize(
@@ -55,3 +61,222 @@ from ballen_config.probes import uv_tool_listed
 def test_uv_tool_listed(stdout: str, package: str, expected: bool) -> None:
     """The predicate matches only an exact leading-field tool name."""
     assert uv_tool_listed(stdout, package) is expected
+
+
+@pytest.mark.parametrize(
+    ("paths", "existing", "expected"),
+    [
+        pytest.param(
+            ("/Applications/Brave Browser.app",),
+            {"/Applications/Brave Browser.app"},
+            True,
+            id="single-declared-path-exists",
+        ),
+        pytest.param(
+            ("/Applications/Brave Browser.app", "/usr/local/bin/brave"),
+            {"/Applications/Brave Browser.app"},
+            False,
+            id="not-every-declared-path-exists",
+        ),
+        pytest.param(
+            (),
+            {"/Applications/Brave Browser.app"},
+            False,
+            id="no-declared-paths-is-never-present",
+        ),
+    ],
+)
+def test_application_paths_present(
+    paths: tuple[str, ...], existing: set[str], expected: bool
+) -> None:
+    """Presence requires at least one declared path and all of them to exist."""
+    assert application_paths_present(paths, lambda p: str(p) in existing) is expected
+
+
+def test_application_paths_present_rejects_vacuous_truth_on_empty_paths() -> None:
+    """An empty ``paths`` must not short-circuit to ``all([]) is True``.
+
+    This is the specific trap the emptiness guard exists to catch: a
+    ``path_exists`` that always returns ``True`` must still yield ``False``
+    for a component that declares no application paths at all.
+    """
+    assert application_paths_present((), lambda _p: True) is False
+
+
+@pytest.mark.parametrize(
+    ("stdout", "prefixes", "expected"),
+    [
+        pytest.param(
+            "org.tug.mactex.gui2025\norg.tug.texlive2025\n",
+            ("org.tug.mactex.gui",),
+            True,
+            id="single-prefix-matches-installed-receipt",
+        ),
+        pytest.param(
+            "org.tug.mactex.gui2025\norg.tug.texlive2025\n",
+            ("org.tug.mactex.gui", "org.tug.texlive"),
+            True,
+            id="every-declared-prefix-has-a-match",
+        ),
+        pytest.param(
+            "org.tug.mactex.gui2025\n",
+            ("org.tug.mactex.gui", "org.tug.texlive"),
+            False,
+            id="one-unmatched-prefix-fails-the-whole-check",
+        ),
+        pytest.param(
+            "",
+            ("org.tug.mactex.gui",),
+            False,
+            id="empty-receipts-do-not-match",
+        ),
+    ],
+)
+def test_receipts_match(stdout: str, prefixes: tuple[str, ...], expected: bool) -> None:
+    """Every declared prefix must be matched by some installed receipt."""
+    assert receipts_match(stdout, prefixes) is expected
+
+
+def test_receipts_match_is_vacuously_true_for_no_declared_prefixes() -> None:
+    """No declared prefixes means nothing left to prove, so ``True``.
+
+    This is deliberately the opposite of
+    ``test_application_paths_present_rejects_vacuous_truth_on_empty_paths``.
+    A declared application path is the evidence itself, so declaring none
+    proves nothing; a declared receipt prefix is an extra condition on top
+    of that evidence, so declaring none leaves the condition satisfied.
+    Callers rely on this: they treat a component without
+    ``receipt_prefixes`` as present. Inverting it here would report every
+    receipt-less component missing.
+    """
+    assert receipts_match("", ()) is True
+    assert receipts_match("org.tug.texlive2025\n", ()) is True
+
+
+def test_receipts_match_nesting_direction_is_all_prefixes_any_receipts() -> None:
+    """Catch the ``any(all(...))`` nesting-inversion trap directly.
+
+    Two receipts, two prefixes, and each receipt matches a different
+    prefix: no single receipt line starts with every prefix, and no single
+    prefix is a prefix of every receipt. The correct nesting -- every
+    declared prefix (``all``) matched by some installed receipt (``any``)
+    -- is satisfied, so this must be ``True``. The inverted nesting
+    (``any(all(...))``, "some prefix matches every receipt") would instead
+    find no such prefix and return ``False``, so this case fails under the
+    inverted nesting while every case above it passes coincidentally.
+    """
+    stdout = "org.tug.mactex.gui2025\norg.tug.texlive2025\n"
+    prefixes = ("org.tug.mactex.gui", "org.tug.texlive")
+    assert receipts_match(stdout, prefixes) is True
+
+
+class RecordingReceipts:
+    """Return one canned ``pkgutil --pkgs`` result and count the reads."""
+
+    def __init__(self, result: CommandResult) -> None:
+        """Initialize with the result every read should return."""
+        self.result = result
+        self.reads = 0
+
+    def __call__(self) -> CommandResult:
+        """Return the canned result and record that a read happened."""
+        self.reads += 1
+        return self.result
+
+
+def _receipts(stdout: str = "", returncode: int = 0) -> RecordingReceipts:
+    """Return a recording reader for one captured pkgutil result."""
+    return RecordingReceipts({"returncode": returncode, "stdout": stdout, "stderr": ""})
+
+
+def test_brew_artifact_present_requires_every_declared_path() -> None:
+    """A missing declared path is not proof, and costs no pkgutil call."""
+    reader = _receipts("org.tug.mactex.gui2025\n")
+    assert (
+        brew_artifact_present(
+            application_paths=("/Applications/MacTeX.app", "/Library/TeX/texbin/latex"),
+            receipt_prefixes=("org.tug.mactex.gui",),
+            path_exists=lambda path: str(path) == "/Applications/MacTeX.app",
+            read_receipts=reader,
+        )
+        is False
+    )
+    assert reader.reads == 0
+
+
+def test_brew_artifact_present_without_prefixes_reads_no_receipts() -> None:
+    """Declared paths alone suffice when no receipt prefix is declared."""
+    reader = _receipts()
+    assert (
+        brew_artifact_present(
+            application_paths=("/Applications/Brave Browser.app",),
+            receipt_prefixes=(),
+            path_exists=lambda _path: True,
+            read_receipts=reader,
+        )
+        is True
+    )
+    assert reader.reads == 0
+
+
+def test_brew_artifact_present_requires_matching_receipt() -> None:
+    """A declared path with a non-matching receipt is not proof.
+
+    BasicTeX provides the same ``latex`` binary as full MacTeX, so the
+    receipt prefix is the only thing that distinguishes them.
+    """
+    reader = _receipts("org.tug.texlive2025\n")
+    assert (
+        brew_artifact_present(
+            application_paths=("/Library/TeX/texbin/latex",),
+            receipt_prefixes=("org.tug.mactex.gui",),
+            path_exists=lambda _path: True,
+            read_receipts=reader,
+        )
+        is False
+    )
+    assert reader.reads == 1
+
+
+def test_brew_artifact_present_accepts_path_with_matching_receipt() -> None:
+    """A declared path plus its declared receipt is proof of presence."""
+    reader = _receipts("org.tug.mactex.gui2025\norg.tug.texlive2025\n")
+    assert (
+        brew_artifact_present(
+            application_paths=("/Library/TeX/texbin/latex",),
+            receipt_prefixes=("org.tug.mactex.gui",),
+            path_exists=lambda _path: True,
+            read_receipts=reader,
+        )
+        is True
+    )
+    assert reader.reads == 1
+
+
+def test_brew_artifact_present_rejects_unreadable_receipts() -> None:
+    """An unreadable listing is not proof, even when stdout names a match."""
+    reader = _receipts("org.tug.mactex.gui2025\n", returncode=127)
+    assert (
+        brew_artifact_present(
+            application_paths=("/Library/TeX/texbin/latex",),
+            receipt_prefixes=("org.tug.mactex.gui",),
+            path_exists=lambda _path: True,
+            read_receipts=reader,
+        )
+        is False
+    )
+
+
+def test_brew_artifact_present_without_declared_paths_is_never_proof() -> None:
+    """No declared artifacts cannot prove presence, whatever pkgutil says."""
+    reader = _receipts("org.tug.mactex.gui2025\n")
+    assert (
+        brew_artifact_present(
+            application_paths=(),
+            receipt_prefixes=(),
+            path_exists=lambda _path: True,
+            read_receipts=reader,
+        )
+        is False
+    )
+    assert reader.reads == 0
