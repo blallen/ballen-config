@@ -334,6 +334,29 @@ def test_uv_tool_entrypoint_line_does_not_produce_false_ready(
     assert runner.commands == [("uv", "tool", "list")]
 
 
+def test_uv_tool_list_is_resolved_once_for_every_component(fake_home: Path) -> None:
+    """One listing answers every uv_tool component in a check pass."""
+    components = tuple(
+        Component(id=name, manager=Manager.UV_TOOL, package=name)
+        for name in ("pre-commit", "ruff")
+    )
+    runner = FakeRunner(
+        {
+            ("uv", "tool", "list"): {
+                "returncode": 0,
+                "stdout": "pre-commit v4.6.0\n- pre-commit\nruff v0.15.1\n- ruff\n",
+                "stderr": "",
+            }
+        }
+    )
+    findings = Doctor(runner, fake_home).component_checks(components)
+    assert [finding.status for finding in findings] == [
+        FindingStatus.READY,
+        FindingStatus.READY,
+    ]
+    assert runner.commands == [("uv", "tool", "list")]
+
+
 def test_unreadable_uv_tool_list_is_missing(fake_home: Path) -> None:
     """An unreadable listing is missing even when stdout names the tool."""
     component = Component(

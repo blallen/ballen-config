@@ -245,6 +245,10 @@ class Installer:
         self.private_temp_root = (
             private_temp_root or home / ".local/state/ballen-config/tmp"
         )
+        # `uv tool list` returns every installed tool, so one call answers every
+        # uv_tool component. Installing one tool cannot make another appear, so
+        # a listing captured before any install stays correct for the rest.
+        self._uv_listing: CommandResult | None = None
 
     def install(self, component: Component) -> InstallOutcome:
         """Install one component, returning only its normalized outcome."""
@@ -359,7 +363,9 @@ class Installer:
 
     def _uv_tool(self, component: Component) -> InstallOutcome:
         """Return present or install a uv-managed tool."""
-        listed = self.runner.run(("uv", "tool", "list"))
+        if self._uv_listing is None:
+            self._uv_listing = self.runner.run(("uv", "tool", "list"))
+        listed = self._uv_listing
         if listed["returncode"] == 0 and uv_tool_listed(
             listed["stdout"], component.package
         ):

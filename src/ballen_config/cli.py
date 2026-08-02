@@ -65,7 +65,7 @@ from ballen_config.probes import (
     receipts_match,
     uv_tool_listed,
 )
-from ballen_config.runner import Runner, SubprocessRunner
+from ballen_config.runner import CommandResult, Runner, SubprocessRunner
 from ballen_config.runtime import RuntimePaths
 from ballen_config.state import StateStore
 
@@ -144,6 +144,9 @@ class ResolvedInspector:
         self.runner = runner
         self.components = {component.id: component for component in components}
         self.home = home
+        # `uv tool list` returns every installed tool, so one call answers every
+        # uv_tool component this inspector is asked about.
+        self._uv_listing: CommandResult | None = None
 
     def state(self, component_id: str) -> ComponentState:
         """Return normalized structural state for a resolved component.
@@ -175,11 +178,12 @@ class ResolvedInspector:
                 else ComponentState.MISSING
             )
         if component.manager is Manager.UV_TOOL:
-            result = self.runner.run(("uv", "tool", "list"))
+            if self._uv_listing is None:
+                self._uv_listing = self.runner.run(("uv", "tool", "list"))
             return (
                 ComponentState.PRESENT
-                if result["returncode"] == 0
-                and uv_tool_listed(result["stdout"], component.package)
+                if self._uv_listing["returncode"] == 0
+                and uv_tool_listed(self._uv_listing["stdout"], component.package)
                 else ComponentState.MISSING
             )
         if component.destination is None:

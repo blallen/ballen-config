@@ -15,7 +15,7 @@ from ballen_config.probes import (
     receipts_match,
     uv_tool_listed,
 )
-from ballen_config.runner import Runner
+from ballen_config.runner import CommandResult, Runner
 from ballen_config.runtime import RuntimePaths
 
 
@@ -154,6 +154,9 @@ class Doctor:
             One normalized check per component in input order.
         """
         checks: list[DoctorFinding] = []
+        # `uv tool list` returns every installed tool, so one call answers every
+        # uv_tool component. Resolve it lazily and at most once per check pass.
+        uv_listing: CommandResult | None = None
         for component in components:
             if component.manager in {
                 Manager.BREW_FORMULA,
@@ -181,9 +184,10 @@ class Doctor:
                     )
                     present = result["returncode"] == 0
             elif component.manager is Manager.UV_TOOL:
-                result = self.runner.run(("uv", "tool", "list"))
-                present = result["returncode"] == 0 and uv_tool_listed(
-                    result["stdout"], component.package
+                if uv_listing is None:
+                    uv_listing = self.runner.run(("uv", "tool", "list"))
+                present = uv_listing["returncode"] == 0 and uv_tool_listed(
+                    uv_listing["stdout"], component.package
                 )
             else:
                 if component.destination is None:
