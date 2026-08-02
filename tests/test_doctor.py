@@ -242,6 +242,27 @@ def test_uv_tool_entrypoint_line_does_not_produce_false_ready(
     assert runner.commands == [("uv", "tool", "list")]
 
 
+def test_unreadable_uv_tool_list_is_missing(fake_home: Path) -> None:
+    """An unreadable listing is missing even when stdout names the tool."""
+    component = Component(
+        id="pre-commit",
+        manager=Manager.UV_TOOL,
+        package="pre-commit",
+    )
+    runner = FakeRunner(
+        {
+            ("uv", "tool", "list"): {
+                "returncode": 127,
+                "stdout": "pre-commit v4.6.0\n- pre-commit\n",
+                "stderr": "",
+            }
+        }
+    )
+    finding = Doctor(runner, fake_home).component_checks((component,))[0]
+    assert finding.status is FindingStatus.MISSING
+    assert runner.commands == [("uv", "tool", "list")]
+
+
 def test_homebrew_prefix_output_is_redacted(fake_home: Path) -> None:
     """The machine-specific Homebrew path is never rendered."""
     prefix = "/machine/private/homebrew"

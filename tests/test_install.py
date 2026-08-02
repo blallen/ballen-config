@@ -382,6 +382,19 @@ def test_uv_tool_entrypoint_line_does_not_produce_false_present(
     ]
 
 
+def test_unreadable_uv_tool_list_installs_rather_than_assuming_present(
+    tmp_path: Path,
+) -> None:
+    """An unreadable listing installs instead of trusting stale stdout."""
+    runner = FakeRunner([result(127, stdout="pre-commit v4.6.0\n"), result()])
+    outcome = Installer(runner, tmp_path).install(_uv_component())
+    assert outcome.state == "installed"
+    assert runner.commands == [
+        ("uv", "tool", "list"),
+        ("uv", "tool", "install", "pre-commit"),
+    ]
+
+
 def test_optional_failure_is_reported_without_raising(tmp_path: Path) -> None:
     """Optional package failures become reportable outcomes rather than errors."""
     runner = FakeRunner([result(1), result(1, stderr="native failure")])
