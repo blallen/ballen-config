@@ -2,8 +2,9 @@
 
 ## Status
 
-Implemented on 2026-08-02 in the `ruff-single-source` branch, stacked on the
-Homebrew presence work. It amends the *Out of scope* section of the
+Implemented on 2026-08-02 in the `ruff-single-source` branch, which follows the
+uv tool manager and Homebrew presence work already in `main`. It amends the
+*Out of scope* section of the
 [uv tool manager design](2026-08-01-uv-tool-manager-design.md), which named
 `.pre-commit-config.yaml` as a second authoritative version source.
 
@@ -58,23 +59,48 @@ and tools are present when they execute.
 
 ## Markdown scope
 
-Ruff 0.16 would reformat Python code blocks in nine plan and spec documents.
-Those documents are historical records of work already done; their embedded
-snippets are transcripts, not source this repository maintains. Formatting
-them would rewrite the record for no benefit and would make every future Ruff
-upgrade produce unrelated documentation churn.
+Ruff 0.16 formats Python code blocks inside Markdown, which the pinned 0.15.1
+did not. This change takes the upgrade and formats the nine affected plan
+documents rather than excluding Markdown from Ruff.
 
-`extend-exclude` therefore gains `*.md`. Verified against both versions from
-the repository root:
+Excluding it was the first approach, on the argument that the documents are
+historical records whose snippets are transcripts rather than maintained
+source. Inspecting the actual reformat did not support that:
 
-| Ruff | `extend-exclude` includes `*.md` | `ruff format --check .` |
-| --- | --- | --- |
-| 0.15.1 | yes | 70 files already formatted |
-| 0.16.0 | yes | 70 files already formatted |
-| 0.16.0 | no | 9 files would be reformatted |
+- No prose changed. All 917 changed lines fall inside `python` fences, and the
+  fence count per document is unchanged.
+- The churn is line rewrapping. Over-wrapped calls collapse onto one line, and
+  five snippets that exceeded the repository's own 88-character limit gained
+  the wrapping the limit requires.
+- Formatting made the snippets consistent with the style enforced on real
+  source, which is the opposite of damaging the record.
 
-The exclusion also keeps a bare `ruff format` in agreement with the hooks,
-which pass only Python files.
+An exclusion would also have been an inert guard: with Ruff pinned at 0.15.1,
+deleting `"*.md"` from `extend-exclude` changed no check result, because that
+version does not format Markdown at all. Nothing in CI or the hook set would
+have failed if the line were removed, yet removing it is precisely what makes
+a later upgrade rewrite the documents. The protection would only have been
+observable at the moment it was already too late to notice.
+
+### Snippet indentation
+
+Ruff formats each fenced block as a standalone module, so a block it rewrites
+is also dedented to column zero. One method snippet in the uv tool manager
+plan lost the four-space indent that showed it belonged inside `Installer`,
+leaving a top-level `def _uv_tool(self, ...)`.
+
+Blocks are only rewritten when they need formatting, so an adjacent snippet in
+the same document kept its indentation. Left alone, the two presentations would
+diverge further as individual blocks happen to need changes.
+
+Both blocks in that document are now written as an explicit `class Installer:`
+with the method nested inside. That form is a valid module, so the formatter
+preserves its indentation and the class context survives future upgrades.
+
+Sixty-eight indented method snippets remain across the other plan documents.
+They are untouched here and will dedent individually whenever they next need
+formatting; converting them is not worth a mechanical sweep of historical
+documents.
 
 ## Tradeoffs
 
@@ -88,6 +114,11 @@ failure.
 Pinning both declarations to the same literal version was the alternative. It
 is a smaller diff, but it keeps two declarations and relies on a comment to
 hold them together, which is the arrangement that failed.
+
+Taking the upgrade puts roughly 900 lines of documentation reformatting in the
+same change as the configuration it justifies. The alternative was a separate
+follow-up, which would have left an inert exclusion on `main` in the meantime
+and split one decision across two reviews.
 
 ## Out of scope
 

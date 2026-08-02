@@ -473,10 +473,7 @@ class ResolvedSetup(BaseModel):
 
     def is_enabled(self, component_id: str) -> bool:
         """Return whether a component survived profile/include/skip resolution."""
-        return any(
-            component.id == component_id
-            for component in self.components
-        )
+        return any(component.id == component_id for component in self.components)
 ```
 
 ```python
@@ -565,9 +562,7 @@ class ManifestRepository:
             component = by_id[component_id]
             for dependency in sorted(component.depends_on):
                 if dependency not in by_id:
-                    raise ValueError(
-                        f"{component_id} requires unselected {dependency}"
-                    )
+                    raise ValueError(f"{component_id} requires unselected {dependency}")
                 visit(dependency)
             temporary.remove(component_id)
             permanent.add(component_id)
@@ -604,7 +599,10 @@ class ManifestRepository:
                 continue
             if component.skip_key in skip_keys:
                 continue
-            if not component.enabled_by_default and component.include_key not in include_keys:
+            if (
+                not component.enabled_by_default
+                and component.include_key not in include_keys
+            ):
                 continue
             selected.append(component)
         return ResolvedSetup(
@@ -620,9 +618,7 @@ class ManifestRepository:
             if component.include_key
         }
         skips = {
-            component.skip_key
-            for component in self.components
-            if component.skip_key
+            component.skip_key for component in self.components if component.skip_key
         }
         return tuple(
             [f"profile {name}" for name in sorted(self.profiles)]
@@ -842,14 +838,11 @@ def test_plan_is_sorted_and_never_contains_destination_values(
     output = format_plan(plan)
     expected = [
         component.id
-        for component in ManifestRepository.load(
-            repo_root / "manifests"
-        ).resolve(ResolutionRequest(profile="default")).components
+        for component in ManifestRepository.load(repo_root / "manifests")
+        .resolve(ResolutionRequest(profile="default"))
+        .components
     ]
-    assert [
-        action.component_id
-        for action in plan.actions[: len(expected)]
-    ] == expected
+    assert [action.component_id for action in plan.actions[: len(expected)]] == expected
     assert "install gh (owner=bootstrap): present" in output
     assert "install glab (owner=bootstrap): install" in output
     assert "~/.config/waveterm/settings.json" in output
@@ -1784,9 +1777,7 @@ def test_state_never_persists_native_command_output(
 ) -> None:
     paths = RuntimePaths.from_roots(repo_root=repo_root, home=fake_home)
     store = StateStore(paths)
-    store.record_install(
-        InstallRecord(resource_id="signal", state="optional-failure")
-    )
+    store.record_install(InstallRecord(resource_id="signal", state="optional-failure"))
     assert "download failed with token" not in store.path.read_text()
 
 
@@ -1800,9 +1791,7 @@ def test_state_store_rejects_symlinked_state_root(
     state_parent = fake_home / ".local"
     state_parent.mkdir()
     (state_parent / "state").symlink_to(outside, target_is_directory=True)
-    store = StateStore(
-        RuntimePaths.from_roots(repo_root=repo_root, home=fake_home)
-    )
+    store = StateStore(RuntimePaths.from_roots(repo_root=repo_root, home=fake_home))
     with pytest.raises(ValueError, match="symlinked path component"):
         store.load()
     with pytest.raises(ValueError, match="symlinked path component"):
@@ -2161,8 +2150,7 @@ class Installer:
         self.path_exists = path_exists
         self.downloader = downloader or HttpsDownloader()
         self.private_temp_root = (
-            private_temp_root
-            or home / ".local/state/ballen-config/tmp"
+            private_temp_root or home / ".local/state/ballen-config/tmp"
         )
 
     def install(self, component: Component) -> InstallOutcome:
@@ -2177,9 +2165,7 @@ class Installer:
                 completed = self._run_verified_download(action)
             except InstallError as error:
                 if action.required:
-                    raise InstallError(
-                        f"{error}: {action.component_id}"
-                    ) from error
+                    raise InstallError(f"{error}: {action.component_id}") from error
                 return InstallOutcome(
                     component_id=action.component_id,
                     state="optional-failure",
@@ -2192,9 +2178,7 @@ class Installer:
                 state="installed",
             )
         if action.required:
-            raise InstallError(
-                f"required install failed: {action.component_id}"
-            )
+            raise InstallError(f"required install failed: {action.component_id}")
         return InstallOutcome(
             component_id=action.component_id,
             state="optional-failure",
@@ -2252,8 +2236,7 @@ class Installer:
 
     def _brew(self, component: Component) -> InstallOutcome:
         if component.application_paths and all(
-            self.path_exists(Path(path))
-            for path in component.application_paths
+            self.path_exists(Path(path)) for path in component.application_paths
         ):
             if not component.receipt_prefixes:
                 return InstallOutcome(
@@ -2263,10 +2246,7 @@ class Installer:
             receipts = self.runner.run(("pkgutil", "--pkgs"))
             installed_receipts = receipts["stdout"].splitlines()
             if receipts["returncode"] == 0 and all(
-                any(
-                    receipt.startswith(prefix)
-                    for receipt in installed_receipts
-                )
+                any(receipt.startswith(prefix) for receipt in installed_receipts)
                 for prefix in component.receipt_prefixes
             ):
                 return InstallOutcome(
@@ -2274,13 +2254,9 @@ class Installer:
                     state="present",
                 )
         type_flag = (
-            "--formula"
-            if component.manager is Manager.BREW_FORMULA
-            else "--cask"
+            "--formula" if component.manager is Manager.BREW_FORMULA else "--cask"
         )
-        present = self.runner.run(
-            ("brew", "list", type_flag, component.package)
-        )
+        present = self.runner.run(("brew", "list", type_flag, component.package))
         if present["returncode"] == 0:
             return InstallOutcome(component_id=component.id, state="present")
         command = ["brew", "install"]
@@ -2309,9 +2285,7 @@ class Installer:
         if (destination / ".git").is_dir():
             return InstallOutcome(component_id=component.id, state="present")
         if destination.exists():
-            raise InstallError(
-                f"unmanaged git destination exists: {component.id}"
-            )
+            raise InstallError(f"unmanaged git destination exists: {component.id}")
         destination.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
         stage = destination.with_name(f".{destination.name}.bootstrap-stage")
         if stage.exists() or stage.is_symlink():
@@ -2475,7 +2449,9 @@ def test_conflict_is_backed_up_before_atomic_copy(
         ),
         timestamp=lambda: "20260725T120000Z",
     )
-    assert configurator.apply(managed(source, destination, ApplyMethod.COPY)) == "updated"
+    assert (
+        configurator.apply(managed(source, destination, ApplyMethod.COPY)) == "updated"
+    )
     backup = (
         fake_home
         / ".local/state/ballen-config/backups/20260725T120000Z"
@@ -2497,8 +2473,13 @@ def test_second_apply_is_a_no_op(fake_home: Path, tmp_path: Path) -> None:
         ),
         timestamp=lambda: "fixed",
     )
-    assert configurator.apply(managed(source, destination, ApplyMethod.COPY)) == "created"
-    assert configurator.apply(managed(source, destination, ApplyMethod.COPY)) == "unchanged"
+    assert (
+        configurator.apply(managed(source, destination, ApplyMethod.COPY)) == "created"
+    )
+    assert (
+        configurator.apply(managed(source, destination, ApplyMethod.COPY))
+        == "unchanged"
+    )
 
 
 def test_symlinked_parent_is_rejected(fake_home: Path, tmp_path: Path) -> None:
@@ -2531,9 +2512,7 @@ def test_managed_file_mode_is_applied(
         paths=RuntimePaths.from_roots(repo_root=tmp_path, home=fake_home),
         timestamp=lambda: "fixed",
     )
-    configurator.apply(
-        managed(source, destination, ApplyMethod.COPY, mode=0o700)
-    )
+    configurator.apply(managed(source, destination, ApplyMethod.COPY, mode=0o700))
     assert stat.S_IMODE(destination.stat().st_mode) == 0o700
 
 
@@ -2899,10 +2878,12 @@ class ConfigEngine:
         if os.path.lexists(spec.destination) and spec.id not in state.managed:
             raise ValueError(f"unmanaged tree collision: {spec.id}")
         spec.destination.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
-        stage = Path(tempfile.mkdtemp(
-            prefix=f".{spec.destination.name}.",
-            dir=spec.destination.parent,
-        ))
+        stage = Path(
+            tempfile.mkdtemp(
+                prefix=f".{spec.destination.name}.",
+                dir=spec.destination.parent,
+            )
+        )
         shutil.rmtree(stage)
         shutil.copytree(spec.source, stage, symlinks=False)
         for item in (stage, *stage.rglob("*")):
@@ -2945,6 +2926,7 @@ def core_validators(runner: Runner) -> dict[str, SourceValidator]:
             result = runner.run((*argv, str(path)))
             if result["returncode"] != 0:
                 raise ValueError(f"source validation failed: {path.name}")
+
         return validate
 
     return {
@@ -2986,7 +2968,9 @@ def run_configure(
     plan = engine.plan(specs)
     outcomes = tuple(
         f"{action.id}: {engine.apply(spec)}"
-        for action, spec in zip(plan, sorted(specs, key=lambda item: item.id), strict=True)
+        for action, spec in zip(
+            plan, sorted(specs, key=lambda item: item.id), strict=True
+        )
     )
     return ConfigureStageReport(
         changed_count=sum(not item.endswith(": unchanged") for item in outcomes),
@@ -3063,14 +3047,11 @@ class ConfigurationPlanContributor:
                 category="diagnostic",
                 action="replace-brittle-path",
                 owner="ballen-config",
-                path=str(
-                    spec.source.relative_to(self.engine.paths.repo_root)
-                ),
+                path=str(spec.source.relative_to(self.engine.paths.repo_root)),
                 required=False,
             )
             for spec in sorted(self.specs, key=lambda item: item.id)
-            if spec.source.is_file()
-            and b"/Users/" in spec.source.read_bytes()
+            if spec.source.is_file() and b"/Users/" in spec.source.read_bytes()
         )
         return configure_actions + diagnostics
 ```
@@ -3197,9 +3178,7 @@ def test_auth_output_is_never_returned(fake_home: Path) -> None:
 
 
 def test_skip_is_informational_not_missing(fake_home: Path) -> None:
-    report = run_doctor(
-        Doctor(FakeRunner({}), fake_home).skipped_checks(("wave",))
-    )
+    report = run_doctor(Doctor(FakeRunner({}), fake_home).skipped_checks(("wave",)))
     finding = report.finding("wave")
     assert finding.status is FindingStatus.SKIPPED
     assert finding.severity is CheckSeverity.INFO
@@ -3337,33 +3316,23 @@ class DoctorReport(BaseModel):
     def exit_code(self) -> int:
         """Return one only when a required check failed."""
         return int(
-            any(
-                finding.severity is CheckSeverity.ERROR
-                for finding in self.findings
-            )
+            any(finding.severity is CheckSeverity.ERROR for finding in self.findings)
         )
 
     def finding(self, finding_id: str) -> DoctorFinding:
         """Return a finding by stable ID."""
-        return next(
-            finding
-            for finding in self.findings
-            if finding.id == finding_id
-        )
+        return next(finding for finding in self.findings if finding.id == finding_id)
 
     def render(self) -> str:
         """Render normalized fields without native command output."""
         return "\n".join(
-            f"{item.id}: {item.status} - {item.message}"
-            for item in self.findings
+            f"{item.id}: {item.status} - {item.message}" for item in self.findings
         )
 
 
 def run_doctor(checks: Sequence[DoctorCheck]) -> DoctorReport:
     """Package already-normalized, non-mutating checks deterministically."""
-    return DoctorReport(
-        findings=tuple(sorted(checks, key=lambda item: item.id))
-    )
+    return DoctorReport(findings=tuple(sorted(checks, key=lambda item: item.id)))
 
 
 class Doctor:
@@ -3397,28 +3366,20 @@ class Doctor:
                     if component.manager is Manager.BREW_FORMULA
                     else "--cask"
                 )
-                result = self.runner.run(
-                    ("brew", "list", type_flag, component.package)
-                )
+                result = self.runner.run(("brew", "list", type_flag, component.package))
                 present = result["returncode"] == 0 or any(
-                    self.path_exists(Path(path))
-                    for path in component.application_paths
+                    self.path_exists(Path(path)) for path in component.application_paths
                 )
             else:
                 assert component.destination is not None
                 destination = self.home / component.destination
                 present = (
-                    not destination.is_symlink()
-                    and (destination / ".git").is_dir()
+                    not destination.is_symlink() and (destination / ".git").is_dir()
                 )
             checks.append(
                 DoctorFinding(
                     id=component.id,
-                    status=(
-                        FindingStatus.READY
-                        if present
-                        else FindingStatus.MISSING
-                    ),
+                    status=(FindingStatus.READY if present else FindingStatus.MISSING),
                     severity=(
                         CheckSeverity.INFO
                         if present
@@ -3464,9 +3425,7 @@ class Doctor:
                     else CheckSeverity.WARNING
                 ),
                 message=(
-                    "ready"
-                    if action.action == "unchanged"
-                    else "configuration differs"
+                    "ready" if action.action == "unchanged" else "configuration differs"
                 ),
             )
             for action in engine.plan(specs)
@@ -3479,30 +3438,16 @@ class Doctor:
             ("gitlab-auth", ("glab", "auth", "status")),
         ]
         if "work" in self.profiles:
-            commands.append(
-                ("aws-auth", ("aws", "sts", "get-caller-identity"))
-            )
+            commands.append(("aws-auth", ("aws", "sts", "get-caller-identity")))
         for name, command in commands:
             result = self.runner.run(command)
             ready = result["returncode"] == 0
             checks.append(
                 DoctorFinding(
                     id=name,
-                    status=(
-                        FindingStatus.READY
-                        if ready
-                        else FindingStatus.MANUAL
-                    ),
-                    severity=(
-                        CheckSeverity.INFO
-                        if ready
-                        else CheckSeverity.WARNING
-                    ),
-                    message=(
-                        "ready"
-                        if ready
-                        else "not authenticated"
-                    ),
+                    status=(FindingStatus.READY if ready else FindingStatus.MANUAL),
+                    severity=(CheckSeverity.INFO if ready else CheckSeverity.WARNING),
+                    message=("ready" if ready else "not authenticated"),
                 )
             )
         return tuple(checks)
@@ -3529,16 +3474,8 @@ class Doctor:
         return (
             DoctorFinding(
                 id="ssh-transfer",
-                status=(
-                    FindingStatus.READY
-                    if ssh_ready
-                    else FindingStatus.MANUAL
-                ),
-                severity=(
-                    CheckSeverity.INFO
-                    if ssh_ready
-                    else CheckSeverity.WARNING
-                ),
+                status=(FindingStatus.READY if ssh_ready else FindingStatus.MANUAL),
+                severity=(CheckSeverity.INFO if ssh_ready else CheckSeverity.WARNING),
                 message=(
                     "directory permissions ready"
                     if ssh_ready
@@ -3611,9 +3548,7 @@ def test_doctor_does_not_mutate_home(fake_home: Path) -> None:
         ),
         fake_home,
     )
-    report = run_doctor(
-        (*doctor.authentication_checks(), *doctor.manual_checks())
-    )
+    report = run_doctor((*doctor.authentication_checks(), *doctor.manual_checks()))
     assert home_snapshot(fake_home) == before
     assert "token-like" not in report.render()
 ```
@@ -3796,13 +3731,9 @@ class ResolvedInspector:
             return ComponentState.PRESENT
         if component.manager in {Manager.BREW_FORMULA, Manager.BREW_CASK}:
             flag = (
-                "--formula"
-                if component.manager is Manager.BREW_FORMULA
-                else "--cask"
+                "--formula" if component.manager is Manager.BREW_FORMULA else "--cask"
             )
-            result = self.runner.run(
-                ("brew", "list", flag, component.package)
-            )
+            result = self.runner.run(("brew", "list", flag, component.package))
             return (
                 ComponentState.PRESENT
                 if result["returncode"] == 0
@@ -3812,8 +3743,7 @@ class ResolvedInspector:
         destination = self.home / component.destination
         return (
             ComponentState.PRESENT
-            if not destination.is_symlink()
-            and (destination / ".git").is_dir()
+            if not destination.is_symlink() and (destination / ".git").is_dir()
             else ComponentState.MISSING
         )
 
@@ -3859,8 +3789,7 @@ def run(
         repository = ManifestRepository.load(repo_root / "manifests")
         resolved = repository.resolve(options.request)
         supplied_configuration = tuple(
-            supplier(resolved, paths)
-            for supplier in configuration_suppliers
+            supplier(resolved, paths) for supplier in configuration_suppliers
         )
         configuration = merge_configuration_contributions(
             (core_configuration(resolved, paths), *supplied_configuration)
@@ -3947,18 +3876,14 @@ def run(
         if len(finding_ids) != len(set(finding_ids)):
             return RunResult(
                 exit_code=2,
-                report=StageReport(
-                    outcomes=("duplicate doctor finding IDs",)
-                ),
+                report=StageReport(outcomes=("duplicate doctor finding IDs",)),
             )
         report = run_doctor(checks)
         output(report.render())
         return RunResult(
             exit_code=report.exit_code,
             report=StageReport(
-                outcomes=tuple(
-                    f"{item.id}: {item.status}" for item in report.findings
-                )
+                outcomes=tuple(f"{item.id}: {item.status}" for item in report.findings)
             ),
         )
 
@@ -4346,9 +4271,7 @@ def test_legacy_secret_and_mcp_guidance_is_gone(repo_root: Path) -> None:
         repo_root / "claude-code/settings.json",
     )
     tracked_text = "\n".join(
-        path.read_text(errors="ignore")
-        for path in operational_paths
-        if path.exists()
+        path.read_text(errors="ignore") for path in operational_paths if path.exists()
     )
     assert "<YOUR_GITLAB_TOKEN>" not in tracked_text
     assert "gitlab-mr-mcp" not in tracked_text
@@ -4529,12 +4452,8 @@ def test_core_manual_actions_are_cross_cutting_only(
     contributor = CoreManualContributor()
     default = repository.resolve(ResolutionRequest(profile="default"))
     work = repository.resolve(ResolutionRequest(profile="work"))
-    default_ids = {
-        action.component_id for action in contributor.actions(default)
-    }
-    work_ids = {
-        action.component_id for action in contributor.actions(work)
-    }
+    default_ids = {action.component_id for action in contributor.actions(default)}
+    work_ids = {action.component_id for action in contributor.actions(work)}
     assert default_ids == {
         "github-auth",
         "gitlab-auth",
@@ -4619,9 +4538,7 @@ def test_policy_main_reports_rule_and_path_only(
     """Return one without echoing the matched secret-bearing content."""
     monkeypatch.setattr(
         "ballen_config.policy.scan_tree",
-        lambda root: (
-            Violation(rule="private-key", path="bad.pem"),
-        ),
+        lambda root: (Violation(rule="private-key", path="bad.pem"),),
     )
     assert main(tmp_path) == 1
     assert capsys.readouterr().out == "private-key: bad.pem\n"
@@ -4679,18 +4596,14 @@ FORBIDDEN_PARTS = {
     "__pycache__",
 }
 CONTENT_RULES = {
-    "private-key": re.compile(
-        r"BEGIN (?:OPENSSH|RSA|EC) PRIVATE KEY"
-    ),
+    "private-key": re.compile(r"BEGIN (?:OPENSSH|RSA|EC) PRIVATE KEY"),
 }
 PORTABILITY_RULES = {
     "credential-placeholder": re.compile(
         r"<YOUR_GITLAB_TOKEN>|glpat-[A-Za-z0-9_-]{20,}"
     ),
     "machine-path": re.compile(r"/Users/ballen/"),
-    "legacy-mcp": re.compile(
-        r"gitlab-mr-mcp|@playwright/mcp|MR_MCP_GITLAB_TOKEN"
-    ),
+    "legacy-mcp": re.compile(r"gitlab-mr-mcp|@playwright/mcp|MR_MCP_GITLAB_TOKEN"),
 }
 PORTABLE_PREFIXES = {
     "assistants",
@@ -4714,9 +4627,7 @@ def tracked_paths(root: Path) -> tuple[Path, ...]:
     except FileNotFoundError:
         jj = None
     if jj is not None and jj.returncode == 0:
-        return tuple(
-            sorted(Path(line) for line in jj.stdout.splitlines() if line)
-        )
+        return tuple(sorted(Path(line) for line in jj.stdout.splitlines() if line))
     git = subprocess.run(
         ("git", "ls-files", "-z"),
         cwd=root,
@@ -4725,13 +4636,7 @@ def tracked_paths(root: Path) -> tuple[Path, ...]:
     )
     if git.returncode != 0:
         raise RuntimeError("cannot enumerate tracked repository files")
-    return tuple(
-        sorted(
-            Path(raw.decode())
-            for raw in git.stdout.split(b"\0")
-            if raw
-        )
-    )
+    return tuple(sorted(Path(raw.decode()) for raw in git.stdout.split(b"\0") if raw))
 
 
 def scan_paths(
@@ -4749,27 +4654,20 @@ def scan_paths(
             ".sqlite3",
             ".age",
         }:
-            violations.append(
-                Violation(rule="generated-state", path=str(relative))
-            )
+            violations.append(Violation(rule="generated-state", path=str(relative)))
             continue
         text = path.read_text(errors="ignore")
         for rule, pattern in CONTENT_RULES.items():
             if pattern.search(text):
                 violations.append(Violation(rule=rule, path=str(relative)))
-        portable = (
-            bool(relative.parts)
-            and (
-                relative.parts[0] in PORTABLE_PREFIXES
-                or relative.as_posix() in PORTABLE_ROOT_FILES
-            )
+        portable = bool(relative.parts) and (
+            relative.parts[0] in PORTABLE_PREFIXES
+            or relative.as_posix() in PORTABLE_ROOT_FILES
         )
         if portable:
             for rule, pattern in PORTABILITY_RULES.items():
                 if pattern.search(text):
-                    violations.append(
-                        Violation(rule=rule, path=str(relative))
-                    )
+                    violations.append(Violation(rule=rule, path=str(relative)))
     return tuple(violations)
 
 

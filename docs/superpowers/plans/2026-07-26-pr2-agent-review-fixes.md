@@ -103,44 +103,40 @@ In `test_plugin_actions_are_scoped_ordered_and_profile_aware`, replace the
 work-only optional assertions with:
 
 ```python
-    work_actions = plan_claude_plugins(
-        repo_root / "assistants/claude/plugins.yaml",
-        profiles=("default", "work"),
-        installed=frozenset(),
-    )
-    assert work_actions == default_actions
-    assert all(
-        "piste" not in action.component_id
-        and "piste" not in " ".join(action.argv)
-        for action in work_actions
-    )
+work_actions = plan_claude_plugins(
+    repo_root / "assistants/claude/plugins.yaml",
+    profiles=("default", "work"),
+    installed=frozenset(),
+)
+assert work_actions == default_actions
+assert all(
+    "piste" not in action.component_id and "piste" not in " ".join(action.argv)
+    for action in work_actions
+)
 ```
 
 In `test_plugin_actions_are_exact_ordered_and_profile_aware`, require the same
 for Codex:
 
 ```python
-    work_actions = plan_codex_plugins(
-        repo_root / "assistants/codex/plugins.yaml",
-        profiles=("default", "work"),
-        installed=frozenset(),
-    )
-    assert work_actions == default_actions
-    assert all(
-        "piste" not in action.component_id
-        and "piste" not in " ".join(action.argv)
-        for action in work_actions
-    )
+work_actions = plan_codex_plugins(
+    repo_root / "assistants/codex/plugins.yaml",
+    profiles=("default", "work"),
+    installed=frozenset(),
+)
+assert work_actions == default_actions
+assert all(
+    "piste" not in action.component_id and "piste" not in " ".join(action.argv)
+    for action in work_actions
+)
 ```
 
 Rename `test_plugin_catalog_explicitly_declares_every_profile` to
 `test_plugin_catalog_explicitly_declares_default_profile` and use:
 
 ```python
-    assert all(
-        item["profiles"] == ["default"] for item in source["marketplaces"]
-    )
-    assert all(item["profiles"] == ["default"] for item in source["plugins"])
+assert all(item["profiles"] == ["default"] for item in source["marketplaces"])
+assert all(item["profiles"] == ["default"] for item in source["plugins"])
 ```
 
 Rename the integration test to
@@ -319,15 +315,11 @@ def test_promoted_jujutsu_workflow_catalog_and_inventory_are_synchronized(
     )
     destinations = {spec.id: spec.destination for spec in contribution.specs}
     assert destinations == {
-        "shared-skill-jujutsu-workflow-codex": Path(
-            ".agents/skills/jujutsu-workflow"
-        ),
+        "shared-skill-jujutsu-workflow-codex": Path(".agents/skills/jujutsu-workflow"),
         "shared-skill-jujutsu-workflow-claude-code": Path(
             ".claude/skills/jujutsu-workflow"
         ),
-        "shared-skill-jujutsu-workflow-cursor": Path(
-            ".cursor/skills/jujutsu-workflow"
-        ),
+        "shared-skill-jujutsu-workflow-cursor": Path(".cursor/skills/jujutsu-workflow"),
     }
 ```
 

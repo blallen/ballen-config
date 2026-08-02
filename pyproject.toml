@@ -46,14 +46,7 @@ target-version = "py312"
 line-length = 88
 # Starter configurations are data for other repositories. Without this, Ruff
 # treats the bundled ruff.toml as a nested project root and caches beside it.
-#
-# Markdown is excluded because Ruff 0.16 began formatting Python code blocks
-# inside it. The plan and spec documents under docs/ are historical records of
-# work already done; their embedded snippets are transcripts, not source this
-# repository maintains. Excluding them keeps a Ruff upgrade from rewriting the
-# record, and keeps a bare `ruff format` in agreement with the hook, which
-# passes only Python files.
-extend-exclude = ["assistants/shared/standards/templates", "*.md"]
+extend-exclude = ["assistants/shared/standards/templates"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]

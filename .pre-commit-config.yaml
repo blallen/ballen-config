@@ -28,13 +28,13 @@ repos:
         name: ruff check
         entry: uv run --frozen --no-sync ruff check --force-exclude --fix
         language: system
-        types_or: [python, pyi]
+        types_or: [python, pyi, jupyter]
         require_serial: true
       - id: ruff-format
         name: ruff format
         entry: uv run --frozen --no-sync ruff format --force-exclude
         language: system
-        types_or: [python, pyi]
+        types_or: [python, pyi, jupyter]
         require_serial: true
       - id: ballen-config-policy
         name: ballen-config policy

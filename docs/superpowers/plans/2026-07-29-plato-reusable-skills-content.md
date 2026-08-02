@@ -215,6 +215,7 @@ _REJECT = (
     "glpat-",
 )
 
+
 def _assert_skill_tree_portable(root: Path) -> None:
     for path in sorted(root.rglob("*")):
         if not path.is_file():
@@ -343,8 +344,7 @@ def test_standards_pair_catalog_declares_dependency() -> None:
 
 def test_review_skill_references_discovery_by_name(repo_root: Path) -> None:
     text = (
-        repo_root
-        / "assistants/shared/skills/review-project-standards/SKILL.md"
+        repo_root / "assistants/shared/skills/review-project-standards/SKILL.md"
     ).read_text(encoding="utf-8")
     assert "discover-project-standards" in text
     assert "tooling-discover-standards" not in text
@@ -468,9 +468,9 @@ def test_using_uv_projection_matches_canonical_standard(repo_root: Path) -> None
 
 
 def test_using_uv_skill_points_at_bundled_reference(repo_root: Path) -> None:
-    text = (
-        repo_root / "assistants/shared/skills/using-uv/SKILL.md"
-    ).read_text(encoding="utf-8")
+    text = (repo_root / "assistants/shared/skills/using-uv/SKILL.md").read_text(
+        encoding="utf-8"
+    )
     assert "references/dependency-management.md" in text
     assert "assistants/shared/standards/dependency-management.md" not in text
 ```
@@ -541,8 +541,7 @@ def test_writing_executive_communications_avoids_placeholder_option_labels(
     repo_root: Path,
 ) -> None:
     text = (
-        repo_root
-        / "assistants/shared/skills/writing-executive-communications/SKILL.md"
+        repo_root / "assistants/shared/skills/writing-executive-communications/SKILL.md"
     ).read_text(encoding="utf-8")
     assert "Option A" not in text
     assert "Option B" not in text
@@ -623,9 +622,9 @@ Rewritten for portability from plato/skills/using-gitlab at commit f3b91eead0eff
 def test_using_gitlab_names_github_counterpart_for_wrong_forge(
     repo_root: Path,
 ) -> None:
-    text = (
-        repo_root / "assistants/shared/skills/using-gitlab/SKILL.md"
-    ).read_text(encoding="utf-8")
+    text = (repo_root / "assistants/shared/skills/using-gitlab/SKILL.md").read_text(
+        encoding="utf-8"
+    )
     assert "using-github" in text
     assert "glab" in text
 ```
@@ -687,20 +686,20 @@ both. Domain-specific sections may differ. No shared router file.
 def test_using_github_names_gitlab_counterpart_for_wrong_forge(
     repo_root: Path,
 ) -> None:
-    text = (
-        repo_root / "assistants/shared/skills/using-github/SKILL.md"
-    ).read_text(encoding="utf-8")
+    text = (repo_root / "assistants/shared/skills/using-github/SKILL.md").read_text(
+        encoding="utf-8"
+    )
     assert "using-gitlab" in text
     assert "gh" in text
 
 
 def test_forge_skills_share_protocol_headings(repo_root: Path) -> None:
-    gitlab = (
-        repo_root / "assistants/shared/skills/using-gitlab/SKILL.md"
-    ).read_text(encoding="utf-8")
-    github = (
-        repo_root / "assistants/shared/skills/using-github/SKILL.md"
-    ).read_text(encoding="utf-8")
+    gitlab = (repo_root / "assistants/shared/skills/using-gitlab/SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    github = (repo_root / "assistants/shared/skills/using-github/SKILL.md").read_text(
+        encoding="utf-8"
+    )
     for needle in (
         "provider",
         "read-only",
