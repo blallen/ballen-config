@@ -33,8 +33,8 @@ from ballen_config.configure import (
 from ballen_config.doctor import CheckSeverity, DoctorFinding, FindingStatus
 from ballen_config.install import InstallAction, InstallStageReport
 from ballen_config.manifests import ManifestRepository
-from ballen_config.models import ResolvedSetup
-from ballen_config.planning import PlanAction
+from ballen_config.models import Component, Manager, ResolvedSetup
+from ballen_config.planning import ComponentState, PlanAction
 from ballen_config.runner import CommandResult
 from ballen_config.runtime import RuntimePaths
 from ballen_config.state import ManagedRecord, StateStore
@@ -138,6 +138,82 @@ class FakeDownloader:
     ) -> None:
         """Reject an unexpected download."""
         raise AssertionError("no download expected")
+
+
+def test_state_reports_present_for_a_listed_uv_tool(fake_home: Path) -> None:
+    """A uv-managed tool listed by name resolves to present."""
+    component = Component(
+        id="pre-commit",
+        manager=Manager.UV_TOOL,
+        package="pre-commit",
+    )
+    runner = FakeRunner(
+        [{"returncode": 0, "stdout": "pre-commit v4.6.0\n- pre-commit\n", "stderr": ""}]
+    )
+    inspector = cli.ResolvedInspector(runner, (component,), fake_home)
+
+    assert inspector.state("pre-commit") is ComponentState.PRESENT
+    assert runner.commands == [("uv", "tool", "list")]
+
+
+def test_state_reports_missing_for_an_absent_uv_tool(fake_home: Path) -> None:
+    """A uv-managed tool absent from the listing resolves to missing."""
+    component = Component(
+        id="pre-commit",
+        manager=Manager.UV_TOOL,
+        package="pre-commit",
+    )
+    runner = FakeRunner([{"returncode": 0, "stdout": "", "stderr": ""}])
+    inspector = cli.ResolvedInspector(runner, (component,), fake_home)
+
+    assert inspector.state("pre-commit") is ComponentState.MISSING
+    assert runner.commands == [("uv", "tool", "list")]
+
+
+def test_state_uv_tool_entrypoint_line_does_not_produce_false_present(
+    fake_home: Path,
+) -> None:
+    """An entrypoint line's dash prefix never matches a different package."""
+    component = Component(
+        id="pre-commit",
+        manager=Manager.UV_TOOL,
+        package="pre-commit",
+    )
+    runner = FakeRunner(
+        [
+            {
+                "returncode": 0,
+                "stdout": "ruff v0.6.0\n- ruff\n- pre-commit\n",
+                "stderr": "",
+            }
+        ]
+    )
+    inspector = cli.ResolvedInspector(runner, (component,), fake_home)
+
+    assert inspector.state("pre-commit") is ComponentState.MISSING
+    assert runner.commands == [("uv", "tool", "list")]
+
+
+def test_state_unreadable_uv_tool_list_is_missing(fake_home: Path) -> None:
+    """An unreadable listing is missing even when stdout names the tool."""
+    component = Component(
+        id="pre-commit",
+        manager=Manager.UV_TOOL,
+        package="pre-commit",
+    )
+    runner = FakeRunner(
+        [
+            {
+                "returncode": 127,
+                "stdout": "pre-commit v4.6.0\n- pre-commit\n",
+                "stderr": "",
+            }
+        ]
+    )
+    inspector = cli.ResolvedInspector(runner, (component,), fake_home)
+
+    assert inspector.state("pre-commit") is ComponentState.MISSING
+    assert runner.commands == [("uv", "tool", "list")]
 
 
 def _prepare_legacy_skill_rename(

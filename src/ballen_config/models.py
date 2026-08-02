@@ -11,6 +11,7 @@ class Manager(StrEnum):
     BREW_FORMULA = "brew_formula"
     BREW_CASK = "brew_cask"
     GIT = "git"
+    UV_TOOL = "uv_tool"
 
 
 class Component(BaseModel):

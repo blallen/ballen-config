@@ -4,7 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from ballen_config.manifests import ManifestRepository
-from ballen_config.models import Component, Profile, ResolutionRequest
+from ballen_config.models import Component, Manager, Profile, ResolutionRequest
 
 
 @pytest.fixture
@@ -65,6 +65,56 @@ def test_shell_parent_precedes_nested_git_components(
         "zsh-syntax-highlighting",
     ):
         assert parent_index < ordered.index(child)
+
+
+def test_uv_tool_component_orders_after_uv(
+    manifest_repository: ManifestRepository,
+) -> None:
+    """uv installs before any tool it owns."""
+    ordered = [
+        component.id
+        for component in manifest_repository.resolve(
+            ResolutionRequest(profile="default")
+        ).components
+    ]
+    assert ordered.index("uv") < ordered.index("pre-commit")
+
+
+def test_uv_tool_requires_uv_to_be_selected(tmp_path: Path) -> None:
+    """Exercise the resolver's fail-closed dependency validation directly.
+
+    This is deliberately decoupled from the checked-in manifests: it builds
+    a synthetic ``uv``/dependent-tool pair rather than resolving the real
+    ``manifests/packages.yaml``. The real ``uv`` component has no
+    ``skip_key`` and must not gain one — uv is mandatory infrastructure
+    that ``bootstrap prepare`` installs (and fails hard without) before the
+    resolver ever runs, so ``--skip uv`` is not a supported configuration
+    and must not appear in ``interface_lines()``. That leaves no way to
+    reproduce a skipped-dependency failure through the real manifest, so
+    this test instead proves the ``requires unselected`` validation in
+    ``ManifestRepository._dependency_order`` works in general, using a
+    component set built just for this test.
+    """
+    repository = ManifestRepository(
+        tmp_path,
+        {"default": Profile(name="default")},
+        (
+            Component(
+                id="uv",
+                manager=Manager.BREW_FORMULA,
+                package="uv",
+                skip_key="uv",
+            ),
+            Component(
+                id="pre-commit",
+                manager=Manager.UV_TOOL,
+                package="pre-commit",
+                depends_on=("uv",),
+            ),
+        ),
+    )
+    with pytest.raises(ValueError, match="requires unselected uv"):
+        repository.resolve(ResolutionRequest(profile="default", skips=("uv",)))
 
 
 def test_profile_cycle_is_rejected(tmp_path: Path) -> None:

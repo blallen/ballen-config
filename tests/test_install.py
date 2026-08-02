@@ -330,6 +330,71 @@ def test_existing_git_checkout_rejects_untrusted_state(
     assert len(runner.commands) == expected_commands
 
 
+def _uv_component() -> Component:
+    return Component(
+        id="pre-commit",
+        manager=Manager.UV_TOOL,
+        package="pre-commit",
+        depends_on=("uv",),
+    )
+
+
+def test_uv_tool_already_installed_is_present(tmp_path: Path) -> None:
+    """An installed tool is reported without a second install."""
+    runner = FakeRunner([result(stdout="pre-commit v4.6.0\n- pre-commit\n")])
+    outcome = Installer(runner, tmp_path).install(_uv_component())
+    assert outcome.state == "present"
+    assert runner.commands == [("uv", "tool", "list")]
+
+
+def test_uv_tool_missing_is_installed(tmp_path: Path) -> None:
+    """A missing tool is installed through uv."""
+    runner = FakeRunner([result(stdout="ruff v0.15.2\n"), result()])
+    outcome = Installer(runner, tmp_path).install(_uv_component())
+    assert outcome.state == "installed"
+    assert runner.commands[-1] == ("uv", "tool", "install", "pre-commit")
+
+
+def test_required_uv_tool_failure_raises(tmp_path: Path) -> None:
+    """A required tool that will not install stops the run."""
+    runner = FakeRunner([result(), result(1)])
+    with pytest.raises(InstallError, match="required install failed"):
+        Installer(runner, tmp_path).install(_uv_component())
+    assert runner.commands == [
+        ("uv", "tool", "list"),
+        ("uv", "tool", "install", "pre-commit"),
+    ]
+
+
+def test_uv_tool_entrypoint_line_does_not_produce_false_present(
+    tmp_path: Path,
+) -> None:
+    """An entrypoint line's dash prefix never matches a package name."""
+    runner = FakeRunner(
+        [result(stdout="ruff v0.6.0\n- ruff\n- pre-commit\n"), result()]
+    )
+    outcome = Installer(runner, tmp_path).install(_uv_component())
+    assert outcome.state != "present"
+    assert outcome.state == "installed"
+    assert runner.commands == [
+        ("uv", "tool", "list"),
+        ("uv", "tool", "install", "pre-commit"),
+    ]
+
+
+def test_unreadable_uv_tool_list_installs_rather_than_assuming_present(
+    tmp_path: Path,
+) -> None:
+    """An unreadable listing installs instead of trusting stale stdout."""
+    runner = FakeRunner([result(127, stdout="pre-commit v4.6.0\n"), result()])
+    outcome = Installer(runner, tmp_path).install(_uv_component())
+    assert outcome.state == "installed"
+    assert runner.commands == [
+        ("uv", "tool", "list"),
+        ("uv", "tool", "install", "pre-commit"),
+    ]
+
+
 def test_optional_failure_is_reported_without_raising(tmp_path: Path) -> None:
     """Optional package failures become reportable outcomes rather than errors."""
     runner = FakeRunner([result(1), result(1, stderr="native failure")])

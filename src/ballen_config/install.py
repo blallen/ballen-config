@@ -16,6 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ballen_config.models import Component, Manager, ResolvedSetup
 from ballen_config.paths import assert_contained, assert_no_symlink_components
+from ballen_config.probes import uv_tool_listed
 from ballen_config.runner import CommandResult, Runner
 from ballen_config.runtime import RuntimePaths
 from ballen_config.state import InstallRecord, StateStore
@@ -245,6 +246,8 @@ class Installer:
         """Install one component, returning only its normalized outcome."""
         if component.manager in {Manager.BREW_FORMULA, Manager.BREW_CASK}:
             return self._brew(component)
+        if component.manager is Manager.UV_TOOL:
+            return self._uv_tool(component)
         return self._git(component)
 
     def run_action(self, action: InstallAction) -> InstallOutcome:
@@ -348,6 +351,20 @@ class Installer:
             command.append("--cask")
         command.append(component.package)
         installed = self.runner.run(command)
+        if installed["returncode"] == 0:
+            return InstallOutcome(component_id=component.id, state="installed")
+        if component.required:
+            raise InstallError(f"required install failed: {component.id}")
+        return InstallOutcome(component_id=component.id, state="optional-failure")
+
+    def _uv_tool(self, component: Component) -> InstallOutcome:
+        """Return present or install a uv-managed tool."""
+        listed = self.runner.run(("uv", "tool", "list"))
+        if listed["returncode"] == 0 and uv_tool_listed(
+            listed["stdout"], component.package
+        ):
+            return InstallOutcome(component_id=component.id, state="present")
+        installed = self.runner.run(("uv", "tool", "install", component.package))
         if installed["returncode"] == 0:
             return InstallOutcome(component_id=component.id, state="installed")
         if component.required:

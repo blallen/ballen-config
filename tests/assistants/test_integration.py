@@ -95,6 +95,8 @@ def run_with_assistants(
                 origin=component.package,
                 revision=component.revision,
             )
+        elif component.manager is Manager.UV_TOOL:
+            runner.add_uv_tool(component.package)
     runner.cursor_extensions.update(
         {
             "velociraptor115.vscode-jj-graph",

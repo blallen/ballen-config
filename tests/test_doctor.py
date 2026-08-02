@@ -177,6 +177,92 @@ def test_git_component_requires_non_symlink_git_checkout(
     assert finding.status is FindingStatus.MISSING
 
 
+def test_uv_tool_present_is_ready(fake_home: Path) -> None:
+    """A uv-managed tool listed by name counts as ready."""
+    component = Component(
+        id="pre-commit",
+        manager=Manager.UV_TOOL,
+        package="pre-commit",
+    )
+    runner = FakeRunner(
+        {
+            ("uv", "tool", "list"): {
+                "returncode": 0,
+                "stdout": "pre-commit v4.6.0\n- pre-commit\n",
+                "stderr": "",
+            }
+        }
+    )
+    finding = Doctor(runner, fake_home).component_checks((component,))[0]
+    assert finding.status is FindingStatus.READY
+    assert runner.commands == [("uv", "tool", "list")]
+
+
+def test_uv_tool_absent_is_missing(fake_home: Path) -> None:
+    """A uv-managed tool absent from the listing counts as missing."""
+    component = Component(
+        id="pre-commit",
+        manager=Manager.UV_TOOL,
+        package="pre-commit",
+    )
+    runner = FakeRunner(
+        {
+            ("uv", "tool", "list"): {
+                "returncode": 0,
+                "stdout": "",
+                "stderr": "",
+            }
+        }
+    )
+    finding = Doctor(runner, fake_home).component_checks((component,))[0]
+    assert finding.status is FindingStatus.MISSING
+    assert runner.commands == [("uv", "tool", "list")]
+
+
+def test_uv_tool_entrypoint_line_does_not_produce_false_ready(
+    fake_home: Path,
+) -> None:
+    """An entrypoint line's dash prefix never matches a package name."""
+    component = Component(
+        id="pre-commit",
+        manager=Manager.UV_TOOL,
+        package="pre-commit",
+    )
+    runner = FakeRunner(
+        {
+            ("uv", "tool", "list"): {
+                "returncode": 0,
+                "stdout": "ruff v0.6.0\n- ruff\n- pre-commit\n",
+                "stderr": "",
+            }
+        }
+    )
+    finding = Doctor(runner, fake_home).component_checks((component,))[0]
+    assert finding.status is FindingStatus.MISSING
+    assert runner.commands == [("uv", "tool", "list")]
+
+
+def test_unreadable_uv_tool_list_is_missing(fake_home: Path) -> None:
+    """An unreadable listing is missing even when stdout names the tool."""
+    component = Component(
+        id="pre-commit",
+        manager=Manager.UV_TOOL,
+        package="pre-commit",
+    )
+    runner = FakeRunner(
+        {
+            ("uv", "tool", "list"): {
+                "returncode": 127,
+                "stdout": "pre-commit v4.6.0\n- pre-commit\n",
+                "stderr": "",
+            }
+        }
+    )
+    finding = Doctor(runner, fake_home).component_checks((component,))[0]
+    assert finding.status is FindingStatus.MISSING
+    assert runner.commands == [("uv", "tool", "list")]
+
+
 def test_homebrew_prefix_output_is_redacted(fake_home: Path) -> None:
     """The machine-specific Homebrew path is never rendered."""
     prefix = "/machine/private/homebrew"

@@ -283,6 +283,8 @@ def test_core_invokes_each_supplier_once_with_resolved_skip(
                 origin=component.package,
                 revision=component.revision,
             )
+        elif component.manager is Manager.UV_TOOL:
+            fake_runner.add_uv_tool(component.package)
 
     def assert_setup(setup: ResolvedSetup) -> None:
         assert "work" in setup.profiles

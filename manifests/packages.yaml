@@ -6,7 +6,14 @@ components:
   - {id: node, manager: brew_formula, package: node, profiles: [default]}
   - {id: ripgrep, manager: brew_formula, package: ripgrep, profiles: [default]}
   - {id: rtk, manager: brew_formula, package: rtk, profiles: [default]}
-  - {id: pre-commit, manager: brew_formula, package: pre-commit, profiles: [default]}
+  # uv_tool entries name a tool, never a version. These are global convenience
+  # copies and are expected to lag the repository pins, which are authoritative
+  # and live in the pyproject dev dependency group and .pre-commit-config.yaml.
+  # CI and `uv run --frozen` resolve from those, never from a tool installed
+  # here. Pinning would also need a field separate from `package`, because the
+  # presence probe matches `uv tool list` on the bare tool name.
+  - {id: pre-commit, manager: uv_tool, package: pre-commit, depends_on: [uv], profiles: [default]}
+  - {id: ruff, manager: uv_tool, package: ruff, depends_on: [uv], profiles: [default]}
   - {id: libmagic, manager: brew_formula, package: libmagic, profiles: [work]}
   - {id: awscli, manager: brew_formula, package: awscli, profiles: [work]}
   - id: oh-my-zsh

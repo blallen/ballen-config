@@ -26,6 +26,7 @@ class StatefulAssistantFake:
         self.claude_plugins: set[str] = set()
         self.codex_marketplaces: set[str] = set()
         self.codex_plugins: set[str] = set()
+        self.uv_tools: set[str] = set()
         self.payloads: dict[str, bytes] = {}
         self.downloaded_extension_ids: dict[Path, str] = {}
         self.allow_unmodeled_core_commands = False
@@ -85,6 +86,15 @@ class StatefulAssistantFake:
     def satisfy_core_commands(self) -> None:
         """Let already-tested core commands succeed without running them."""
         self.allow_unmodeled_core_commands = True
+
+    def add_uv_tool(self, package: str) -> None:
+        """Model one uv-managed tool already installed and pinned.
+
+        Args:
+            package: The uv tool package name as it would appear as the
+                first column of ``uv tool list`` output.
+        """
+        self.uv_tools.add(package)
 
     def add_git_checkout(self, path: Path, *, origin: str, revision: str) -> None:
         """Model one clean checkout already converged to its reviewed revision."""
@@ -169,6 +179,18 @@ class StatefulAssistantFake:
         self.commands.append(normalized)
         if normalized in self.results:
             return self.results[normalized]
+        if normalized == ("uv", "tool", "list"):
+            # Real `uv tool list` follows each tool with its indented `- name`
+            # entrypoint lines. Reproduce them so integration coverage exercises
+            # the same output shape the presence probe has to filter.
+            return {
+                "returncode": 0,
+                "stdout": "".join(
+                    f"{package} v0.0.0\n- {package}\n"
+                    for package in sorted(self.uv_tools)
+                ),
+                "stderr": "",
+            }
         if normalized == ("cursor", "--list-extensions"):
             return {
                 "returncode": 0,

@@ -60,6 +60,7 @@ from ballen_config.planning import (
     build_resolved_plan,
     format_plan,
 )
+from ballen_config.probes import uv_tool_listed
 from ballen_config.runner import Runner, SubprocessRunner
 from ballen_config.runtime import RuntimePaths
 from ballen_config.state import StateStore
@@ -147,8 +148,8 @@ class ResolvedInspector:
             component_id: Resolved component identifier.
 
         Returns:
-            Present when an app path, Homebrew package, or safe Git checkout
-            exists; otherwise missing.
+            Present when an app path, Homebrew package, uv-managed tool, or
+            safe Git checkout exists; otherwise missing.
         """
         component = self.components[component_id]
         if any(Path(path).exists() for path in component.application_paths):
@@ -161,6 +162,14 @@ class ResolvedInspector:
             return (
                 ComponentState.PRESENT
                 if result["returncode"] == 0
+                else ComponentState.MISSING
+            )
+        if component.manager is Manager.UV_TOOL:
+            result = self.runner.run(("uv", "tool", "list"))
+            return (
+                ComponentState.PRESENT
+                if result["returncode"] == 0
+                and uv_tool_listed(result["stdout"], component.package)
                 else ComponentState.MISSING
             )
         if component.destination is None:
