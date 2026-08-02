@@ -135,6 +135,22 @@ def test_receipts_match(stdout: str, prefixes: tuple[str, ...], expected: bool) 
     assert receipts_match(stdout, prefixes) is expected
 
 
+def test_receipts_match_is_vacuously_true_for_no_declared_prefixes() -> None:
+    """No declared prefixes means nothing left to prove, so ``True``.
+
+    This is deliberately the opposite of
+    ``test_application_paths_present_rejects_vacuous_truth_on_empty_paths``.
+    A declared application path is the evidence itself, so declaring none
+    proves nothing; a declared receipt prefix is an extra condition on top
+    of that evidence, so declaring none leaves the condition satisfied.
+    Callers rely on this: they treat a component without
+    ``receipt_prefixes`` as present. Inverting it here would report every
+    receipt-less component missing.
+    """
+    assert receipts_match("", ()) is True
+    assert receipts_match("org.tug.texlive2025\n", ()) is True
+
+
 def test_receipts_match_nesting_direction_is_all_prefixes_any_receipts() -> None:
     """Catch the ``any(all(...))`` nesting-inversion trap directly.
 

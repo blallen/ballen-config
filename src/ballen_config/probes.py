@@ -40,13 +40,28 @@ def receipts_match(stdout: str, prefixes: Sequence[str]) -> bool:
     receipts on the inside. Swapping the nesting would instead accept a
     single matching receipt as proof that every prefix is installed.
 
+    An empty ``prefixes`` is vacuously satisfied and returns ``True``. That
+    is deliberate, and it is the opposite of the emptiness rule in
+    :func:`application_paths_present`, so the difference is worth stating.
+    The question here is whether every declared prefix is installed; a
+    component that declares none has nothing left to prove. Callers treat a
+    component without ``receipt_prefixes`` as satisfied for exactly that
+    reason, and they short-circuit before calling only to avoid running
+    ``pkgutil`` when there is nothing to match. Returning ``False`` instead
+    would contradict them and report every receipt-less component missing.
+
+    ``application_paths_present`` differs because a declared path is the
+    evidence itself: with no paths declared there is nothing to observe, so
+    presence cannot be concluded.
+
     Args:
         stdout: Captured standard output from ``pkgutil --pkgs``.
         prefixes: A component's declared receipt prefixes.
 
     Returns:
         Whether every prefix in ``prefixes`` matches at least one line of
-        ``stdout`` via ``startswith``.
+        ``stdout`` via ``startswith``. Vacuously ``True`` when ``prefixes``
+        is empty.
     """
     installed_receipts = stdout.splitlines()
     return all(
