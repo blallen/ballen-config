@@ -1,4 +1,4 @@
-"""Tests for the shared uv tool list parsing predicate."""
+"""Tests for the shared presence predicates over native command output."""
 
 import pytest
 
