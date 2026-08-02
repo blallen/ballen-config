@@ -39,13 +39,21 @@ invoke the locked environment directly, matching the existing
 
 ```yaml
 - id: ruff-check
+  name: ruff check
   entry: uv run --frozen --no-sync ruff check --force-exclude --fix
   language: system
-  types_or: [python, pyi]
+  types_or: [python, pyi, jupyter]
+  require_serial: true
 ```
 
 `--force-exclude` is required because pre-commit passes explicit filenames,
 which otherwise cause Ruff to ignore `extend-exclude`.
+
+`types_or` and `require_serial` are copied from the upstream `ruff-pre-commit`
+hook definition these replace, so the only intended difference is where Ruff
+comes from. `jupyter` matches upstream even though no notebook is tracked
+today, because a hook that silently skips a file type is worse than one that
+covers a type the repository does not yet have.
 
 `pyproject.toml` returns to a floating `ruff>=0.15` constraint. The exact
 version is whatever `uv.lock` records, so upgrading is one deliberate command:
@@ -85,17 +93,26 @@ observable at the moment it was already too late to notice.
 ### Snippet indentation
 
 Ruff formats each fenced block as a standalone module, so a block it rewrites
-is also dedented to column zero. One method snippet in the uv tool manager
-plan lost the four-space indent that showed it belonged inside `Installer`,
-leaving a top-level `def _uv_tool(self, ...)`.
+is also dedented to column zero. Counting blocks that fail to parse makes the
+effect visible: across the change that count falls from twenty-one to sixteen.
 
-Blocks are only rewritten when they need formatting, so an adjacent snippet in
-the same document kept its indentation. Left alone, the two presentations would
-diverge further as individual blocks happen to need changes.
+The formatter dedented four of those five. One mattered: a method snippet in
+the uv tool manager plan lost the four-space indent that showed it belonged
+inside `Installer`, leaving a top-level `def _uv_tool(self, ...)` whose `self`
+no longer made sense. The other three are statement-level snippets in the PR 2
+agent review fixes plan, and they keep their meaning because the prose above
+each one names the test function the statements belong to. There the
+indentation was carrying information the sentence already gave.
 
-Both blocks in that document are now written as an explicit `class Installer:`
-with the method nested inside. That form is a valid module, so the formatter
-preserves its indentation and the class context survives future upgrades.
+Blocks are only rewritten when they need formatting, so the `install` snippet
+beside `_uv_tool` kept its indentation and stayed an unparseable fragment.
+Left alone, the two presentations in one document would diverge further as
+individual blocks happened to need changes.
+
+Both are now written as an explicit `class Installer:` with the method nested
+inside, which accounts for the fifth block. That form is a valid module, so the
+formatter preserves its indentation and the class context survives future
+upgrades.
 
 Sixty-eight indented method snippets remain across the other plan documents.
 They are untouched here and will dedent individually whenever they next need
