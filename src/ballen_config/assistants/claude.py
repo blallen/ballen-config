@@ -5,7 +5,7 @@ import shlex
 from pathlib import Path
 from typing import NotRequired, TypedDict, cast
 
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from ballen_config.assistants.desired_state import PluginCatalogProjection
 from ballen_config.assistants.hooks import claude_hook_fragment
@@ -36,11 +36,45 @@ class ClaudePluginInspectionError(RuntimeError):
 
 
 class ClaudeStableSettings(BaseModel):
-    """Repository-owned allowlisted Claude settings."""
+    """Repository-owned allowlisted Claude settings.
 
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    Every field here is asserted onto the live settings file. Anything Claude
+    writes for itself, such as installed plugins, known marketplaces, and
+    session state, is deliberately absent so the renderer preserves it.
+
+    Optional fields are unmanaged when the reviewed baseline omits them: the
+    renderer leaves whatever value the file already holds rather than deleting
+    the key, so declaring a preference is opt-in.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True, populate_by_name=True)
 
     model: str
+    tui: str | None = None
+    remote_control_at_startup: bool | None = Field(
+        default=None, alias="remoteControlAtStartup"
+    )
+    agent_push_notif_enabled: bool | None = Field(
+        default=None, alias="agentPushNotifEnabled"
+    )
+
+    def declared_entries(self) -> dict[str, str | bool]:
+        """Return the settings this repository asserts, keyed by wire name.
+
+        Returns:
+            Wire-named entries for every declared field, omitting optional
+            fields the reviewed baseline left unset.
+        """
+        entries: dict[str, str | bool] = {"model": self.model}
+        optional: dict[str, str | bool | None] = {
+            "tui": self.tui,
+            "remoteControlAtStartup": self.remote_control_at_startup,
+            "agentPushNotifEnabled": self.agent_push_notif_enabled,
+        }
+        entries.update(
+            {key: value for key, value in optional.items() if value is not None}
+        )
+        return entries
 
 
 class ClaudePluginEntry(TypedDict):
@@ -140,7 +174,8 @@ def claude_settings_renderer(home: Path) -> Renderer:
         home: Approved user home used for the injected RTK hook command.
 
     Returns:
-        A settings renderer that updates only ``model`` and the RTK hook.
+        A settings renderer that asserts the declared stable settings and the
+        RTK hook, leaving every other key in the file untouched.
     """
     managed_hook = claude_hook_fragment(home)["hooks"]["PreToolUse"][0]
 
@@ -158,7 +193,7 @@ def claude_settings_renderer(home: Path) -> Renderer:
             item for item in pre_tool_use if not _is_managed_rtk_hook(item, home=home)
         ] + [managed_hook]
         result = dict(existing)
-        result["model"] = stable.model
+        result.update(stable.declared_entries())
         result["hooks"] = hooks
         return json.dumps(result, indent=2, sort_keys=True).encode() + b"\n"
 

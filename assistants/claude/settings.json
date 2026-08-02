@@ -1,3 +1,6 @@
 {
-  "model": "opus"
+  "agentPushNotifEnabled": true,
+  "model": "opus",
+  "remoteControlAtStartup": true,
+  "tui": "fullscreen"
 }

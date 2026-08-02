@@ -13,6 +13,7 @@ from ballen_config.assistants.claude import (
     claude_settings_renderer,
     install_actions,
     load_stable_settings,
+    load_stable_settings_bytes,
     plan_claude_plugins,
 )
 from ballen_config.assistants.desired_state import (
@@ -362,6 +363,52 @@ def test_renderer_replaces_an_exact_current_managed_hook(
     assert document["hooks"]["PreToolUse"] == [
         {"matcher": "Bash", "hooks": [{"type": "command", "command": command}]}
     ]
+
+
+def test_renderer_asserts_every_declared_stable_setting(
+    repo_root: Path, temporary_home: Path
+) -> None:
+    """Reviewed preferences overwrite whatever the local file holds."""
+    current = json.dumps(
+        {
+            "model": "sonnet",
+            "tui": "windowed",
+            "remoteControlAtStartup": False,
+            "agentPushNotifEnabled": False,
+            "enabledPlugins": {"native@native": True},
+        }
+    ).encode()
+    document = json.loads(
+        claude_settings_renderer(temporary_home)(
+            (repo_root / "assistants/claude/settings.json").read_bytes(), current
+        )
+    )
+    baseline = json.loads((repo_root / "assistants/claude/settings.json").read_text())
+    for key, value in baseline.items():
+        assert document[key] == value
+    assert document["enabledPlugins"] == {"native@native": True}
+
+
+def test_renderer_leaves_undeclared_preferences_alone(temporary_home: Path) -> None:
+    """An optional setting the baseline omits is unmanaged, not deleted.
+
+    The reviewed baseline is supplied inline rather than read from the
+    repository so this stays true when the checked-in baseline gains or
+    drops a preference.
+    """
+    source = json.dumps({"model": "opus"}).encode()
+    current = json.dumps({"model": "sonnet", "tui": "windowed"}).encode()
+    document = json.loads(claude_settings_renderer(temporary_home)(source, current))
+    assert document["model"] == "opus"
+    assert document["tui"] == "windowed"
+
+
+def test_stable_settings_reject_an_unknown_key() -> None:
+    """Only allowlisted settings may enter the reviewed baseline."""
+    with pytest.raises(ClaudeSettingsError, match="invalid Claude settings"):
+        load_stable_settings_bytes(
+            json.dumps({"model": "opus", "theme": "dark"}).encode()
+        )
 
 
 @pytest.mark.parametrize(
