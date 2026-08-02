@@ -177,9 +177,7 @@ def test_mutation_context_creates_private_lock_file(
         assert lock.stat().st_mode & 0o777 == 0o600
 
 
-def test_mutation_is_reentrant_on_same_store(
-    repo_root: Path, fake_home: Path
-) -> None:
+def test_mutation_is_reentrant_on_same_store(repo_root: Path, fake_home: Path) -> None:
     store = StateStore(_paths(repo_root, fake_home))
     with store.mutation():
         with store.mutation():

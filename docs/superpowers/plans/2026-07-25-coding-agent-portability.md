@@ -141,9 +141,7 @@ class StatefulAssistantFake:
         self.downloaded_extension_ids: dict[Path, str] = {}
         self.allow_unmodeled_core_commands = False
         self.marketplace_names = {
-            "anthropics/claude-plugins-official": (
-                "claude-plugins-official"
-            ),
+            "anthropics/claude-plugins-official": ("claude-plugins-official"),
             "obra/superpowers-marketplace": "superpowers-marketplace",
             "mksglu/claude-context-mode": "claude-context-mode",
             "bigspinai/toolkit": "bigspinai",
@@ -152,8 +150,7 @@ class StatefulAssistantFake:
             ),
             "DietrichGebert/ponytail": "ponytail",
             (
-                "git@gitlab.com:flagship-informatics/"
-                "internal-open-source/piste.git"
+                "git@gitlab.com:flagship-informatics/internal-open-source/piste.git"
             ): "piste",
             "context-mode": "context-mode",
         }
@@ -182,9 +179,7 @@ class StatefulAssistantFake:
     ) -> None:
         """Register verified bytes and the extension installed from them."""
         self.payloads[url] = payload
-        self.downloaded_extension_ids[
-            Path("vscode-jj-graph.vsix")
-        ] = extension_id
+        self.downloaded_extension_ids[Path("vscode-jj-graph.vsix")] = extension_id
 
     def satisfy_core_commands(self) -> None:
         """Let the already-tested core package commands succeed."""
@@ -202,9 +197,7 @@ class StatefulAssistantFake:
         if len(payload) > maximum_bytes:
             raise ValueError("payload exceeds maximum_bytes")
         destination.write_bytes(payload)
-        extension_id = self.downloaded_extension_ids[
-            Path(destination.name)
-        ]
+        extension_id = self.downloaded_extension_ids[Path(destination.name)]
         self.downloaded_extension_ids[destination] = extension_id
         self.downloads.append((url, destination))
 
@@ -220,9 +213,7 @@ class StatefulAssistantFake:
         document = json.loads(path.read_text()) if path.exists() else {}
         if marketplace is not None:
             name, source = marketplace
-            document.setdefault("extraKnownMarketplaces", {})[name] = {
-                "source": source
-            }
+            document.setdefault("extraKnownMarketplaces", {})[name] = {"source": source}
         if plugin is not None:
             document.setdefault("enabledPlugins", {})[plugin] = True
         path.write_text(json.dumps(document, indent=2) + "\n")
@@ -249,10 +240,7 @@ class StatefulAssistantFake:
             return {"returncode": 0, "stdout": "", "stderr": ""}
         if normalized == ("claude", "plugin", "list", "--json"):
             payload = {
-                "plugins": [
-                    {"id": plugin}
-                    for plugin in sorted(self.claude_plugins)
-                ],
+                "plugins": [{"id": plugin} for plugin in sorted(self.claude_plugins)],
                 "marketplaces": [
                     {"name": marketplace}
                     for marketplace in sorted(self.claude_marketplaces)
@@ -284,10 +272,7 @@ class StatefulAssistantFake:
             return {"returncode": 0, "stdout": "", "stderr": ""}
         if normalized == ("codex", "plugin", "list", "--json"):
             payload = {
-                "plugins": [
-                    {"id": plugin}
-                    for plugin in sorted(self.codex_plugins)
-                ],
+                "plugins": [{"id": plugin} for plugin in sorted(self.codex_plugins)],
                 "marketplaces": [
                     {"name": marketplace}
                     for marketplace in sorted(self.codex_marketplaces)
@@ -320,9 +305,7 @@ class StatefulAssistantFake:
             self.codex_plugins.add(normalized[3])
             return {"returncode": 0, "stdout": "{}", "stderr": ""}
         return {
-            "returncode": (
-                0 if self.allow_unmodeled_core_commands else 127
-            ),
+            "returncode": (0 if self.allow_unmodeled_core_commands else 127),
             "stdout": "",
             "stderr": "",
         }
@@ -661,8 +644,7 @@ class SkillCatalog(BaseModel):
             unknown = set(skill.dependencies).difference(by_name)
             if unknown:
                 raise ValueError(
-                    f"unknown skill dependencies for {skill.name}: "
-                    f"{sorted(unknown)}"
+                    f"unknown skill dependencies for {skill.name}: {sorted(unknown)}"
                 )
 
         visiting: set[str] = set()
@@ -693,10 +675,7 @@ class ManualResource(ResourceBase):
 
 
 PortableResource = Annotated[
-    FileResource
-    | HookResource
-    | CatalogResource
-    | ManualResource,
+    FileResource | HookResource | CatalogResource | ManualResource,
     Field(discriminator="kind"),
 ]
 
@@ -812,8 +791,7 @@ def test_skip_removes_every_agent_resource(
         skipped=frozenset({component}),
     )
     assert all(
-        resource.owner not in {owner}
-        and owner not in getattr(resource, "targets", ())
+        resource.owner not in {owner} and owner not in getattr(resource, "targets", ())
         for resource in resolved.resources
     )
 
@@ -912,8 +890,7 @@ def load_inventory(path: Path, repo_root: Path) -> AssistantInventory:
                 actual_ids = tuple(item.name for item in catalog.skills)
             if actual_ids != resource.item_ids:
                 raise ValueError(
-                    f"catalog item_ids differ for {resource.id}: "
-                    f"{actual_ids!r}"
+                    f"catalog item_ids differ for {resource.id}: {actual_ids!r}"
                 )
     return inventory
 
@@ -1101,9 +1078,7 @@ def test_core_invokes_each_supplier_once_with_resolved_skip(
         doctor_check_suppliers=(checks,),
         **common,
     )
-    assert calls == Counter(
-        {"plan": 1, "install": 1, "configure": 1, "doctor": 1}
-    )
+    assert calls == Counter({"plan": 1, "install": 1, "configure": 1, "doctor": 1})
 ```
 
 Import `Runner` from `ballen_config.runner` and
@@ -1289,13 +1264,16 @@ def test_identical_destination_is_a_no_op(
     destination = temporary_home / ".cursor/skills/example-skill"
     destination.parent.mkdir(parents=True)
     shutil.copytree(source_skill, destination)
-    assert plan_skill_copies(
-        source=source_skill,
-        name="example-skill",
-        targets=(AgentName.CURSOR,),
-        home=temporary_home,
-        state=BootstrapState(),
-    ) == ()
+    assert (
+        plan_skill_copies(
+            source=source_skill,
+            name="example-skill",
+            targets=(AgentName.CURSOR,),
+            home=temporary_home,
+            state=BootstrapState(),
+        )
+        == ()
+    )
 
 
 def test_managed_destination_drift_is_a_repair(
@@ -1336,9 +1314,7 @@ def test_unmanaged_destination_is_preserved(
     destination = temporary_home / ".cursor/skills/example-skill"
     destination.mkdir(parents=True)
     entrypoint = destination / "SKILL.md"
-    entrypoint.write_text(
-        "---\nname: example-skill\ndescription: Mine.\n---\n"
-    )
+    entrypoint.write_text("---\nname: example-skill\ndescription: Mine.\n---\n")
     before = entrypoint.read_bytes()
     with pytest.raises(SkillCollisionError, match="unmanaged"):
         plan_skill_copies(
@@ -1512,10 +1488,7 @@ def plan_skill_copies(
     source_digest = hash_skill_tree(source)
     if _declared_name(source) != name:
         raise ValueError(f"skill directory/frontmatter name mismatch: {name}")
-    desired_destinations = {
-        home / _SKILL_ROOTS[target] / name
-        for target in targets
-    }
+    desired_destinations = {home / _SKILL_ROOTS[target] / name for target in targets}
     for relative_root in _CURSOR_SCANNED_ROOTS:
         candidate = home / relative_root / name
         if not candidate.exists():
@@ -1547,13 +1520,9 @@ def plan_skill_copies(
             if current_digest == source_digest:
                 continue
             if record is None or record.destination != relative:
-                raise SkillCollisionError(
-                    f"unmanaged skill collision: {destination}"
-                )
+                raise SkillCollisionError(f"unmanaged skill collision: {destination}")
             action_state = (
-                "update"
-                if current_digest == record.destination_digest
-                else "repair"
+                "update" if current_digest == record.destination_digest else "repair"
             )
         actions.append(
             SkillCopyAction(
@@ -1604,9 +1573,7 @@ def configuration(
         if not set(skill.profiles).intersection(setup.profiles):
             continue
         targets = tuple(
-            target
-            for target in skill.targets
-            if setup.is_enabled(target.value)
+            target for target in skill.targets if setup.is_enabled(target.value)
         )
         actions = plan_skill_copies(
             source=paths.repo_root / skill.source,
@@ -1636,9 +1603,7 @@ def test_managed_skill_publish_failure_rolls_back(
     destination = temporary_home / ".cursor/skills/example-skill"
     destination.mkdir(parents=True)
     original = destination / "SKILL.md"
-    original.write_text(
-        "---\nname: example-skill\ndescription: Original.\n---\n"
-    )
+    original.write_text("---\nname: example-skill\ndescription: Original.\n---\n")
     paths = RuntimePaths.from_roots(
         repo_root=repo_root,
         home=temporary_home,
@@ -1821,9 +1786,7 @@ def test_hooks_never_own_claude_settings(
         home=temporary_home,
         enabled=frozenset({"cursor", "claude-code"}),
     )
-    destinations = {
-        spec.destination for spec in contribution.specs
-    }
+    destinations = {spec.destination for spec in contribution.specs}
     assert temporary_home / ".cursor/hooks.json" in destinations
     assert temporary_home / ".claude/settings.json" not in destinations
 
@@ -1960,9 +1923,7 @@ def test_cursor_and_claude_embed_canonical_sections(
     engineering = (
         repo_root / "assistants/shared/instructions/engineering.md"
     ).read_text()
-    rtk = (
-        repo_root / "assistants/shared/instructions/rtk.md"
-    ).read_text()
+    rtk = (repo_root / "assistants/shared/instructions/rtk.md").read_text()
     for suffix in ("# Cursor additions\n", "# Claude additions\n"):
         rendered = render_native_instructions(
             engineering=engineering,
@@ -1979,9 +1940,7 @@ def test_codex_uses_absolute_rtk_include(
     temporary_home: Path,
 ) -> None:
     """Reference the separately managed Codex RTK file by absolute path."""
-    engineering_path = (
-        repo_root / "assistants/shared/instructions/engineering.md"
-    )
+    engineering_path = repo_root / "assistants/shared/instructions/engineering.md"
     rtk_path = repo_root / "assistants/shared/instructions/rtk.md"
     include = temporary_home / ".codex/RTK.md"
     rendered = render_native_instructions(
@@ -2003,9 +1962,7 @@ def test_rendered_instructions_exclude_generated_state(
         engineering=(
             repo_root / "assistants/shared/instructions/engineering.md"
         ).read_text(),
-        rtk=(
-            repo_root / "assistants/shared/instructions/rtk.md"
-        ).read_text(),
+        rtk=(repo_root / "assistants/shared/instructions/rtk.md").read_text(),
         agent_suffix="# Agent additions\n",
     )
     assert "{{" not in rendered
@@ -2075,24 +2032,16 @@ def validate_hook_source(source: Path) -> None:
 
 def cursor_registration(home: Path) -> dict[str, object]:
     """Render Cursor's native RTK registration."""
-    command = (
-        home / ".local/share/ballen-config/hooks/rtk-hook"
-    ).as_posix()
+    command = (home / ".local/share/ballen-config/hooks/rtk-hook").as_posix()
     return {
         "version": 1,
-        "hooks": {
-            "preToolUse": [
-                {"command": f"{command} cursor", "matcher": "Shell"}
-            ]
-        },
+        "hooks": {"preToolUse": [{"command": f"{command} cursor", "matcher": "Shell"}]},
     }
 
 
 def claude_hook_fragment(home: Path) -> dict[str, object]:
     """Return the Claude hook fragment for claude.py to merge."""
-    command = (
-        home / ".local/share/ballen-config/hooks/rtk-hook"
-    ).as_posix()
+    command = (home / ".local/share/ballen-config/hooks/rtk-hook").as_posix()
     return {
         "hooks": {
             "PreToolUse": [
@@ -2112,6 +2061,7 @@ def claude_hook_fragment(home: Path) -> dict[str, object]:
 
 def cursor_hook_renderer(home: Path) -> Renderer:
     """Build a pure renderer for Cursor's native registration."""
+
     def render(_: bytes, __: bytes | None) -> bytes:
         return (
             json.dumps(
@@ -2141,9 +2091,7 @@ def hook_contribution(
         ManagedFileSpec(
             id="shared.rtk-hook",
             source=repo_root / source,
-            destination=(
-                home / ".local/share/ballen-config/hooks/rtk-hook"
-            ),
+            destination=(home / ".local/share/ballen-config/hooks/rtk-hook"),
             method=ApplyMethod.COPY,
             mode=0o700,
         )
@@ -2452,8 +2400,7 @@ def test_gallery_action_uses_extension_id(repo_root: Path) -> None:
     markdown = next(
         action
         for action in actions
-        if action.component_id
-        == "cursor.extension.bierner.markdown-mermaid"
+        if action.component_id == "cursor.extension.bierner.markdown-mermaid"
     )
     assert markdown == InstallAction(
         component_id="cursor.extension.bierner.markdown-mermaid",
@@ -2494,10 +2441,7 @@ def test_vsix_uses_core_verified_download_without_network(
         private_temp_root=temporary_home / ".local/state/test-tmp",
     ).run_action(action)
     assert outcome.state == "installed"
-    assert (
-        "velociraptor115.vscode-jj-graph"
-        in fake_runner.cursor_extensions
-    )
+    assert "velociraptor115.vscode-jj-graph" in fake_runner.cursor_extensions
     assert fake_runner.downloads
     assert not fake_runner.downloads[0][1].exists()
 
@@ -2627,9 +2571,7 @@ def read_bundled_extensions(root: Path) -> frozenset[str]:
     identifiers: set[str] = set()
     for manifest in sorted(root.glob("*/package.json")):
         document: CursorExtensionPackage = json.loads(manifest.read_text())
-        identifiers.add(
-            f"{document['publisher']}.{document['name']}".lower()
-        )
+        identifiers.add(f"{document['publisher']}.{document['name']}".lower())
     return frozenset(identifiers)
 
 
@@ -2645,14 +2587,12 @@ def resolve_extensions(
     desired = {
         extension.id
         for extension in catalog.extensions
-        if extension.condition is None
-        or extension.condition in enabled_agents
+        if extension.condition is None or extension.condition in enabled_agents
     }
     skipped = {
         extension.id
         for extension in catalog.extensions
-        if extension.condition is not None
-        and extension.condition not in enabled_agents
+        if extension.condition is not None and extension.condition not in enabled_agents
     }
     declared = {extension.id for extension in catalog.extensions}
     return ExtensionState(
@@ -2667,9 +2607,7 @@ def resolve_extensions(
 def jj_graph_action(extension: ExtensionSpec) -> InstallAction:
     """Build the core-owned verified VSIX installation action."""
     return InstallAction(
-        component_id=(
-            "cursor.extension.velociraptor115.vscode-jj-graph"
-        ),
+        component_id=("cursor.extension.velociraptor115.vscode-jj-graph"),
         kind="verified-download",
         argv=("cursor", "--install-extension", "{artifact}"),
         required=False,
@@ -2718,11 +2656,7 @@ def deep_merge(base: object, overlay: object) -> object:
         return overlay
     merged: dict[str, Any] = dict(base)
     for key, value in overlay.items():
-        merged[key] = (
-            deep_merge(merged[key], value)
-            if key in merged
-            else value
-        )
+        merged[key] = deep_merge(merged[key], value) if key in merged else value
     return merged
 
 
@@ -2761,10 +2695,7 @@ def cursor_settings_renderer(
                 document,
                 json.loads(work_path.read_bytes()),
             )
-        return (
-            json.dumps(document, indent=2, sort_keys=True).encode()
-            + b"\n"
-        )
+        return json.dumps(document, indent=2, sort_keys=True).encode() + b"\n"
 
     return render
 
@@ -2774,9 +2705,7 @@ def cursor_rules_renderer(paths: RuntimePaths) -> Renderer:
     engineering = (
         paths.repo_root / "assistants/shared/instructions/engineering.md"
     ).read_text()
-    rtk = (
-        paths.repo_root / "assistants/shared/instructions/rtk.md"
-    ).read_text()
+    rtk = (paths.repo_root / "assistants/shared/instructions/rtk.md").read_text()
 
     def render(source: bytes, current: bytes | None) -> bytes:
         del current
@@ -2808,14 +2737,10 @@ def install_actions(
         else frozenset()
     )
     bundled = read_bundled_extensions(
-        Path(
-            "/Applications/Cursor.app/Contents/Resources/app/extensions"
-        )
+        Path("/Applications/Cursor.app/Contents/Resources/app/extensions")
     )
     enabled = frozenset(
-        agent
-        for agent in ("cursor", "claude-code", "codex")
-        if setup.is_enabled(agent)
+        agent for agent in ("cursor", "claude-code", "codex") if setup.is_enabled(agent)
     )
     return plan_cursor_extension_actions(
         paths.repo_root / "assistants/cursor/extensions.yaml",
@@ -2836,8 +2761,7 @@ def configuration(
         id="cursor.settings",
         source=paths.repo_root / "assistants/cursor/settings.base.json",
         destination=(
-            paths.home
-            / "Library/Application Support/Cursor/User/settings.json"
+            paths.home / "Library/Application Support/Cursor/User/settings.json"
         ),
         method=ApplyMethod.RENDER,
         renderer_id="cursor-settings",
@@ -2848,8 +2772,7 @@ def configuration(
         id="cursor.keybindings",
         source=paths.repo_root / "assistants/cursor/keybindings.json",
         destination=(
-            paths.home
-            / "Library/Application Support/Cursor/User/keybindings.json"
+            paths.home / "Library/Application Support/Cursor/User/keybindings.json"
         ),
         method=ApplyMethod.COPY,
         validator_id="json",
@@ -2858,9 +2781,7 @@ def configuration(
     user_rules = ManagedFileSpec(
         id="cursor.user-rules",
         source=paths.repo_root / "assistants/cursor/user-rules.md",
-        destination=(
-            paths.state_root / "manual/cursor-user-rules.md"
-        ),
+        destination=(paths.state_root / "manual/cursor-user-rules.md"),
         method=ApplyMethod.RENDER,
         renderer_id="cursor-user-rules",
         component="cursor",
@@ -2934,9 +2855,7 @@ from tests.assistants.fakes import StatefulAssistantFake
 
 def test_stable_settings_have_no_runtime_state(repo_root: Path) -> None:
     """Track only authored Claude preferences and the stable RTK hook."""
-    settings = load_stable_settings(
-        repo_root / "assistants/claude/settings.json"
-    )
+    settings = load_stable_settings(repo_root / "assistants/claude/settings.json")
     serialized = settings.model_dump_json()
     forbidden = (
         "/Users/",
@@ -3003,9 +2922,7 @@ def test_claude_settings_merge_preserves_cli_owned_fields(
       }
     }"""
     rendered = claude_settings_renderer(temporary_home)(
-        (
-            repo_root / "assistants/claude/settings.json"
-        ).read_bytes(),
+        (repo_root / "assistants/claude/settings.json").read_bytes(),
         current,
     )
     document = json.loads(rendered)
@@ -3013,9 +2930,7 @@ def test_claude_settings_merge_preserves_cli_owned_fields(
     assert document["extraKnownMarketplaces"] == {
         "native-market": {"source": "owner/repo"}
     }
-    assert document["enabledPlugins"] == {
-        "native@native-market": True
-    }
+    assert document["enabledPlugins"] == {"native@native-market": True}
     assert document["effortLevel"] == "high"
     assert "SessionStart" in document["hooks"]
     assert any(
@@ -3042,9 +2957,7 @@ def test_claude_is_the_only_settings_owner(
     )
     specs = (*hooks.specs, *claude.specs)
     destinations = [spec.destination for spec in specs]
-    assert destinations.count(
-        temporary_home / ".claude/settings.json"
-    ) == 1
+    assert destinations.count(temporary_home / ".claude/settings.json") == 1
 
 
 def test_install_then_configure_preserves_native_plugin_fields(
@@ -3063,9 +2976,7 @@ def test_install_then_configure_preserves_native_plugin_fields(
         installer.run_action(action)
     settings_path = temporary_home / ".claude/settings.json"
     rendered = claude_settings_renderer(temporary_home)(
-        (
-            repo_root / "assistants/claude/settings.json"
-        ).read_bytes(),
+        (repo_root / "assistants/claude/settings.json").read_bytes(),
         settings_path.read_bytes(),
     )
     document = json.loads(rendered)
@@ -3084,9 +2995,7 @@ def test_claude_actions_are_ordered_and_installed_plugins_are_noops(
     actions = plan_claude_plugins(
         repo_root / "assistants/claude/plugins.yaml",
         profiles=("default",),
-        installed=frozenset(
-            {"frontend-design@claude-plugins-official"}
-        ),
+        installed=frozenset({"frontend-design@claude-plugins-official"}),
     )
     ids = [action.component_id for action in actions]
     assert "claude.plugin.frontend-design@claude-plugins-official" not in ids
@@ -3096,9 +3005,7 @@ def test_claude_actions_are_ordered_and_installed_plugins_are_noops(
         if item.startswith("claude.marketplace.")
     ]
     plugin_indexes = [
-        index
-        for index, item in enumerate(ids)
-        if item.startswith("claude.plugin.")
+        index for index, item in enumerate(ids) if item.startswith("claude.plugin.")
     ]
     assert max(marketplace_indexes) < min(plugin_indexes)
 ```
@@ -3219,9 +3126,7 @@ def claude_settings_renderer(home: Path) -> Renderer:
 
     def render(source: bytes, current: bytes | None) -> bytes:
         stable = ClaudeStableSettings.model_validate_json(source)
-        existing: dict[str, Any] = (
-            json.loads(current) if current is not None else {}
-        )
+        existing: dict[str, Any] = json.loads(current) if current is not None else {}
         if not isinstance(existing, dict):
             raise ValueError("Claude settings must be a JSON object")
         result = dict(existing)
@@ -3234,15 +3139,10 @@ def claude_settings_renderer(home: Path) -> Renderer:
         if not isinstance(pre_tool_use, list):
             pre_tool_use = []
         hooks["PreToolUse"] = [
-            item
-            for item in pre_tool_use
-            if not _is_managed_rtk_hook(item)
+            item for item in pre_tool_use if not _is_managed_rtk_hook(item)
         ] + [managed_hook]
         result["hooks"] = hooks
-        return (
-            json.dumps(result, indent=2, sort_keys=True).encode()
-            + b"\n"
-        )
+        return json.dumps(result, indent=2, sort_keys=True).encode() + b"\n"
 
     return render
 
@@ -3255,29 +3155,20 @@ def plan_claude_plugins(
     known_marketplaces: frozenset[str] = frozenset(),
 ) -> tuple[InstallAction, ...]:
     """Plan missing Claude marketplaces and plugins deterministically."""
-    catalog = PluginCatalog.model_validate(
-        yaml.safe_load(catalog_path.read_text())
-    )
+    catalog = PluginCatalog.model_validate(yaml.safe_load(catalog_path.read_text()))
     active = set(profiles)
     selected_plugins = tuple(
-        plugin
-        for plugin in catalog.plugins
-        if active.intersection(plugin.profiles)
+        plugin for plugin in catalog.plugins if active.intersection(plugin.profiles)
     )
-    selected_marketplaces = {
-        plugin.marketplace for plugin in selected_plugins
-    }
+    selected_marketplaces = {plugin.marketplace for plugin in selected_plugins}
     marketplace_by_name = {
-        marketplace.name: marketplace
-        for marketplace in catalog.marketplaces
+        marketplace.name: marketplace for marketplace in catalog.marketplaces
     }
     actions: list[InstallAction] = []
     for name in sorted(selected_marketplaces - known_marketplaces):
         marketplace = marketplace_by_name[name]
         required = any(
-            plugin.required
-            for plugin in selected_plugins
-            if plugin.marketplace == name
+            plugin.required for plugin in selected_plugins if plugin.marketplace == name
         )
         actions.append(
             InstallAction(
@@ -3331,12 +3222,9 @@ def install_actions(
     return plan_claude_plugins(
         paths.repo_root / "assistants/claude/plugins.yaml",
         profiles=setup.profiles,
-        installed=frozenset(
-            plugin["id"] for plugin in snapshot["plugins"]
-        ),
+        installed=frozenset(plugin["id"] for plugin in snapshot["plugins"]),
         known_marketplaces=frozenset(
-            marketplace["name"]
-            for marketplace in snapshot.get("marketplaces", [])
+            marketplace["name"] for marketplace in snapshot.get("marketplaces", [])
         ),
     )
 
@@ -3346,9 +3234,7 @@ def claude_instruction_renderer(paths: RuntimePaths) -> Renderer:
     engineering = (
         paths.repo_root / "assistants/shared/instructions/engineering.md"
     ).read_text()
-    rtk = (
-        paths.repo_root / "assistants/shared/instructions/rtk.md"
-    ).read_text()
+    rtk = (paths.repo_root / "assistants/shared/instructions/rtk.md").read_text()
 
     def render(source: bytes, current: bytes | None) -> bytes:
         del current
@@ -3580,9 +3466,7 @@ from tests.assistants.fakes import StatefulAssistantFake
 
 def test_overlay_contains_only_portable_preferences(repo_root: Path) -> None:
     """Exclude generated paths, trust, auth, runtime MCP, and state."""
-    overlay = load_portable_overlay(
-        repo_root / "assistants/codex/config.overlay.toml"
-    )
+    overlay = load_portable_overlay(repo_root / "assistants/codex/config.overlay.toml")
     assert set(overlay) == {
         "model",
         "model_reasoning_effort",
@@ -3639,9 +3523,7 @@ def test_codex_actions_filter_order_and_severity(repo_root: Path) -> None:
     actions = plan_codex_plugins(
         repo_root / "assistants/codex/plugins.yaml",
         profiles=("default", "work"),
-        installed=frozenset(
-            {"frontend-design@claude-plugins-official"}
-        ),
+        installed=frozenset({"frontend-design@claude-plugins-official"}),
     )
     ids = [action.component_id for action in actions]
     assert "codex.plugin.frontend-design@claude-plugins-official" not in ids
@@ -3677,9 +3559,7 @@ enabled = ["native"]
 trust_level = "trusted"
 """
     rendered = codex_overlay_renderer()(
-        (
-            repo_root / "assistants/codex/config.overlay.toml"
-        ).read_bytes(),
+        (repo_root / "assistants/codex/config.overlay.toml").read_bytes(),
         current,
     )
     before = tomllib.loads(current.decode())
@@ -3693,9 +3573,7 @@ trust_level = "trusted"
             "model_reasoning_effort",
             "service_tier",
         )
-    } == load_portable_overlay(
-        repo_root / "assistants/codex/config.overlay.toml"
-    )
+    } == load_portable_overlay(repo_root / "assistants/codex/config.overlay.toml")
 
 
 def test_codex_skip_has_no_actions_specs_or_hook(
@@ -3737,9 +3615,7 @@ def test_enabled_codex_configuration_has_no_rtk_hook(
     }
     assert all("hook" not in spec.id for spec in contribution.specs)
     rtk = next(spec for spec in contribution.specs if spec.id == "codex.rtk")
-    assert rtk.source == (
-        repo_root / "assistants/shared/instructions/rtk.md"
-    )
+    assert rtk.source == (repo_root / "assistants/shared/instructions/rtk.md")
     assert rtk.destination == temporary_home / ".codex/RTK.md"
     assert rtk.method is ApplyMethod.COPY
 ```
@@ -3925,9 +3801,7 @@ from ballen_config.runner import Runner
 from ballen_config.runtime import RuntimePaths
 
 
-PORTABLE_KEYS = frozenset(
-    {"model", "model_reasoning_effort", "service_tier"}
-)
+PORTABLE_KEYS = frozenset({"model", "model_reasoning_effort", "service_tier"})
 
 
 class CodexPluginEntry(TypedDict):
@@ -3959,6 +3833,7 @@ def load_portable_overlay(path: Path) -> dict[str, object]:
 
 def codex_overlay_renderer() -> Renderer:
     """Change only portable top-level keys in the native TOML document."""
+
     def render(source: bytes, current: bytes | None) -> bytes:
         overlay = tomllib.loads(source.decode())
         if set(overlay) != PORTABLE_KEYS:
@@ -3983,21 +3858,14 @@ def plan_codex_plugins(
     known_marketplaces: frozenset[str] = frozenset(),
 ) -> tuple[InstallAction, ...]:
     """Plan missing Codex marketplaces and plugins deterministically."""
-    catalog = PluginCatalog.model_validate(
-        yaml.safe_load(catalog_path.read_text())
-    )
+    catalog = PluginCatalog.model_validate(yaml.safe_load(catalog_path.read_text()))
     active = set(profiles)
     selected_plugins = tuple(
-        plugin
-        for plugin in catalog.plugins
-        if active.intersection(plugin.profiles)
+        plugin for plugin in catalog.plugins if active.intersection(plugin.profiles)
     )
-    selected_marketplaces = {
-        plugin.marketplace for plugin in selected_plugins
-    }
+    selected_marketplaces = {plugin.marketplace for plugin in selected_plugins}
     marketplace_by_name = {
-        marketplace.name: marketplace
-        for marketplace in catalog.marketplaces
+        marketplace.name: marketplace for marketplace in catalog.marketplaces
     }
     actions: list[InstallAction] = []
     for name in sorted(selected_marketplaces - known_marketplaces):
@@ -4056,12 +3924,9 @@ def install_actions(
     return plan_codex_plugins(
         paths.repo_root / "assistants/codex/plugins.yaml",
         profiles=setup.profiles,
-        installed=frozenset(
-            plugin["id"] for plugin in snapshot["plugins"]
-        ),
+        installed=frozenset(plugin["id"] for plugin in snapshot["plugins"]),
         known_marketplaces=frozenset(
-            marketplace["name"]
-            for marketplace in snapshot.get("marketplaces", [])
+            marketplace["name"] for marketplace in snapshot.get("marketplaces", [])
         ),
     )
 
@@ -4071,9 +3936,7 @@ def codex_instruction_renderer(paths: RuntimePaths) -> Renderer:
     engineering = (
         paths.repo_root / "assistants/shared/instructions/engineering.md"
     ).read_text()
-    rtk = (
-        paths.repo_root / "assistants/shared/instructions/rtk.md"
-    ).read_text()
+    rtk = (paths.repo_root / "assistants/shared/instructions/rtk.md").read_text()
 
     def render(source: bytes, current: bytes | None) -> bytes:
         del current
@@ -4114,10 +3977,7 @@ def configuration(
         ),
         ManagedFileSpec(
             id="codex.rtk",
-            source=(
-                paths.repo_root
-                / "assistants/shared/instructions/rtk.md"
-            ),
+            source=(paths.repo_root / "assistants/shared/instructions/rtk.md"),
             destination=paths.home / ".codex/RTK.md",
             method=ApplyMethod.COPY,
             component="codex",
@@ -4285,10 +4145,7 @@ def test_pending_action_severity_is_normalized(
     )
     by_id = {finding.id: finding for finding in findings}
     assert by_id["claude.plugin.required"].severity is CheckSeverity.ERROR
-    assert (
-        by_id["cursor.extension.optional-vsix"].severity
-        is CheckSeverity.WARNING
-    )
+    assert by_id["cursor.extension.optional-vsix"].severity is CheckSeverity.WARNING
 
 
 def test_skill_collision_reports_names_only(
@@ -4314,9 +4171,7 @@ def test_skill_collision_reports_names_only(
         runner=fake_runner,
     )
     collision = next(
-        finding
-        for finding in findings
-        if finding.id == "skills.collision.example"
+        finding for finding in findings if finding.id == "skills.collision.example"
     )
     assert collision.status is FindingStatus.MANUAL
     assert "Cursor version" not in collision.message
@@ -4351,10 +4206,7 @@ def test_clean_managed_skill_is_not_reported_as_drift(
         paths=paths,
         runner=fake_runner,
     )
-    assert not any(
-        finding.id.startswith("skills.drift.")
-        for finding in findings
-    )
+    assert not any(finding.id.startswith("skills.drift.") for finding in findings)
 
 
 def test_cursor_worktree_check_is_count_only_and_non_mutating(
@@ -4373,9 +4225,7 @@ def test_cursor_worktree_check_is_count_only_and_non_mutating(
         ),
         runner=fake_runner,
     )
-    finding = next(
-        item for item in findings if item.id == "cursor.worktrees"
-    )
+    finding = next(item for item in findings if item.id == "cursor.worktrees")
     assert finding.status is FindingStatus.MANUAL
     assert "1 stale Cursor worktree root" in finding.message
     assert "stale-repo" not in finding.message
@@ -4392,9 +4242,9 @@ def test_skipped_cursor_avoids_worktree_lookup(
     monkeypatch.setattr(
         Path,
         "iterdir",
-        lambda self: pytest.fail("must not inspect worktrees")
-        if self == worktrees
-        else iter(()),
+        lambda self: (
+            pytest.fail("must not inspect worktrees") if self == worktrees else iter(())
+        ),
     )
     findings = assistant_checks(
         enabled=frozenset({"claude-code"}),
@@ -4676,16 +4526,8 @@ def _pending_findings(
     return [
         _finding(
             action.component_id,
-            (
-                FindingStatus.MISSING
-                if action.required
-                else FindingStatus.UNAVAILABLE
-            ),
-            (
-                CheckSeverity.ERROR
-                if action.required
-                else CheckSeverity.WARNING
-            ),
+            (FindingStatus.MISSING if action.required else FindingStatus.UNAVAILABLE),
+            (CheckSeverity.ERROR if action.required else CheckSeverity.WARNING),
             (
                 "required install is missing"
                 if action.required
@@ -4710,9 +4552,7 @@ def _skill_findings(
             for candidate in sorted(root.iterdir()):
                 if candidate.is_dir() and (candidate / "SKILL.md").is_file():
                     try:
-                        by_name[candidate.name].add(
-                            hash_skill_tree(candidate)
-                        )
+                        by_name[candidate.name].add(hash_skill_tree(candidate))
                     except ValueError:
                         by_name[candidate.name].add("invalid")
 
@@ -4730,8 +4570,7 @@ def _skill_findings(
     for record in StateStore(paths).load().managed.values():
         if (
             not record.resource_id.startswith("skill:")
-            or record.resource_id.rsplit(":", maxsplit=1)[-1]
-            not in enabled
+            or record.resource_id.rsplit(":", maxsplit=1)[-1] not in enabled
         ):
             continue
         relative_destination = Path(record.destination)
@@ -4844,9 +4683,7 @@ FORBIDDEN_PARTS = {
     "__pycache__",
 }
 CONTENT_RULES = {
-    "private-key": re.compile(
-        r"BEGIN (?:OPENSSH|RSA|EC) PRIVATE KEY"
-    ),
+    "private-key": re.compile(r"BEGIN (?:OPENSSH|RSA|EC) PRIVATE KEY"),
     "credential-copy": re.compile(
         r"\bcopy\s+credentials?\s+from\s+your\s+old\s+laptop\b",
         re.IGNORECASE,
@@ -4860,9 +4697,7 @@ PORTABILITY_RULES = {
         r"(?im)^\s*(?:auth_token|access_token|api_key|password)\s*[:=]"
     ),
     "machine-path": re.compile(r"/Users/[^/\s]+/"),
-    "forbidden-mcp": re.compile(
-        r"gitlab-mr-mcp|@playwright/mcp|notion-mcp"
-    ),
+    "forbidden-mcp": re.compile(r"gitlab-mr-mcp|@playwright/mcp|notion-mcp"),
     "operational-mcp": re.compile(r'"?mcpServers"?\s*[:=]'),
     "generated-state": re.compile(r"(?:^|/)plugins/cache(?:/|$)"),
     "repo-specific": re.compile(
@@ -4899,9 +4734,7 @@ def scan_paths(
             ".sqlite3",
             ".age",
         }:
-            violations.append(
-                Violation(rule="generated-state", path=str(relative))
-            )
+            violations.append(Violation(rule="generated-state", path=str(relative)))
             continue
         text = path.read_text(errors="ignore")
         for rule, pattern in CONTENT_RULES.items():
@@ -4910,9 +4743,7 @@ def scan_paths(
         if not _is_portable(relative):
             continue
         if relative.name == "mcp.json":
-            violations.append(
-                Violation(rule="operational-mcp", path=str(relative))
-            )
+            violations.append(Violation(rule="operational-mcp", path=str(relative)))
         for rule, pattern in PORTABILITY_RULES.items():
             if pattern.search(text):
                 violations.append(Violation(rule=rule, path=str(relative)))
@@ -5086,12 +4917,9 @@ def test_work_profile_with_codex_skip_converges(
 ) -> None:
     """Configure enabled agents once and leave skipped Codex untouched."""
     fake_runner.satisfy_core_commands()
-    fake_runner.cursor_extensions.add(
-        "velociraptor115.vscode-jj-graph"
-    )
+    fake_runner.cursor_extensions.add("velociraptor115.vscode-jj-graph")
     existing_settings = (
-        temporary_home
-        / "Library/Application Support/Cursor/User/settings.json"
+        temporary_home / "Library/Application Support/Cursor/User/settings.json"
     )
     existing_settings.parent.mkdir(parents=True)
     existing_settings.write_text('{"unmanaged": true}\n')
@@ -5112,9 +4940,7 @@ def test_work_profile_with_codex_skip_converges(
     assert existing_settings.is_file()
     assert (temporary_home / ".claude/settings.json").is_file()
     assert not (temporary_home / ".codex").exists()
-    backup_root = (
-        temporary_home / ".local/state/ballen-config/backups"
-    )
+    backup_root = temporary_home / ".local/state/ballen-config/backups"
     assert backup_root.is_dir()
     assert any(path.is_file() for path in backup_root.rglob("*"))
 
@@ -5166,9 +4992,7 @@ def test_agent_skip_removes_complete_surface(
 ) -> None:
     """Remove one agent's install, config, hooks, skills, and manual actions."""
     fake_runner.satisfy_core_commands()
-    fake_runner.cursor_extensions.add(
-        "velociraptor115.vscode-jj-graph"
-    )
+    fake_runner.cursor_extensions.add("velociraptor115.vscode-jj-graph")
     result = run_with_assistants(
         ["all", "--profile", "work", "--skip", skipped],
         repo_root=repo_root,
@@ -5177,13 +5001,9 @@ def test_agent_skip_removes_complete_surface(
     )
     assert result.exit_code == 0
     assert not (temporary_home / forbidden_path).exists()
+    assert all(forbidden_tokens.isdisjoint(command) for command in fake_runner.commands)
     assert all(
-        forbidden_tokens.isdisjoint(command)
-        for command in fake_runner.commands
-    )
-    assert all(
-        not outcome.startswith(f"{skipped}.")
-        for outcome in result.report.outcomes
+        not outcome.startswith(f"{skipped}.") for outcome in result.report.outcomes
     )
 ```
 
@@ -5417,9 +5237,7 @@ def configuration(
 ) -> ConfigurationContribution:
     """Return selected files plus all named pure callbacks."""
     enabled = frozenset(
-        agent
-        for agent in ("cursor", "claude-code", "codex")
-        if setup.is_enabled(agent)
+        agent for agent in ("cursor", "claude-code", "codex") if setup.is_enabled(agent)
     )
     return _merge_configuration(
         (
@@ -5448,9 +5266,7 @@ def doctor_checks(
 ) -> tuple[DoctorCheck, ...]:
     """Return normalized coding-agent diagnostics only."""
     enabled = frozenset(
-        agent
-        for agent in ("cursor", "claude-code", "codex")
-        if setup.is_enabled(agent)
+        agent for agent in ("cursor", "claude-code", "codex") if setup.is_enabled(agent)
     )
     pending_actions = (
         *cursor.install_actions(setup, paths, runner),
@@ -5490,15 +5306,10 @@ class AssistantPlanContributor:
             PlanAction(
                 component_id=(
                     f"{resource.id}.manual"
-                    if resource.kind == "manual"
-                    and resource.source is not None
+                    if resource.kind == "manual" and resource.source is not None
                     else resource.id
                 ),
-                category=(
-                    "manual"
-                    if resource.kind == "manual"
-                    else "install"
-                ),
+                category=("manual" if resource.kind == "manual" else "install"),
                 action=(
                     "manual action"
                     if resource.kind == "manual"
@@ -5519,9 +5330,7 @@ class AssistantPlanContributor:
             "PlanAction.component_id",
             [action.component_id for action in actions],
         )
-        return tuple(
-            sorted(actions, key=lambda item: item.component_id)
-        )
+        return tuple(sorted(actions, key=lambda item: item.component_id))
 ```
 
 Register the callbacks exactly once in `cli.main()` while retaining the core
@@ -5555,13 +5364,9 @@ def main(arguments: Sequence[str] | None = None) -> int:
             home=paths.home,
             runner=runner,
             downloader=HttpsDownloader(),
-            confirm=lambda prompt: (
-                input(f"{prompt} [y/N] ").lower() == "y"
-            ),
+            confirm=lambda prompt: input(f"{prompt} [y/N] ").lower() == "y",
             output=print,
-            timestamp=lambda: datetime.now(UTC).strftime(
-                "%Y%m%dT%H%M%SZ"
-            ),
+            timestamp=lambda: datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"),
             install_action_suppliers=(install_actions,),
             configuration_suppliers=(configuration,),
             doctor_check_suppliers=(doctor_checks,),

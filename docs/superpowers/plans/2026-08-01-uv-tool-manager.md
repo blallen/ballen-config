@@ -179,6 +179,7 @@ def test_required_uv_tool_failure_raises(tmp_path: Path) -> None:
 - [ ] In `src/ballen_config/install.py`, change `install` to dispatch:
 
 ```python
+class Installer:
     def install(self, component: Component) -> InstallOutcome:
         """Install one component, returning only its normalized outcome."""
         if component.manager in {Manager.BREW_FORMULA, Manager.BREW_CASK}:
@@ -191,6 +192,7 @@ def test_required_uv_tool_failure_raises(tmp_path: Path) -> None:
 - [ ] Add the branch, mirroring `_brew`'s shape and outcome vocabulary:
 
 ```python
+class Installer:
     def _uv_tool(self, component: Component) -> InstallOutcome:
         """Install and verify one uv-managed tool."""
         listed = self.runner.run(("uv", "tool", "list"))
@@ -204,9 +206,7 @@ def test_required_uv_tool_failure_raises(tmp_path: Path) -> None:
             return InstallOutcome(component_id=component.id, state="installed")
         if component.required:
             raise InstallError(f"required install failed: {component.id}")
-        return InstallOutcome(
-            component_id=component.id, state="optional-failure"
-        )
+        return InstallOutcome(component_id=component.id, state="optional-failure")
 ```
 
 - [ ] Note the parsing contract: `uv tool list` prints `name vX.Y.Z` for each
@@ -379,9 +379,7 @@ def test_uv_tool_requires_uv_to_be_selected(
 ) -> None:
     """A tool cannot resolve when its manager is skipped."""
     with pytest.raises(ValueError, match="requires unselected uv"):
-        manifest_repository.resolve(
-            ResolutionRequest(profile="default", skips=("uv",))
-        )
+        manifest_repository.resolve(ResolutionRequest(profile="default", skips=("uv",)))
 ```
 
 - [ ] If `ResolutionRequest` does not accept `skips`, read its definition in

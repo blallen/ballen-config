@@ -293,6 +293,7 @@ def preflight_skill_renames(
 ) -> None:
     """Revalidate every frozen legacy action before mutation."""
 
+
 def verify_skill_rename_successors(
     engine: ConfigurationEngine,
     actions: tuple[SkillRenameAction, ...],

@@ -167,8 +167,7 @@ def test_plugin_catalog_rejects_invalid_target_sets(
 Add exact relationship tests:
 
 ```python
-def test_plugin_catalog_rejects_duplicate_identity_for_overlapping_target(
-) -> None:
+def test_plugin_catalog_rejects_duplicate_identity_for_overlapping_target() -> None:
     payload = {
         "marketplaces": [
             {
@@ -295,9 +294,7 @@ def test_cursor_variants_reject_non_cursor_targets(kind: str) -> None:
     else:
         plugin["source"] = "assistants/shared/plugins/local/example"
     with pytest.raises(ValidationError, match="target only cursor"):
-        PluginCatalog.model_validate(
-            {"marketplaces": [], "plugins": [plugin]}
-        )
+        PluginCatalog.model_validate({"marketplaces": [], "plugins": [plugin]})
 
 
 @pytest.mark.parametrize(
@@ -320,9 +317,7 @@ def test_cursor_marketplace_requires_manual_user_selection(
         field: value,
     }
     with pytest.raises(ValidationError):
-        PluginCatalog.model_validate(
-            {"marketplaces": [], "plugins": [plugin]}
-        )
+        PluginCatalog.model_validate({"marketplaces": [], "plugins": [plugin]})
 ```
 
 Add the dependency-eligibility invariant to the existing skill model tests:
@@ -420,8 +415,7 @@ def test_project_plugin_catalog_returns_one_concrete_target() -> None:
         for marketplace in projection.marketplaces
     )
     assert all(
-        plugin.targets == (AgentName.CLAUDE,)
-        for plugin in projection.native_plugins
+        plugin.targets == (AgentName.CLAUDE,) for plugin in projection.native_plugins
     )
     assert projection.cursor_marketplace_plugins == ()
     assert projection.cursor_local_plugins == ()
@@ -517,9 +511,7 @@ class CursorMarketplacePlugin(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     kind: Literal["cursor-marketplace"]
-    id: str = Field(
-        pattern=r"^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$"
-    )
+    id: str = Field(pattern=r"^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$")
     targets: ConcreteTargets = Field(min_length=1)
     profiles: tuple[str, ...] = Field(default=("default",), min_length=1)
     required: bool = True
@@ -533,9 +525,7 @@ class CursorLocalPlugin(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     kind: Literal["cursor-local"]
-    id: str = Field(
-        pattern=r"^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$"
-    )
+    id: str = Field(pattern=r"^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$")
     source: PurePosixPath
     targets: ConcreteTargets = Field(min_length=1)
     profiles: tuple[str, ...] = Field(default=("default",), min_length=1)
@@ -559,20 +549,15 @@ class PluginCatalog(BaseModel):
     @model_validator(mode="after")
     def validate_marketplaces(self) -> Self:
         """Reject ambiguous or inconsistent target-aware declarations."""
-        marketplace_by_target: dict[
-            tuple[AgentName, str], Marketplace
-        ] = {}
+        marketplace_by_target: dict[tuple[AgentName, str], Marketplace] = {}
         for marketplace in self.marketplaces:
             if AgentName.CURSOR in marketplace.targets:
-                raise ValueError(
-                    "native marketplaces cannot target cursor"
-                )
+                raise ValueError("native marketplaces cannot target cursor")
             for target in marketplace.targets:
                 identity = (target, marketplace.name)
                 if identity in marketplace_by_target:
                     raise ValueError(
-                        "duplicate marketplace identity: "
-                        f"{target}:{marketplace.name}"
+                        f"duplicate marketplace identity: {target}:{marketplace.name}"
                     )
                 marketplace_by_target[identity] = marketplace
 
@@ -580,16 +565,12 @@ class PluginCatalog(BaseModel):
         for plugin in self.plugins:
             if isinstance(plugin, NativeMarketplacePlugin):
                 if AgentName.CURSOR in plugin.targets:
-                    raise ValueError(
-                        "native marketplace plugins cannot target cursor"
-                    )
+                    raise ValueError("native marketplace plugins cannot target cursor")
                 if plugin.id.rpartition("@")[1:] != (
                     "@",
                     plugin.marketplace,
                 ):
-                    raise ValueError(
-                        f"plugin marketplace suffix mismatch: {plugin.id}"
-                    )
+                    raise ValueError(f"plugin marketplace suffix mismatch: {plugin.id}")
                 for target in plugin.targets:
                     marketplace = marketplace_by_target.get(
                         (target, plugin.marketplace)
@@ -599,24 +580,18 @@ class PluginCatalog(BaseModel):
                             "plugin target is not covered by marketplace: "
                             f"{target}:{plugin.id}"
                         )
-                    if not set(plugin.profiles).issubset(
-                        marketplace.profiles
-                    ):
+                    if not set(plugin.profiles).issubset(marketplace.profiles):
                         raise ValueError(
                             "plugin profiles must be a subset of marketplace "
                             f"profiles: {plugin.id}"
                         )
             elif plugin.targets != (AgentName.CURSOR,):
-                raise ValueError(
-                    "Cursor plugin variants must target only cursor"
-                )
+                raise ValueError("Cursor plugin variants must target only cursor")
 
             for target in plugin.targets:
                 identity = (target, plugin.id)
                 if identity in plugin_identities:
-                    raise ValueError(
-                        f"duplicate plugin identity: {target}:{plugin.id}"
-                    )
+                    raise ValueError(f"duplicate plugin identity: {target}:{plugin.id}")
                 plugin_identities.add(identity)
         return self
 ```
@@ -633,13 +608,11 @@ for skill in self.skills:
         dependency = by_name[dependency_name]
         if not set(skill.targets).issubset(dependency.targets):
             raise ValueError(
-                f"dependency targets do not cover {skill.name}: "
-                f"{dependency_name}"
+                f"dependency targets do not cover {skill.name}: {dependency_name}"
             )
         if not set(skill.profiles).issubset(dependency.profiles):
             raise ValueError(
-                f"dependency profiles do not cover {skill.name}: "
-                f"{dependency_name}"
+                f"dependency profiles do not cover {skill.name}: {dependency_name}"
             )
 ```
 
@@ -957,18 +930,14 @@ def test_invalid_shared_catalog_stops_before_native_or_state_mutation(
         output=lambda _message: None,
         timestamp=lambda: "20260726T120000Z",
         preflight_suppliers=(orchestrator.preflight,),
-        install_action_candidate_suppliers=(
-            orchestrator.install_action_candidates,
-        ),
+        install_action_candidate_suppliers=(orchestrator.install_action_candidates,),
         install_action_suppliers=(orchestrator.install_actions,),
         configuration_suppliers=(orchestrator.configuration,),
         doctor_check_suppliers=(orchestrator.doctor_checks,),
         plan_contributors=(orchestrator,),
     )
     assert result.exit_code == 2
-    assert result.report.outcomes == (
-        "assistant desired-state preflight failed",
-    )
+    assert result.report.outcomes == ("assistant desired-state preflight failed",)
     assert fake_runner.commands == []
     assert list(temporary_home.iterdir()) == []
 ```
@@ -1336,10 +1305,7 @@ def cursor_local_plugin_source(tmp_path: Path) -> Path:
     )
     (root / "skills/example-skill").mkdir(parents=True)
     (root / "skills/example-skill/SKILL.md").write_text(
-        "---\n"
-        "name: example-skill\n"
-        "description: Example.\n"
-        "---\n",
+        "---\nname: example-skill\ndescription: Example.\n---\n",
         encoding="utf-8",
     )
     return root
@@ -1493,16 +1459,12 @@ def test_cursor_marketplace_never_reads_private_state_or_runs_command(
 ) -> None:
     private_roots = (
         temporary_home / ".cursor/plugins/cache",
-        temporary_home
-        / "Library/Application Support/Cursor/User/globalStorage",
+        temporary_home / "Library/Application Support/Cursor/User/globalStorage",
     )
     original_read_bytes = Path.read_bytes
 
     def guarded_read_bytes(path: Path) -> bytes:
-        if any(
-            path == root or path.is_relative_to(root)
-            for root in private_roots
-        ):
+        if any(path == root or path.is_relative_to(root) for root in private_roots):
             pytest.fail(f"private Cursor state read: {path.name}")
         return original_read_bytes(path)
 
@@ -1614,9 +1576,7 @@ def invalid_cursor_local_plugin_repo(
         {
             "kind": "cursor-local",
             "id": "example-local",
-            "source": (
-                "assistants/shared/plugins/local/example-local"
-            ),
+            "source": ("assistants/shared/plugins/local/example-local"),
             "targets": ["cursor"],
             "profiles": ["default"],
             "required": True,
@@ -1664,9 +1624,7 @@ def test_invalid_cursor_local_tree_fails_preflight_without_effects(
     )
 
     assert result.exit_code == 2
-    assert result.report.outcomes == (
-        "assistant desired-state preflight failed",
-    )
+    assert result.report.outcomes == ("assistant desired-state preflight failed",)
     assert fake_runner.commands == []
     assert not paths.state_root.exists()
     assert not paths.backup_root.exists()

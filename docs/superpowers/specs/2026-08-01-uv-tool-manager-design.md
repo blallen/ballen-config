@@ -161,10 +161,15 @@ repository should uninstall Homebrew packages on a user's behalf.
 ## Out of scope
 
 - Version pinning in manifest entries. `uv tool install <name>` takes the
-  latest. This repository's authoritative pins live in the `dev` dependency
-  group of `pyproject.toml` and in `.pre-commit-config.yaml`, which is what CI
-  and `uv run --frozen` use. Global tools are convenience copies. Pinning is a
-  one-line extension to `package` if drift proves to matter.
+  latest. This repository's authoritative versions are resolved from
+  `uv.lock`, which is what CI, the pre-commit hooks, and `uv run --frozen`
+  use. Global tools are convenience copies. Pinning here would need a field
+  separate from `package`, because the presence probe matches `uv tool list`
+  on the bare tool name, so a `name==version` spec would never match.
+
+  **Update:** this section originally named `.pre-commit-config.yaml` as a
+  second authoritative source. That duplication was removed; see
+  [Ruff single source](2026-08-02-ruff-single-source-design.md).
 - `uv tool upgrade`. Reconciling an installed-but-outdated tool is a separate
   concern from declaring it, and no existing manager upgrades either.
 - Promoting `mypy` to a global tool. It is a dev dependency and has no use

@@ -183,9 +183,7 @@ def test_checked_in_review_foundation_has_expected_dependency_graph(
     checked_in_skill_catalog: SkillCatalog,
 ) -> None:
     """Keep direct review-workflow invocation dependencies explicit."""
-    by_name = {
-        skill.name: skill for skill in checked_in_skill_catalog.skills
-    }
+    by_name = {skill.name: skill for skill in checked_in_skill_catalog.skills}
 
     assert _REVIEW_FOUNDATION_DEPENDENCIES.keys() <= by_name.keys()
     for name, dependencies in _REVIEW_FOUNDATION_DEPENDENCIES.items():
@@ -579,9 +577,7 @@ native_roots = {
 }
 for skill_name in skill_names:
     source = repo_root / "assistants/shared/skills" / skill_name
-    source_files = tuple(
-        sorted(path for path in source.rglob("*") if path.is_file())
-    )
+    source_files = tuple(sorted(path for path in source.rglob("*") if path.is_file()))
     for target, native_root in native_roots.items():
         destination = native_root / skill_name
         for source_file in source_files:

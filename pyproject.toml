@@ -22,11 +22,9 @@ dev = [
   "mypy>=1.11",
   "pre-commit==4.6.0",
   "pytest>=8.3",
-  # Must match the ruff-pre-commit rev in .pre-commit-config.yaml. The hook is
-  # the authoritative formatter, so a floating specifier here silently formats
-  # differently from CI: 0.16 reformats Python blocks inside Markdown and 0.15
-  # does not.
-  "ruff==0.15.1",
+  # uv.lock pins the exact Ruff the hooks and CI run; upgrade it deliberately
+  # with `uv lock --upgrade-package ruff` and review the resulting diff.
+  "ruff>=0.15",
   "types-PyYAML>=6.0",
 ]
 
