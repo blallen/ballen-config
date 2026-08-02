@@ -76,6 +76,7 @@ def receipts_match(stdout: str, prefixes: Sequence[str]) -> bool:
 
 
 def brew_artifact_present(
+    *,
     application_paths: Sequence[str],
     receipt_prefixes: Sequence[str],
     path_exists: Callable[[Path], bool],
@@ -96,6 +97,11 @@ def brew_artifact_present(
 
     ``read_receipts`` is called only when it is needed, so a component that
     declares no prefixes costs no subprocess.
+
+    Arguments are keyword-only because the two sequence parameters share a
+    type: passed positionally, transposing them would match declared paths
+    against receipts and test prefixes for existence on disk, and no type
+    checker would object.
 
     Args:
         application_paths: A component's declared application paths.

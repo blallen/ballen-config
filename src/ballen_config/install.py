@@ -333,10 +333,10 @@ class Installer:
     def _brew(self, component: Component) -> InstallOutcome:
         """Return present or install a Homebrew formula or cask."""
         if brew_artifact_present(
-            component.application_paths,
-            component.receipt_prefixes,
-            self.path_exists,
-            lambda: self.runner.run(("pkgutil", "--pkgs")),
+            application_paths=component.application_paths,
+            receipt_prefixes=component.receipt_prefixes,
+            path_exists=self.path_exists,
+            read_receipts=lambda: self.runner.run(("pkgutil", "--pkgs")),
         ):
             return InstallOutcome(component_id=component.id, state="present")
         type_flag = (

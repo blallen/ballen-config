@@ -194,10 +194,10 @@ def test_brew_artifact_present_requires_every_declared_path() -> None:
     reader = _receipts("org.tug.mactex.gui2025\n")
     assert (
         brew_artifact_present(
-            ("/Applications/MacTeX.app", "/Library/TeX/texbin/latex"),
-            ("org.tug.mactex.gui",),
-            lambda path: str(path) == "/Applications/MacTeX.app",
-            reader,
+            application_paths=("/Applications/MacTeX.app", "/Library/TeX/texbin/latex"),
+            receipt_prefixes=("org.tug.mactex.gui",),
+            path_exists=lambda path: str(path) == "/Applications/MacTeX.app",
+            read_receipts=reader,
         )
         is False
     )
@@ -209,10 +209,10 @@ def test_brew_artifact_present_without_prefixes_reads_no_receipts() -> None:
     reader = _receipts()
     assert (
         brew_artifact_present(
-            ("/Applications/Brave Browser.app",),
-            (),
-            lambda _path: True,
-            reader,
+            application_paths=("/Applications/Brave Browser.app",),
+            receipt_prefixes=(),
+            path_exists=lambda _path: True,
+            read_receipts=reader,
         )
         is True
     )
@@ -228,10 +228,10 @@ def test_brew_artifact_present_requires_matching_receipt() -> None:
     reader = _receipts("org.tug.texlive2025\n")
     assert (
         brew_artifact_present(
-            ("/Library/TeX/texbin/latex",),
-            ("org.tug.mactex.gui",),
-            lambda _path: True,
-            reader,
+            application_paths=("/Library/TeX/texbin/latex",),
+            receipt_prefixes=("org.tug.mactex.gui",),
+            path_exists=lambda _path: True,
+            read_receipts=reader,
         )
         is False
     )
@@ -243,10 +243,10 @@ def test_brew_artifact_present_accepts_path_with_matching_receipt() -> None:
     reader = _receipts("org.tug.mactex.gui2025\norg.tug.texlive2025\n")
     assert (
         brew_artifact_present(
-            ("/Library/TeX/texbin/latex",),
-            ("org.tug.mactex.gui",),
-            lambda _path: True,
-            reader,
+            application_paths=("/Library/TeX/texbin/latex",),
+            receipt_prefixes=("org.tug.mactex.gui",),
+            path_exists=lambda _path: True,
+            read_receipts=reader,
         )
         is True
     )
@@ -258,10 +258,10 @@ def test_brew_artifact_present_rejects_unreadable_receipts() -> None:
     reader = _receipts("org.tug.mactex.gui2025\n", returncode=127)
     assert (
         brew_artifact_present(
-            ("/Library/TeX/texbin/latex",),
-            ("org.tug.mactex.gui",),
-            lambda _path: True,
-            reader,
+            application_paths=("/Library/TeX/texbin/latex",),
+            receipt_prefixes=("org.tug.mactex.gui",),
+            path_exists=lambda _path: True,
+            read_receipts=reader,
         )
         is False
     )
@@ -270,5 +270,13 @@ def test_brew_artifact_present_rejects_unreadable_receipts() -> None:
 def test_brew_artifact_present_without_declared_paths_is_never_proof() -> None:
     """No declared artifacts cannot prove presence, whatever pkgutil says."""
     reader = _receipts("org.tug.mactex.gui2025\n")
-    assert brew_artifact_present((), (), lambda _path: True, reader) is False
+    assert (
+        brew_artifact_present(
+            application_paths=(),
+            receipt_prefixes=(),
+            path_exists=lambda _path: True,
+            read_receipts=reader,
+        )
+        is False
+    )
     assert reader.reads == 0

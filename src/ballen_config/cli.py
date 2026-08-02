@@ -157,10 +157,10 @@ class ResolvedInspector:
         component = self.components[component_id]
         if component.manager in {Manager.BREW_FORMULA, Manager.BREW_CASK}:
             if brew_artifact_present(
-                component.application_paths,
-                component.receipt_prefixes,
-                Path.exists,
-                lambda: self.runner.run(("pkgutil", "--pkgs")),
+                application_paths=component.application_paths,
+                receipt_prefixes=component.receipt_prefixes,
+                path_exists=Path.exists,
+                read_receipts=lambda: self.runner.run(("pkgutil", "--pkgs")),
             ):
                 return ComponentState.PRESENT
             flag = (
