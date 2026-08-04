@@ -7,7 +7,6 @@ from typing import TypedDict, cast
 from pydantic import BaseModel, ConfigDict
 
 from ballen_config.assistants.cursor_mcp import is_approved_atlassian_mcp
-from ballen_config.assistants.instructions import render_native_instructions
 from ballen_config.assistants.json import StrictJsonError, strict_json_loads
 from ballen_config.assistants.models import ExtensionCatalog, ExtensionSpec
 from ballen_config.assistants.sources import reviewed_regular_file as _reviewed_source
@@ -390,34 +389,6 @@ def cursor_settings_renderer(
     return render
 
 
-def cursor_rules_renderer(paths: RuntimePaths) -> Renderer:
-    """Build the canonical shared-plus-Cursor instruction renderer.
-
-    Args:
-        paths: Approved runtime roots.
-
-    Returns:
-        A deterministic Markdown renderer.
-    """
-    engineering = _reviewed_source(
-        paths,
-        Path("assistants/shared/instructions/core.md"),
-    ).read_text()
-    rtk = _reviewed_source(
-        paths,
-        Path("assistants/shared/instructions/rtk.md"),
-    ).read_text()
-
-    def render(source: bytes, _current: bytes | None) -> bytes:
-        return render_native_instructions(
-            engineering=engineering,
-            rtk=rtk,
-            agent_suffix=source.decode(),
-        ).encode()
-
-    return render
-
-
 def cursor_keybindings_renderer() -> Renderer:
     """Merge reviewed keybindings while preserving unrelated user bindings."""
 
@@ -480,7 +451,15 @@ def configuration(
         paths,
         Path("assistants/cursor/keybindings.json"),
     )
-    user_rules = _reviewed_source(
+    engineering_rules = _reviewed_source(
+        paths,
+        Path("assistants/shared/instructions/core.md"),
+    )
+    rtk_rules = _reviewed_source(
+        paths,
+        Path("assistants/shared/instructions/rtk.md"),
+    )
+    cursor_rules = _reviewed_source(
         paths,
         Path("assistants/cursor/user-rules.md"),
     )
@@ -520,16 +499,24 @@ def configuration(
         renderer_id="cursor-keybindings",
         validator_id="json",
     )
-    rules_spec = ManagedFileSpec(
-        id="cursor-user-rules",
-        source=user_rules,
-        destination=Path(".local/state/ballen-config/manual/cursor-user-rules.md"),
-        method=ApplyMethod.RENDER,
-        mode=0o600,
-        component="cursor",
-        renderer_id="cursor-user-rules",
+    rules_specs = tuple(
+        ManagedFileSpec(
+            id=f"cursor-user-rules-{suffix}",
+            source=source,
+            destination=Path(
+                f".local/state/ballen-config/manual/cursor-user-rules-{suffix}.md"
+            ),
+            method=ApplyMethod.COPY,
+            mode=0o600,
+            component="cursor",
+        )
+        for suffix, source in (
+            ("engineering", engineering_rules),
+            ("rtk", rtk_rules),
+            ("cursor", cursor_rules),
+        )
     )
-    specs = [settings_spec, keybindings_spec, rules_spec]
+    specs = [settings_spec, keybindings_spec, *rules_specs]
     if atlassian_mcp is not None:
         specs.append(
             ManagedFileSpec(
@@ -549,7 +536,6 @@ def configuration(
                 paths,
                 work="work" in setup.profiles,
             ),
-            "cursor-user-rules": cursor_rules_renderer(paths),
             "cursor-keybindings": cursor_keybindings_renderer(),
         },
     )

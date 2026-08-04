@@ -19,7 +19,6 @@ from ballen_config.assistants.cursor import (
     render_settings,
     resolve_extensions,
 )
-from ballen_config.assistants.instructions import render_native_instructions
 from ballen_config.assistants.inventory import load_inventory
 from ballen_config.assistants.models import (
     CatalogResource,
@@ -36,7 +35,6 @@ from ballen_config.configure import (
 from ballen_config.install import InstallAction, Installer
 from ballen_config.models import Component, Manager, ResolvedSetup
 from ballen_config.runtime import RuntimePaths
-from tests.assistants.assertions import assert_canonical_instruction_contract
 from tests.assistants.fakes import StatefulAssistantFake
 
 _EXTENSION_IDS = (
@@ -448,7 +446,9 @@ def test_configuration_uses_relative_private_core_safe_specs(
     assert set(by_id) == {
         "cursor-settings",
         "cursor-keybindings",
-        "cursor-user-rules",
+        "cursor-user-rules-engineering",
+        "cursor-user-rules-rtk",
+        "cursor-user-rules-cursor",
     }
     assert {item.id: item.destination for item in contribution.specs} == {
         "cursor-settings": Path(
@@ -457,8 +457,14 @@ def test_configuration_uses_relative_private_core_safe_specs(
         "cursor-keybindings": Path(
             "Library/Application Support/Cursor/User/keybindings.json"
         ),
-        "cursor-user-rules": Path(
-            ".local/state/ballen-config/manual/cursor-user-rules.md"
+        "cursor-user-rules-engineering": Path(
+            ".local/state/ballen-config/manual/cursor-user-rules-engineering.md"
+        ),
+        "cursor-user-rules-rtk": Path(
+            ".local/state/ballen-config/manual/cursor-user-rules-rtk.md"
+        ),
+        "cursor-user-rules-cursor": Path(
+            ".local/state/ballen-config/manual/cursor-user-rules-cursor.md"
         ),
     }
     assert all(not spec.destination.is_absolute() for spec in contribution.specs)
@@ -469,51 +475,58 @@ def test_configuration_uses_relative_private_core_safe_specs(
     assert all(spec.component == "cursor" for spec in contribution.specs)
     assert all(spec.mode == 0o600 for spec in by_id.values())
     assert by_id["cursor-keybindings"].method is ApplyMethod.RENDER
-    assert by_id["cursor-user-rules"].method is ApplyMethod.RENDER
+    assert all(
+        by_id[spec_id].method is ApplyMethod.COPY
+        for spec_id in (
+            "cursor-user-rules-engineering",
+            "cursor-user-rules-rtk",
+            "cursor-user-rules-cursor",
+        )
+    )
     assert all(
         spec.destination != Path(".cursor/hooks.json") for spec in by_id.values()
     )
 
 
-def test_rendered_user_rules_are_canonical_and_manual_only(
+def test_user_rules_handoffs_are_one_to_one_copies(
     repo_root: Path,
     temporary_home: Path,
 ) -> None:
-    """Render canonical guidance and reviewed Cursor-specific safety rules."""
+    """Copy each instruction source into its own manual Cursor User Rule handoff."""
     paths = RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home)
     contribution = configuration(_resolved_setup("cursor"), paths)
-    spec = next(item for item in contribution.specs if item.id == "cursor-user-rules")
-    suffix = spec.source.read_text()
-    engineering = (repo_root / "assistants/shared/instructions/core.md").read_text()
-    rtk = (repo_root / "assistants/shared/instructions/rtk.md").read_text()
-    rendered = contribution.renderers["cursor-user-rules"](
-        spec.source.read_bytes(),
-        None,
-    ).decode()
+    by_id = {
+        spec.id: spec
+        for spec in contribution.specs
+        if isinstance(spec, ManagedFileSpec)
+    }
+    expected = {
+        "cursor-user-rules-engineering": (
+            repo_root / "assistants/shared/instructions/core.md"
+        ),
+        "cursor-user-rules-rtk": (repo_root / "assistants/shared/instructions/rtk.md"),
+        "cursor-user-rules-cursor": (repo_root / "assistants/cursor/user-rules.md"),
+    }
+    for spec_id, source in expected.items():
+        assert by_id[spec_id].source == source.resolve()
 
-    assert rendered == render_native_instructions(
-        engineering=engineering,
-        rtk=rtk,
-        agent_suffix=suffix,
-    )
-    assert_canonical_instruction_contract(
-        rendered=rendered,
-        engineering=engineering,
-        suffix=suffix,
-    )
-    normalized = " ".join(rendered.split())
+    cursor_additions = by_id["cursor-user-rules-cursor"].source.read_text()
+    normalized = " ".join(cursor_additions.split())
     assert "first-party browser capability" in normalized
     assert "global Playwright MCP server" in normalized
-    assert "`glab` for GitLab" in normalized
+    assert "`gh` for GitHub" in normalized
+    assert "`glab`" in normalized
+    assert "using-gitlab" in normalized
     assert "official Notion integration" in normalized
     assert (
         "authentication, history, worktrees, indexes, caches, or generated plugin state"
         in normalized
     )
-    assert "plugins/cache/" not in rendered
-    assert "{{" not in rendered
-    assert spec.destination == Path(
-        ".local/state/ballen-config/manual/cursor-user-rules.md"
+    assert "plugins/cache/" not in cursor_additions
+    assert "{{" not in cursor_additions
+    assert "cursor-user-rules" not in contribution.renderers
+    assert by_id["cursor-user-rules-cursor"].destination == Path(
+        ".local/state/ballen-config/manual/cursor-user-rules-cursor.md"
     )
 
 

@@ -83,9 +83,11 @@ native marketplace commands. The production Cursor marketplace and local-plugin
 lists are intentionally empty; a later reviewed Cursor marketplace entry stays
 a visible manual Customize checklist item, and a reviewed local plugin is copied
 only to `~/.cursor/plugins/local/<name>/`. Cursor User Rules and some
-first-party capabilities are deliberate manual steps. Use each agent's
-first-party browser capability rather than a global Playwright MCP, GitLab
-through `glab`, and official Notion integrations.
+first-party capabilities are deliberate manual steps. Cursor User Rules are
+imported as three separate handoffs (engineering defaults, RTK, and Cursor
+additions). Use each agent's first-party browser capability rather than a
+global Playwright MCP, GitHub through `gh` by default (GitLab through `glab`
+when the remote is GitLab), and official Notion integrations.
 
 The work profile has one narrow MCP exception: it manages a secret-free
 Atlassian HTTP entry in `~/.cursor/mcp.json` because Cursor's official

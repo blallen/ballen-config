@@ -66,7 +66,7 @@ resources:
     kind: manual
     owner: cursor
     source: assistants/cursor/user-rules.md
-    summary: Copy the rendered cursor-user-rules.md from the bootstrap state directory into Cursor Customize > Rules.
+    summary: Import the three Cursor User Rules handoffs from ~/.local/state/ballen-config/manual/ (engineering, RTK, Cursor additions) into Cursor Customize > Rules as separate User Rules.
 
   - id: cursor.browser
     kind: manual
