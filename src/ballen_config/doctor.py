@@ -264,12 +264,25 @@ class Doctor:
         for finding_id, command in commands:
             result = self.runner.run(command)
             ready = result["returncode"] == 0
+            optional_gitlab = finding_id == "gitlab-auth" and not ready
             checks.append(
                 DoctorFinding(
                     id=finding_id,
                     status=(FindingStatus.READY if ready else FindingStatus.MANUAL),
-                    severity=(CheckSeverity.INFO if ready else CheckSeverity.WARNING),
-                    message="ready" if ready else "not authenticated",
+                    severity=(
+                        CheckSeverity.INFO
+                        if ready or optional_gitlab
+                        else CheckSeverity.WARNING
+                    ),
+                    message=(
+                        "ready"
+                        if ready
+                        else (
+                            "optional; authenticate when using GitLab remotes"
+                            if optional_gitlab
+                            else "not authenticated"
+                        )
+                    ),
                 )
             )
         return tuple(checks)
@@ -294,7 +307,7 @@ class Doctor:
         )
 
     def manual_checks(self) -> tuple[DoctorCheck, ...]:
-        """Return only core-owned SSH and IT-managed manual actions."""
+        """Return the core-owned SSH manual action."""
         try:
             ssh_mode = stat.S_IMODE(os.lstat(self.home / ".ssh").st_mode)
         except FileNotFoundError:
@@ -311,12 +324,6 @@ class Doctor:
                     if ssh_ready
                     else "follow secure SSH transfer guide"
                 ),
-            ),
-            DoctorFinding(
-                id="it-managed-applications",
-                status=FindingStatus.MANUAL,
-                severity=CheckSeverity.INFO,
-                message="complete the IT-managed application checklist",
             ),
         )
 

@@ -71,6 +71,17 @@ def test_auth_output_is_never_returned(fake_home: Path) -> None:
     assert secret_stderr not in report.render()
 
 
+def test_missing_gitlab_auth_is_explicitly_optional(fake_home: Path) -> None:
+    """Unauthenticated GitLab is informational until a GitLab remote is used."""
+    report = run_doctor(Doctor(FakeRunner({}), fake_home).authentication_checks())
+
+    finding = report.finding("gitlab-auth")
+    assert finding.status is FindingStatus.MANUAL
+    assert finding.severity is CheckSeverity.INFO
+    assert finding.message == "optional; authenticate when using GitLab remotes"
+    assert report.exit_code == 0
+
+
 def test_skip_is_informational_not_missing(fake_home: Path) -> None:
     """An explicit skip is healthy, intentional state."""
     report = run_doctor(Doctor(FakeRunner({}), fake_home).skipped_checks(("wave",)))
@@ -99,16 +110,13 @@ def test_aws_readiness_runs_only_for_work(fake_home: Path) -> None:
 def test_core_manual_checks_are_limited_to_cross_cutting_actions(
     fake_home: Path,
 ) -> None:
-    """Doctor has no app-specific manual checklist entries."""
+    """Doctor reports only the convergent SSH manual check."""
     checks = Doctor(
         FakeRunner({}),
         fake_home,
         profiles=("default", "work"),
     ).manual_checks()
-    assert {finding.id for finding in checks} == {
-        "ssh-transfer",
-        "it-managed-applications",
-    }
+    assert {finding.id for finding in checks} == {"ssh-transfer"}
     rendered = run_doctor(checks).render().lower()
     for app_name in ("notion", "browser", "cursor", "claude", "codex"):
         assert app_name not in rendered
@@ -448,7 +456,6 @@ def test_core_doctor_check_order_is_stable(
         "github-auth",
         "gitlab-auth",
         "ssh-transfer",
-        "it-managed-applications",
         "wave",
     ]
 

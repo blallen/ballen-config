@@ -10,7 +10,9 @@
    credential output into Git.
 4. Follow the [SSH transfer guide](ssh-transfer.md) in
    `docs/ssh-transfer.md` for any SSH key work.
-5. Install IT-managed applications through the company-supported channel.
+5. If applicable, install IT-managed applications through the
+   company-supported channel. This repository intentionally does not enumerate
+   or verify those applications.
 6. Before `--include mactex`, allow for the full MacTeX download and disk
    footprint.
 7. Sign in to each enabled coding agent: Cursor, Claude Code, and Codex.
