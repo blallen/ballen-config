@@ -77,16 +77,6 @@ def test_authentication_uses_exact_commands_and_hides_native_output(
         run_doctor(findings).finding("codex.sign-in").message
         == "Codex sign-in requires manual login"
     )
-    assert run_doctor(findings).finding("cursor.sign-in").status is FindingStatus.MANUAL
-    for finding_id in (
-        "cursor.browser",
-        "cursor.notion",
-        "claude.browser",
-        "claude.notion",
-        "codex.browser",
-        "codex.notion",
-    ):
-        assert run_doctor(findings).finding(finding_id).severity is CheckSeverity.INFO
 
 
 def test_disabled_agents_do_not_run_or_inspect_their_roots(paths: RuntimePaths) -> None:

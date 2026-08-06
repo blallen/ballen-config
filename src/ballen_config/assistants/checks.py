@@ -455,30 +455,6 @@ def assistant_checks(
         )
 
     if _enabled(enabled, "cursor"):
-        add(
-            _finding(
-                "cursor.browser",
-                FindingStatus.MANUAL,
-                CheckSeverity.INFO,
-                "Cursor browser capability requires manual review",
-            )
-        )
-        add(
-            _finding(
-                "cursor.notion",
-                FindingStatus.MANUAL,
-                CheckSeverity.INFO,
-                "Cursor Notion integration requires manual review",
-            )
-        )
-        add(
-            _finding(
-                "cursor.sign-in",
-                FindingStatus.MANUAL,
-                CheckSeverity.INFO,
-                "Cursor sign-in requires manual login",
-            )
-        )
         cursor_root = _safe_home_path(paths.home, Path(".cursor"))
         if cursor_root is None:
             add(
@@ -562,22 +538,6 @@ def assistant_checks(
         if not _enabled(enabled, agent):
             continue
         prefix = agent.split("-")[0]
-        add(
-            _finding(
-                f"{prefix}.browser",
-                FindingStatus.MANUAL,
-                CheckSeverity.INFO,
-                f"{label} browser capability requires manual review",
-            )
-        )
-        add(
-            _finding(
-                f"{prefix}.notion",
-                FindingStatus.MANUAL,
-                CheckSeverity.INFO,
-                f"{label} Notion integration requires manual review",
-            )
-        )
         ready = runner.run(command)["returncode"] == 0
         add(
             _finding(
