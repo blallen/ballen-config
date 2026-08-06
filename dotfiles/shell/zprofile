@@ -5,3 +5,6 @@ elif [[ -x /usr/local/bin/brew ]]; then
 fi
 
 export PATH="$HOME/.local/bin:$PATH"
+
+# Work-profile additions (installed only for --profile work).
+[[ -r "$HOME/.zprofile.work" ]] && source "$HOME/.zprofile.work"

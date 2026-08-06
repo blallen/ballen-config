@@ -56,6 +56,7 @@ class ManagedFileSpec(BaseModel):
     method: ApplyMethod
     mode: int | str = 0o600
     component: str
+    profiles: tuple[str, ...] = Field(default=("default",), min_length=1)
     renderer_id: str | None = None
     validator_id: str | None = None
 
@@ -531,9 +532,10 @@ class ConfigurationEngine:
 def configuration_specs(
     manifest_path: Path, resolved: ResolvedSetup, paths: RuntimePaths
 ) -> tuple[ManagedSpec, ...]:
-    """Load configuration YAML, resolve its paths, and honor skipped components."""
+    """Load configuration YAML, resolve its paths, and honor profile/skip filters."""
     payload = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
     manifest = ConfigurationManifest.model_validate(payload)
+    active_profiles = set(resolved.profiles)
     return tuple(
         spec.model_copy(
             update={
@@ -543,6 +545,10 @@ def configuration_specs(
         )
         for spec in manifest.files
         if spec.component not in resolved.skipped
+        and (
+            not isinstance(spec, ManagedFileSpec)
+            or active_profiles.intersection(spec.profiles)
+        )
     )
 
 

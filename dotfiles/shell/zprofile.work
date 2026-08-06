@@ -1,0 +1,2 @@
+# Work-profile env (sourced from ~/.zprofile); GDAL/pyogrio need ADC for gs://.
+export GOOGLE_APPLICATION_CREDENTIALS="$HOME/.config/gcloud/application_default_credentials.json"

@@ -13,6 +13,14 @@ files:
     mode: "0600"
     component: shell
     validator_id: zsh
+  - id: zprofile-work
+    source: dotfiles/shell/zprofile.work
+    destination: .zprofile.work
+    method: symlink
+    mode: "0600"
+    component: shell
+    profiles: [work]
+    validator_id: zsh
   - id: p10k
     source: dotfiles/shell/p10k.zsh
     destination: .p10k.zsh

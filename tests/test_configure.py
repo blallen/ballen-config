@@ -614,6 +614,47 @@ def test_skip_wave_removes_wave_spec(config_paths: RuntimePaths) -> None:
     )
 
 
+def test_configuration_specs_honor_file_profiles(config_paths: RuntimePaths) -> None:
+    """Work-only managed files stay out of the default profile selection."""
+    from ballen_config.configure import configuration_specs
+
+    manifest = config_paths.repo_root / "manifests"
+    manifest.mkdir()
+    (manifest / "configuration.yaml").write_text(
+        """files:
+  - id: zprofile
+    source: zprofile
+    destination: .zprofile
+    method: symlink
+    mode: '0600'
+    component: shell
+  - id: zprofile-work
+    source: zprofile.work
+    destination: .zprofile.work
+    method: symlink
+    mode: '0600'
+    component: shell
+    profiles: [work]
+"""
+    )
+    (config_paths.repo_root / "zprofile").write_text("base\n")
+    (config_paths.repo_root / "zprofile.work").write_text("work\n")
+
+    default_specs = configuration_specs(
+        manifest / "configuration.yaml",
+        ResolvedSetup(profiles=("default",), components=(), skipped=()),
+        config_paths,
+    )
+    work_specs = configuration_specs(
+        manifest / "configuration.yaml",
+        ResolvedSetup(profiles=("default", "work"), components=(), skipped=()),
+        config_paths,
+    )
+
+    assert [spec.id for spec in default_specs] == ["zprofile"]
+    assert [spec.id for spec in work_specs] == ["zprofile", "zprofile-work"]
+
+
 def test_configuration_plan_contributor_returns_structural_action_read_only(
     config_paths: RuntimePaths,
 ) -> None:
