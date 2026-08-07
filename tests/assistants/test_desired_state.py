@@ -180,6 +180,7 @@ def test_shared_plugin_catalog_parses_against_targeted_models(repo_root: Path) -
         "bigspinai",
         "claude-plugins-official",
         "context-mode",
+        "ponytail",
         "superpowers-marketplace",
     )
     assert tuple(plugin.id for plugin in projection.native_plugins) == (
@@ -188,19 +189,34 @@ def test_shared_plugin_catalog_parses_against_targeted_models(repo_root: Path) -
         "frontend-design@claude-plugins-official",
         "github@claude-plugins-official",
         "logfire@claude-plugins-official",
+        "ponytail@ponytail",
         "superpowers-developing-for-claude-code@superpowers-marketplace",
         "superpowers@claude-plugins-official",
     )
     assert (
         tuple(marketplace.targets for marketplace in projection.marketplaces)
-        == ((AgentName.CODEX,),) * 4
+        == ((AgentName.CODEX,),) * 5
     )
     assert (
         tuple(plugin.targets for plugin in projection.native_plugins)
-        == ((AgentName.CODEX,),) * 7
+        == ((AgentName.CODEX,),) * 8
     )
     assert projection.cursor_marketplace_plugins == ()
     assert projection.cursor_local_plugins == ()
+
+    cursor_projection = project_plugin_catalog(
+        catalog,
+        target=AgentName.CURSOR,
+        profiles=("default",),
+    )
+    cursor_ids = {
+        plugin.id
+        for plugin in (
+            *cursor_projection.cursor_marketplace_plugins,
+            *cursor_projection.cursor_local_plugins,
+        )
+    }
+    assert "ponytail@ponytail" not in cursor_ids
 
 
 def test_load_desired_state_validates_every_catalog_before_resolution(

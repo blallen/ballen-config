@@ -12,6 +12,9 @@ from urllib.parse import urlsplit
 import pytest
 
 _SHA256_PATTERN: Final[re.Pattern[str]] = re.compile(r"^[0-9a-f]{64}$")
+_PONYTAIL_SOURCE_COMMIT: Final = (
+    "16f29800fd2681bdf24f3eb4ccffe38be3baec6b"  # pragma: allowlist secret
+)
 _EXAMPLE_TOP_LEVEL_KEYS: Final[frozenset[str]] = frozenset(
     {
         "contract_version",
@@ -1154,6 +1157,73 @@ def test_review_result_vectors_freeze_verdict_precedence(
     )
     assert clean["skips"] == []
     assert clean["counts"] == {"blocker": 0, "actionable": 0, "advisory": 0}
+
+
+def test_ponytail_quality_contract_is_bounded_and_canonical(
+    repo_root: Path,
+) -> None:
+    """Keep Ponytail normalization explicit without expanding artifact v1."""
+    path = (
+        repo_root
+        / "assistants/shared/skills/review-project-quality/references"
+        / "ponytail-review-v1.json"
+    )
+    contract = json.loads(path.read_text(encoding="utf-8"))
+
+    assert contract == {
+        "contract_version": "v1",
+        "reviewer": "ponytail-review",
+        "invocation": {
+            "check": "ponytail-review-native",
+            "count": 1,
+            "mode": "diff",
+            "scope": "supplied-change-scope",
+        },
+        "lean_signal": "Lean already. Ship.",
+        "tags": {
+            "delete": {"rule": "ponytail/delete", "severity": "actionable"},
+            "native": {"rule": "ponytail/native", "severity": "actionable"},
+            "shrink": {"rule": "ponytail/shrink", "severity": "advisory"},
+            "stdlib": {"rule": "ponytail/stdlib", "severity": "actionable"},
+            "yagni": {"rule": "ponytail/yagni", "severity": "actionable"},
+        },
+        "availability": {
+            "claude-code": "required",
+            "codex": "required",
+            "cursor": "not_applicable",
+            "unknown": "unavailable",
+        },
+        "outcomes": {
+            "empty_or_ambiguous_lean": "incomplete",
+            "lean": "completed",
+            "malformed_or_unbounded": "incomplete",
+            "missing_required_skill": "unavailable",
+            "scope_drift": "blocked",
+        },
+        "blocked_encoding": {
+            "scope_drift": {
+                "check_completion": "incomplete",
+                "skip_effect": "blocked",
+            }
+        },
+        "transition": {
+            "check": "ponytail-review-published-contract",
+            "completion": "completed",
+            "eligibility": "explicit-pre-plugin-transition-request",
+            "eligibility_evidence": "selector-supplied-before-skill-start",
+            "host_precedence": "availability-first",
+            "native_claim": False,
+            "native_invocation_count": 0,
+            "published_contract_check_count": 1,
+            "required": True,
+            "selected_scope": "changed",
+            "source_commit": _PONYTAIL_SOURCE_COMMIT,
+            "source_path": "skills/ponytail-review/SKILL.md",
+        },
+    }
+
+    assert len(_SELF_REVIEWER_ORDER) == 4
+    assert "ponytail-review" not in _SELF_REVIEWER_NAMES
 
 
 def test_self_review_artifact_example_is_portable_and_internally_consistent(
