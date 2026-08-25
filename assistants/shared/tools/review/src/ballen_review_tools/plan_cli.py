@@ -22,6 +22,7 @@ from ballen_review_tools.models import (
     ReviewIdentity,
     ReviewResponsePlan,
 )
+from ballen_review_tools.providers.github import normalize_github_comments
 from ballen_review_tools.workspace import validate_workspace
 
 
@@ -148,6 +149,12 @@ def _parser() -> argparse.ArgumentParser:
     compile_response.add_argument("--draft", type=Path, required=True)
     compile_response.add_argument("--output", type=Path, required=True)
     compile_response.add_argument("--repo-root", type=Path, required=True)
+    normalize_threads = commands.add_parser("normalize-threads")
+    normalize_threads.add_argument("--provider", choices=("github",), required=True)
+    normalize_threads.add_argument("--identity", type=Path, required=True)
+    normalize_threads.add_argument("--input", type=Path, required=True)
+    normalize_threads.add_argument("--output", type=Path, required=True)
+    normalize_threads.add_argument("--repo-root", type=Path, required=True)
     return parser
 
 
@@ -225,6 +232,33 @@ def _compile_response(args: argparse.Namespace) -> int:
     return 0
 
 
+def _normalize_threads(args: argparse.Namespace) -> int:
+    """Normalize supplied GitHub observations after workspace preflight."""
+    identity = ReviewIdentity.model_validate(_read_json(args.identity))
+    payload = _read_json(args.input)
+    if not isinstance(payload, dict):
+        raise ValueError("thread input must be a JSON object")
+    head_sha = payload.get("head_sha")
+    comments = payload.get("review_comments")
+    if not isinstance(head_sha, str) or not isinstance(comments, list):
+        raise ValueError("thread input must contain head_sha and review_comments")
+    check = validate_workspace(
+        repo_root=args.repo_root,
+        destination=args.output.parent,
+        proposed_file=args.output,
+        probe=GitWorkspaceProbe(args.repo_root),
+    )
+    if not check.safe:
+        raise ValueError(check.reason)
+    normalized = normalize_github_comments(
+        identity=identity,
+        head_sha=head_sha,
+        comments=comments,
+    )
+    _write_json(args.output, normalized.model_dump(mode="json"))
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run one read-only planning or validation command."""
     args = _parser().parse_args(argv)
@@ -265,6 +299,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0 if result.safe else 2
     if args.command == "compile-response":
         return _compile_response(args)
+    if args.command == "normalize-threads":
+        return _normalize_threads(args)
     return _compile_review(args)
 
 
