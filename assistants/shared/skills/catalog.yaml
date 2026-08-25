@@ -106,6 +106,17 @@ skills:
       promotion.
     portability_status: reviewed-generic
 
+  - name: using-google-drive
+    source: assistants/shared/skills/using-google-drive
+    targets: [cursor, claude-code, codex]
+    profiles: [default]
+    dependencies: []
+    provenance: >-
+      Authored for ballen-config from the 2026-08-24 Claude Code session that
+      inventoried CEDA reference papers across two Google Drive accounts;
+      commit history records the implementation.
+    portability_status: reviewed-generic
+
   - name: using-jujutsu
     source: assistants/shared/skills/using-jujutsu
     targets: [cursor, claude-code, codex]
