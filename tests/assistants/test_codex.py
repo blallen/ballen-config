@@ -123,6 +123,57 @@ def test_plugin_actions_are_exact_ordered_and_profile_independent(
     assert work_actions == default_actions
 
 
+def test_codex_plans_ponytail_marketplace_before_plugin(
+    codex_projection: PluginCatalogProjection,
+) -> None:
+    """Install the Ponytail marketplace before its required plugin."""
+    actions = plan_codex_plugins(codex_projection, installed=frozenset())
+    component_ids = [action.component_id for action in actions]
+    marketplace_id = "codex.marketplace.ponytail"
+    plugin_id = "codex.plugin.ponytail@ponytail"
+
+    assert component_ids.index(marketplace_id) < component_ids.index(plugin_id)
+    by_id = {action.component_id: action for action in actions}
+    assert by_id[marketplace_id].argv == (
+        "codex",
+        "plugin",
+        "marketplace",
+        "add",
+        "DietrichGebert/ponytail",
+        "--json",
+    )
+    assert by_id[plugin_id].argv == (
+        "codex",
+        "plugin",
+        "add",
+        "ponytail@ponytail",
+        "--json",
+    )
+    assert by_id[marketplace_id].required
+    assert by_id[plugin_id].required
+
+
+def test_registered_ponytail_entries_are_noops(
+    codex_projection: PluginCatalogProjection,
+) -> None:
+    """Do not reinstall native Ponytail entries already registered by Codex."""
+    actions = plan_codex_plugins(
+        codex_projection,
+        installed=frozenset({"ponytail@ponytail"}),
+        known_marketplaces=frozenset({"ponytail"}),
+    )
+
+    component_ids = {action.component_id for action in actions}
+    assert any(
+        marketplace.name == "ponytail" for marketplace in codex_projection.marketplaces
+    )
+    assert any(
+        plugin.id == "ponytail@ponytail" for plugin in codex_projection.native_plugins
+    )
+    assert "codex.marketplace.ponytail" not in component_ids
+    assert "codex.plugin.ponytail@ponytail" not in component_ids
+
+
 def test_plugin_planner_preserves_optional_preprojected_actions() -> None:
     """Keep optional requiredness after target/profile projection."""
     catalog = PluginCatalog.model_validate(

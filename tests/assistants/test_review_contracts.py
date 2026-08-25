@@ -1156,6 +1156,93 @@ def test_review_result_vectors_freeze_verdict_precedence(
     assert clean["counts"] == {"blocker": 0, "actionable": 0, "advisory": 0}
 
 
+def test_ponytail_quality_contract_is_bounded_and_canonical(
+    repo_root: Path,
+) -> None:
+    """Keep Ponytail normalization explicit without expanding artifact v1."""
+    path = (
+        repo_root
+        / "assistants/shared/skills/review-project-quality/references"
+        / "ponytail-review-v1.json"
+    )
+    contract = json.loads(path.read_text(encoding="utf-8"))
+
+    assert contract == {
+        "contract_version": "v1",
+        "reviewer": "ponytail-review",
+        "invocation": {
+            "check": "ponytail-review-native",
+            "count": 1,
+            "mode": "diff",
+            "scope": "supplied-change-scope",
+        },
+        "lean_signal": "Lean already. Ship.",
+        "tags": {
+            "delete": {"rule": "ponytail/delete", "severity": "actionable"},
+            "native": {"rule": "ponytail/native", "severity": "actionable"},
+            "shrink": {"rule": "ponytail/shrink", "severity": "advisory"},
+            "stdlib": {"rule": "ponytail/stdlib", "severity": "actionable"},
+            "yagni": {"rule": "ponytail/yagni", "severity": "actionable"},
+        },
+        "finding_identity": {
+            "envelope_reviewer": "review-project-quality",
+            "category": "simplicity",
+            "contributors": ["review-project-quality"],
+            "source_severity": "ponytail-tag",
+        },
+        "parse": {
+            "finding_pattern": "optional-path:Lstart[-end]",
+            "location_fields": ["path", "start_line", "end_line"],
+            "net_line": "ignore",
+            "net_line_prefix": "net:",
+            "out_of_scope_path": "malformed",
+            "pathless_multiple_paths": "malformed",
+            "pathless_unique_path": "bind",
+        },
+        "forbidden_skills": [
+            "ponytail-audit",
+            "ponytail-debt",
+            "ponytail-gain",
+        ],
+        "availability": {
+            "claude-code": "required",
+            "codex": "required",
+            "cursor": "optional",
+            "unknown": "unavailable",
+        },
+        "outcomes": {
+            "empty_or_ambiguous_lean": "incomplete",
+            "lean": "completed",
+            "malformed_or_unbounded": "incomplete",
+            "missing_optional_skill": "skipped",
+            "missing_required_skill": "unavailable",
+            "scope_drift": "blocked",
+        },
+        "optional_encoding": {
+            "missing": {
+                "check_completion": "skipped",
+                "clean_verdict_limitation": False,
+                "required": False,
+                "selected_scope": "none",
+                "skip_record": False,
+            },
+            "present": {
+                "required": False,
+                "selected_scope": "changed",
+            },
+        },
+        "blocked_encoding": {
+            "scope_drift": {
+                "check_completion": "incomplete",
+                "skip_effect": "blocked",
+            }
+        },
+    }
+
+    assert len(_SELF_REVIEWER_ORDER) == 4
+    assert "ponytail-review" not in _SELF_REVIEWER_NAMES
+
+
 def test_self_review_artifact_example_is_portable_and_internally_consistent(
     repo_root: Path,
 ) -> None:
