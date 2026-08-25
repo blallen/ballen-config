@@ -1,0 +1,26 @@
+{
+  "contract_version": "normalized-review-threads/v1",
+  "identity": {
+    "provider": "github",
+    "host": "github.com",
+    "repository": "acme/ballen-config",
+    "change_number": 17,
+    "base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "head_revision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "observed_head": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "limitations": ["REST input does not expose GraphQL resolution reason"],
+  "threads": [
+    {
+      "thread_id": "T001",
+      "comment_ids": ["C001"],
+      "state": "open",
+      "path": "src/example.py",
+      "line": 20,
+      "side": "RIGHT",
+      "author": "reviewer",
+      "body": "Guard the empty case.",
+      "chronology": ["C001"]
+    }
+  ]
+}

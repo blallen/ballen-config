@@ -3,10 +3,18 @@
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Final
+from typing import Final, cast
 
 from ballen_review_tools.canonical import deduplication_key
-from ballen_review_tools.models import ReviewAction, ReviewDiagnostic, ReviewIdentity
+from ballen_review_tools.models import (
+    NormalizedReviewThreads,
+    ResponseAction,
+    ResponseClassification,
+    ReviewAction,
+    ReviewDiagnostic,
+    ReviewIdentity,
+    ReviewResponseItem,
+)
 
 _HEADING: Final[re.Pattern[str]] = re.compile(
     r"^###\s+([A-Za-z0-9][A-Za-z0-9._-]*):\s+(.+?)\s*$"
@@ -23,6 +31,13 @@ _KNOWN_FIELDS: Final[frozenset[str]] = frozenset(
         "Discussion",
         "Thread",
         "POST",
+        "Classification",
+        "Selected action",
+        "Evaluation",
+        "Evidence",
+        "Proposed changes",
+        "Proposed response",
+        "Verification",
     }
 )
 _FENCE: Final[re.Pattern[str]] = re.compile(r"^ {0,3}(`{3,}|~{3,})")
@@ -239,3 +254,70 @@ def parse_review_markdown(
             )
         )
     return ParsedReview(actions=tuple(actions), diagnostics=tuple(diagnostics))
+
+
+def _optional_text(metadata: dict[str, str], key: str) -> str | None:
+    """Return one optional response field, treating `none` as absent."""
+    value = metadata.get(key)
+    if value is None or value.lower() in {"", "none", "null", "-"}:
+        return None
+    return value
+
+
+def _list_field(metadata: dict[str, str], key: str) -> tuple[str, ...]:
+    """Return one bounded single-line list field."""
+    value = _optional_text(metadata, key)
+    return () if value is None else (value,)
+
+
+def parse_response_markdown(
+    text: str,
+    *,
+    threads: NormalizedReviewThreads,
+) -> tuple[ReviewResponseItem, ...]:
+    """Parse response decisions while retaining every normalized thread."""
+    thread_by_id = {thread.thread_id: thread for thread in threads.threads}
+    items: dict[str, ReviewResponseItem] = {}
+    for thread_id, lines, heading_error in _sections(text.splitlines()):
+        if heading_error is not None:
+            raise ValueError(f"{thread_id}: {heading_error}")
+        if thread_id not in thread_by_id:
+            raise ValueError(f"response references unknown thread: {thread_id}")
+        metadata, _body = _metadata_and_body(lines)
+        classification = _required(metadata, "Classification").strip().lower()
+        if classification not in {
+            "actionable",
+            "question",
+            "discussion",
+            "resolved",
+            "informational",
+        }:
+            raise ValueError(f"unsupported response classification: {classification}")
+        selected_action = _required(metadata, "Selected action").strip().lower()
+        if selected_action not in {"skip", "propose-change", "propose-response"}:
+            raise ValueError(f"unsupported response action: {selected_action}")
+        if thread_id in items:
+            raise ValueError(f"duplicate response thread: {thread_id}")
+        items[thread_id] = ReviewResponseItem(
+            thread_id=thread_id,
+            classification=cast(ResponseClassification, classification),
+            evaluation=_required(metadata, "Evaluation"),
+            evidence=_required(metadata, "Evidence"),
+            proposed_changes=_list_field(metadata, "Proposed changes"),
+            proposed_response=_optional_text(metadata, "Proposed response"),
+            verification=_list_field(metadata, "Verification"),
+            selected_action=cast(ResponseAction, selected_action),
+        )
+    for thread in threads.threads:
+        if thread.thread_id not in items:
+            classification = (
+                "resolved" if thread.state == "resolved" else "informational"
+            )
+            items[thread.thread_id] = ReviewResponseItem(
+                thread_id=thread.thread_id,
+                classification=cast(ResponseClassification, classification),
+                evaluation="No response decision was supplied.",
+                evidence="Thread retained as missing response coverage.",
+                selected_action="skip",
+            )
+    return tuple(items[thread.thread_id] for thread in threads.threads)
