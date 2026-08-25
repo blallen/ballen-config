@@ -1,0 +1,27 @@
+{
+  "contract_version": "review-comment-plan/v1",
+  "identity": {
+    "provider": "github",
+    "host": "github.com",
+    "repository": "ballen-config",
+    "change_number": 17,
+    "base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "head_revision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "source_draft_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "actions": [
+    {
+      "action_id": "R001",
+      "kind": "inline",
+      "selected": true,
+      "body": "Guard the empty case.",
+      "path": "src/example.py",
+      "line": 20,
+      "side": "RIGHT",
+      "deduplication_key": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "validation_state": "valid",
+      "intended_action": "create-inline",
+      "outcome": "pending"
+    }
+  ]
+}

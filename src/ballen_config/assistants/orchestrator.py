@@ -42,6 +42,7 @@ from ballen_config.assistants.desired_state import (
 )
 from ballen_config.assistants.hooks import hook_contribution
 from ballen_config.assistants.models import AgentName
+from ballen_config.assistants.review_tools import review_tools_contribution
 from ballen_config.assistants.skills import configuration as skills_configuration
 from ballen_config.configure import (
     ConfigurationContribution,
@@ -236,6 +237,10 @@ class AssistantOrchestrator:
                 hook_contribution(
                     repo_root=paths.repo_root,
                     home=paths.home,
+                    enabled=enabled,
+                ),
+                review_tools_contribution(
+                    repo_root=paths.repo_root,
                     enabled=enabled,
                 ),
                 skills_configuration(

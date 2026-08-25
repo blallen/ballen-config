@@ -41,6 +41,17 @@ skills:
       commit history records the implementation.
     portability_status: reviewed-generic
 
+  - name: review-github-pull-request
+    source: assistants/shared/skills/review-github-pull-request
+    targets: [cursor, claude-code, codex]
+    profiles: [default]
+    dependencies: [using-github, discover-project-standards]
+    provenance: >-
+      Authored for ballen-config under the approved forge review and response
+      design; Plato review workflows at commit
+      5f78cc607ad100c72f6e173bc22620bcebd6c855 informed the local draft.
+    portability_status: reviewed-generic
+
   - name: review-project-quality
     source: assistants/shared/skills/review-project-quality
     targets: [cursor, claude-code, codex]
