@@ -3,7 +3,15 @@
 from pathlib import PurePosixPath
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictInt,
+    StrictStr,
+    field_validator,
+    model_validator,
+)
 
 Provider = Literal["github", "gitlab"]
 ReviewKind = Literal["inline", "general", "reply"]
@@ -340,8 +348,22 @@ class PublicationReceiptItem(BaseModel):
     deduplication_key: str = Field(pattern=r"^[0-9a-f]{64}$")
     outcome: ActionOutcome
     reason: str | None = None
-    remote_id: int | None = Field(default=None, gt=0)
+    remote_id: StrictInt | StrictStr | None = None
     remote_url: str | None = None
+
+    @field_validator("remote_id")
+    @classmethod
+    def _validate_remote_id(
+        cls, value: StrictInt | StrictStr | None
+    ) -> StrictInt | StrictStr | None:
+        """Accept positive numeric IDs and non-empty native string IDs."""
+        if value is None:
+            return None
+        if isinstance(value, int) and value <= 0:
+            raise ValueError("remote_id must be positive")
+        if isinstance(value, str) and not value:
+            raise ValueError("remote_id must not be empty")
+        return value
 
 
 class PublicationReceipt(BaseModel):

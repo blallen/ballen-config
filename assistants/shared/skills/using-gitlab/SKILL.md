@@ -57,6 +57,10 @@ The normalized artifact is provider-neutral and local. Keep transport,
 authentication, pagination, and project identity here; keep parsing and plan
 contracts in `review-plan`.
 
+For an explicitly approved remote publication, `publish-gitlab-review` owns the
+preview, digest, current-diff-ref, expected-head, and receipt gates. It uses
+the same `glab` transport boundary and never copies authentication state.
+
 ## CLI fallback
 
 Document CLI fallback with `glab` when no connector is available.
