@@ -12,9 +12,6 @@ from urllib.parse import urlsplit
 import pytest
 
 _SHA256_PATTERN: Final[re.Pattern[str]] = re.compile(r"^[0-9a-f]{64}$")
-_PONYTAIL_SOURCE_COMMIT: Final = (
-    "16f29800fd2681bdf24f3eb4ccffe38be3baec6b"  # pragma: allowlist secret
-)
 _EXAMPLE_TOP_LEVEL_KEYS: Final[frozenset[str]] = frozenset(
     {
         "contract_version",
@@ -1187,38 +1184,58 @@ def test_ponytail_quality_contract_is_bounded_and_canonical(
             "stdlib": {"rule": "ponytail/stdlib", "severity": "actionable"},
             "yagni": {"rule": "ponytail/yagni", "severity": "actionable"},
         },
+        "finding_identity": {
+            "envelope_reviewer": "review-project-quality",
+            "category": "simplicity",
+            "contributors": ["review-project-quality"],
+            "source_severity": "ponytail-tag",
+        },
+        "parse": {
+            "finding_pattern": "optional-path:Lstart[-end]",
+            "location_fields": ["path", "start_line", "end_line"],
+            "net_line": "ignore",
+            "net_line_prefix": "net:",
+            "out_of_scope_path": "malformed",
+            "pathless_multiple_paths": "malformed",
+            "pathless_unique_path": "bind",
+        },
+        "forbidden_skills": [
+            "ponytail-audit",
+            "ponytail-debt",
+            "ponytail-gain",
+        ],
         "availability": {
             "claude-code": "required",
             "codex": "required",
-            "cursor": "not_applicable",
+            "cursor": "optional",
             "unknown": "unavailable",
         },
         "outcomes": {
             "empty_or_ambiguous_lean": "incomplete",
             "lean": "completed",
             "malformed_or_unbounded": "incomplete",
+            "missing_optional_skill": "skipped",
             "missing_required_skill": "unavailable",
             "scope_drift": "blocked",
+        },
+        "optional_encoding": {
+            "missing": {
+                "check_completion": "skipped",
+                "clean_verdict_limitation": False,
+                "required": False,
+                "selected_scope": "none",
+                "skip_record": False,
+            },
+            "present": {
+                "required": False,
+                "selected_scope": "changed",
+            },
         },
         "blocked_encoding": {
             "scope_drift": {
                 "check_completion": "incomplete",
                 "skip_effect": "blocked",
             }
-        },
-        "transition": {
-            "check": "ponytail-review-published-contract",
-            "completion": "completed",
-            "eligibility": "explicit-pre-plugin-transition-request",
-            "eligibility_evidence": "selector-supplied-before-skill-start",
-            "host_precedence": "availability-first",
-            "native_claim": False,
-            "native_invocation_count": 0,
-            "published_contract_check_count": 1,
-            "required": True,
-            "selected_scope": "changed",
-            "source_commit": _PONYTAIL_SOURCE_COMMIT,
-            "source_path": "skills/ponytail-review/SKILL.md",
         },
     }
 

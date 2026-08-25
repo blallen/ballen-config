@@ -204,6 +204,11 @@ def test_shared_plugin_catalog_parses_against_targeted_models(repo_root: Path) -
     assert projection.cursor_marketplace_plugins == ()
     assert projection.cursor_local_plugins == ()
 
+    claude_projection = project_plugin_catalog(
+        catalog,
+        target=AgentName.CLAUDE,
+        profiles=("default",),
+    )
     cursor_projection = project_plugin_catalog(
         catalog,
         target=AgentName.CURSOR,
@@ -216,6 +221,12 @@ def test_shared_plugin_catalog_parses_against_targeted_models(repo_root: Path) -
             *cursor_projection.cursor_local_plugins,
         )
     }
+    assert any(
+        plugin.id == "ponytail@ponytail" for plugin in claude_projection.native_plugins
+    )
+    assert all(
+        plugin.id != "ponytail@ponytail" for plugin in cursor_projection.native_plugins
+    )
     assert "ponytail@ponytail" not in cursor_ids
 
 

@@ -23,9 +23,10 @@ resolver:
 Sibling paths are packaging hints only. Invoke dependencies by canonical name.
 
 Read `references/ponytail-review-v1.json` before review. It is authoritative
-for the Ponytail invocation count, host availability, rule and severity
-mapping, transition provenance, and coverage states. `ponytail-review` is an
-external provider-owned skill, not a repository-owned shared-skill dependency.
+for the Ponytail invocation count, host availability, `parse` rules,
+`finding_identity`, `forbidden_skills`, tag mapping, and coverage states.
+`ponytail-review` is an external provider-owned skill, not a repository-owned
+shared-skill dependency.
 
 ## When to Use
 
@@ -46,10 +47,12 @@ Accept:
 - optional complete command evidence already produced for the identical scope.
 
 On Claude Code and Codex, the Ponytail simplicity sub-pass is required. Use the
-native `ponytail-review` skill or, only for the bounded transition encoded in
-its contract, the pinned published contract. Ponytail is not applicable on
-Cursor. An unknown or undetected host is unavailable; never infer that it is
-Cursor.
+native `ponytail-review` skill only. A missing required skill is unavailable.
+There is no published-contract bypass. On Cursor, Ponytail is `optional`:
+invoke `ponytail-review` when that skill is already loaded; if it is missing,
+record `missing_optional_skill` as skipped coverage without failing the
+review. Never install Ponytail into Cursor desired state. An unknown or
+undetected host is unavailable; never infer that it is Cursor.
 
 Reuse supplied inputs only when their versions, identities, repository
 identity, path inventory, and digests validate. Otherwise invoke the named
@@ -66,8 +69,12 @@ specialist result.
 
 Quality review is applicable when the selected change contains source,
 configuration, build, documentation, or other files covered by a
-repository-selected quality check. Prove `not_applicable` from the scope and
-inventory. If either is insufficient, use `unknown`; do not guess.
+repository-selected quality check. On Claude Code and Codex, required Ponytail
+also makes this specialist applicable whenever the scope is reviewable, even
+when no other quality check applies. On Cursor, a loaded `ponytail-review`
+skill has the same effect; a missing optional skill does not. Prove
+`not_applicable` from the scope and inventory. If either is insufficient, use
+`unknown`; do not guess.
 
 Record the exact `scope_identity` and `standards_inventory_ref` before any
 command runs.
@@ -174,49 +181,33 @@ optional improvements. Preserve the source severity and rule when available.
 
 ### 7. Run the Ponytail simplicity sub-pass
 
-On Claude Code and Codex, invoke `ponytail-review` exactly once in diff mode.
-Supply the same immutable `ChangeScope`, `scope_identity`, standards inventory,
-and changed-path set used by this specialist. Never ask Ponytail to audit the
-repository, resolve a new scope, or review paths outside that set.
+On Claude Code, Codex, and Cursor when `ponytail-review` is already loaded,
+invoke it exactly once in diff mode. Supply the same immutable `ChangeScope`,
+`scope_identity`, standards inventory, and changed-path set used by this
+specialist. Never ask Ponytail to resolve a new scope or review paths outside
+that set. Do not invoke any skill named in the contract's `forbidden_skills`.
+Do not install a plugin, copy rules, or otherwise mutate Cursor desired state
+to make the skill available.
 
-Accept only output with changed-path findings, tight repository-relative
-locations, one declared Ponytail tag per finding, concrete evidence, and
-bounded remediation. Normalize tags exactly as the contract declares:
+Parse and normalize exclusively from `references/ponytail-review-v1.json`.
+Apply its `parse`, `finding_identity`, `tags`, `outcomes`, and
+`optional_encoding` objects exactly. Do not copy those mappings into this
+skill or add acceptance rules the contract does not declare.
 
-| Ponytail tag | Rule | Severity |
-| --- | --- | --- |
-| `delete` | `ponytail/delete` | actionable |
-| `stdlib` | `ponytail/stdlib` | actionable |
-| `native` | `ponytail/native` | actionable |
-| `yagni` | `ponytail/yagni` | actionable |
-| `shrink` | `ponytail/shrink` | advisory |
+The envelope `reviewer` remains `review-project-quality`. Persist common
+finding `path` and location `{start_line, end_line}` fields, never the raw
+one-liner. The exact lean signal completes the sub-pass with no finding. An
+empty response, or that signal mixed with a finding, is malformed and
+incomplete. A missing required native skill is unavailable. A missing
+`optional` Cursor skill uses the contract's `missing_optional_skill` encoding
+and does not limit a clean verdict. Malformed, unbounded, unknown-tag, or
+out-of-scope output is incomplete even on Cursor; discard every candidate
+finding from that response rather than salvaging a partial result. Scope
+identity drift is blocked: mark the check coverage incomplete, add one skip
+for the same check with `effect: blocked`, and discard every candidate
+finding. Preserve these states in this specialist's outcome and verdict.
 
-The exact lean signal `Lean already. Ship.` must be the sole semantic output to
-complete the sub-pass with no finding. An empty response, or that signal mixed
-with a finding, is malformed and incomplete. A missing required native skill
-is unavailable. Malformed, unbounded, unknown-tag, or out-of-scope output is
-incomplete; discard every candidate finding from that response rather than
-salvaging a partial result. Scope identity drift is blocked: mark the check
-coverage incomplete, add one skip for the same check with `effect: blocked`,
-and discard every candidate finding. Preserve these states in this
-specialist's outcome and verdict.
-
-On Cursor, do not invoke Ponytail. Record `ponytail-review-native` as a
-non-required check with `selected_scope: none` and `completion: skipped`; add
-no skip record, no finding, and no clean-verdict limitation for this
-not-applicable host. Treat an unknown host as unavailable required coverage.
-
-For a transition run that began before the native plugin could load, require
-the exact `explicit-pre-plugin-transition-request` selector before this skill
-starts, then use only the contract's pinned source commit and path. Record one
-required, completed, changed-scope coverage check named
-`ponytail-review-published-contract` and do not claim native invocation. The
-pre-start selector is the caller's authoritative transition assertion; no
-later missing-skill observation can create it. Host availability takes
-precedence, so Cursor remains not applicable and an unknown host remains
-unavailable even when the selector is present. The transition has zero native
-invocations and exactly one published-contract check. Do not represent it as a
-skip.
+Treat an unknown host as unavailable required coverage.
 
 Persist only normalized coverage and findings. Do not retain raw Ponytail
 output or its net-line score.
@@ -281,10 +272,10 @@ fifth reviewer result.
 | Required host has native Ponytail | Invoke once in diff mode inside this result |
 | Ponytail reports `Lean already. Ship.` | Complete the sub-pass with no finding |
 | Required native Ponytail is missing | Mark its coverage unavailable |
+| Optional Cursor Ponytail is loaded | Invoke once in diff mode inside this result |
+| Optional Cursor Ponytail is missing | Skip with no clean-verdict limitation |
 | Ponytail output is malformed or exceeds scope | Mark its coverage incomplete |
-| Cursor host | Mark Ponytail not applicable |
 | Unknown host | Mark required Ponytail coverage unavailable |
-| Pinned transition run | Record completed published-contract coverage; no native claim |
 | Scope identity changes after a command | Block; discard the prior conclusion |
 
 ## Boundaries
@@ -304,8 +295,15 @@ state, or generated plugin state.
 - Running the Python type checker here. Inventory it, then delegate.
 - Returning Ponytail as a fifth reviewer or supplemental sidecar. Normalize
   its single sub-pass inside `review-project-quality`.
-- Treating a pinned contract as a native invocation or a general fallback.
-  The transition is bounded to the pre-existing run encoded by the contract.
+- Copying tag mappings or parse rules into this skill. The JSON contract is
+  the only normalization source.
+- Inventing extra acceptance rules, such as requiring a path prefix on every
+  native line or treating a `net:` footer as malformed.
+- Skipping Ponytail on Cursor when `ponytail-review` is already loaded, or
+  treating a missing optional Cursor skill as unavailable.
+- Encoding a loaded Cursor `ponytail-review` skill as unavailable required
+  coverage so the aggregate cannot be clean. Invoke it. Unavailable is for a
+  required host with a missing skill, or an unknown host.
 - Calling a nonzero violation-reporting exit unavailable. It completed when it
   produced trustworthy diagnostics.
 - Returning clean after truncated output, partial scope, unknown

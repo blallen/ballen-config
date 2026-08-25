@@ -87,15 +87,13 @@ scope, or authorize remediation.
 ### Finding normalization
 
 Normalize concrete Ponytail observations into the common v1 finding shape
-owned by `review-project-quality`:
-
-| Ponytail tag | Common rule | Default severity |
-| --- | --- | --- |
-| `delete` | `ponytail/delete` | actionable |
-| `stdlib` | `ponytail/stdlib` | actionable |
-| `native` | `ponytail/native` | actionable |
-| `yagni` | `ponytail/yagni` | actionable |
-| `shrink` | `ponytail/shrink` | advisory |
+owned by `review-project-quality`. The machine-readable mapping in
+`assistants/shared/skills/review-project-quality/references/ponytail-review-v1.json`
+is the only source for tags, `parse` rules, `finding_identity`, and
+`forbidden_skills`. Envelope `reviewer` remains `review-project-quality`;
+category is `simplicity`; contributors are only that specialist; and
+`source_severity` is the Ponytail tag. Persist `path` plus location
+`{start_line, end_line}`.
 
 Each accepted observation requires a repository-relative changed path, a tight
 line location when available, concrete evidence, and a bounded replacement or
@@ -114,23 +112,21 @@ only when the common contract's exact semantic-match rule holds.
 ### Availability and integrity
 
 Ponytail is required when the active host exposes native Claude Code or Codex
-plugin support. A missing `ponytail-review` skill produces unavailable quality
-coverage and prevents a clean aggregate verdict. Cursor, which has no declared
-Ponytail plugin target, records the sub-pass as evidence-backed not applicable.
+plugin support. A missing required `ponytail-review` skill produces
+unavailable quality coverage and prevents a clean aggregate verdict. Cursor
+does not receive Ponytail through plugin desired state. If `ponytail-review`
+is already loaded there, invoke it once; if it is missing, skip the sub-pass
+without failing the review.
 
 Malformed or unbounded Ponytail output produces incomplete quality coverage;
 it is never interpreted optimistically. Scope drift after the pass blocks the
 quality result under the existing revalidation rule.
 
-This already-running migration task began before the Codex plugin could be
-loaded. For this one review batch, use the exact published `ponytail-review`
-skill contract from Ponytail commit
-`16f29800fd2681bdf24f3eb4ccffe38be3baec6b` as bounded reviewer instructions. <!-- pragma: allowlist secret -->
-Record a required, completed, changed-scope coverage check named
-`ponytail-review-published-contract`; the distinct check name preserves
-transition provenance without adding a skip or claiming a native invocation.
-Subsequent tasks use the managed native plugin after ordinary bootstrap and
-restart.
+Native `ponytail-review` is the only production path on Claude Code and Codex.
+A missing required skill is unavailable. There is no published-contract
+bypass. Parse native output, finding identity, and forbidden sibling skills
+from `references/ponytail-review-v1.json` only. The envelope reviewer remains
+`review-project-quality`; Ponytail is never a fifth artifact reviewer.
 
 ## Verification
 
@@ -141,7 +137,8 @@ Focused tests prove:
 - already installed native entries remain no-ops;
 - Cursor projections remain unchanged;
 - quality-review instructions require one immutable-scope Ponytail pass;
-- every Ponytail tag has the specified normalized rule and severity;
+- the quality contract freezes parse rules, finding identity, and forbidden
+  sibling skills, with no published-contract bypass;
 - lean, unavailable, malformed, out-of-scope, and scope-drift outcomes retain
   their correct coverage effects; and
 - the self-review v1 example and four-reviewer artifact contract are unchanged.
