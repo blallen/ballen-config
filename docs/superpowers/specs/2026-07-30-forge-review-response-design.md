@@ -16,6 +16,32 @@ Its scope, standards, specialist-review, self-review, and remediation contracts
 are available inputs to this train without becoming mandatory dependencies for
 every remote review.
 
+## Implementation checkpoint
+
+The seven capability changes are implemented as a stacked Jujutsu train. Each
+bookmark is an independent MR boundary; the current working copy is empty:
+
+| Capability | Bookmark | Head |
+| --- | --- | --- |
+| GitHub local draft | `forge-review-github-draft` | `cbdbfeb9` |
+| GitHub publication | `forge-review-github-publish` | `567f0759` |
+| Response preparation | `forge-review-prepare-response` | `f3c356e8` |
+| GitHub response | `forge-review-github-response` | `199cbe5d` |
+| GitLab local draft | `forge-review-gitlab-draft` | `c20835c7` |
+| GitLab publication | `forge-review-gitlab-publish` | `35102cc6` |
+| GitLab response | `forge-review-gitlab-response` | `3ab8ea2d` |
+
+The stable managed source is `assistants/shared/tools/review/`, installed at
+`~/.local/share/ballen-config/review-tools/`. Its commands are
+`review-plan`, `publish-github-review`, and `publish-gitlab-review`.
+
+Local evidence is complete: the full repository test suite, root mypy, nested
+tool mypy, lock validation, launcher syntax, and all pre-commit hooks pass.
+GitLab-native contract and transport tests pass. Live GitHub publication or
+response and live GitLab writes were intentionally skipped because they require
+separate approval of a current safe target; no receipts, drafts, or provider
+transcripts are committed.
+
 ## Purpose
 
 Promote the reusable behavior in Plato's merge-request review and response
