@@ -130,12 +130,14 @@ def test_core_manual_actions_gate_gitlab_and_aws(
         "it-managed-applications",
     ]
     assert [action.component_id for action in contributor.actions(wsh)] == default_ids
-    assert "gitlab-auth" in {
-        action.component_id for action in contributor.actions(with_glab)
-    }
-    assert [action.component_id for action in contributor.actions(fsp)][
-        -1
-    ] == "aws-auth"
+    assert [action.component_id for action in contributor.actions(with_glab)] == [
+        *default_ids,
+        "gitlab-auth",
+    ]
+    assert [action.component_id for action in contributor.actions(fsp)] == [
+        *default_ids,
+        "aws-auth",
+    ]
 
 
 def test_duplicate_plan_action_component_id_fails_closed(
