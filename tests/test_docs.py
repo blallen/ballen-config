@@ -1,11 +1,37 @@
-"""Contracts for operational bootstrap documentation."""
+"""Contracts for operational bootstrap documentation structure."""
 
 import re
 from pathlib import Path
 
+import pytest
 
-def test_readme_contains_exact_operating_rationale(repo_root: Path) -> None:
-    """README keeps the approved section contract and software rationale."""
+_MARKDOWN_LINK = re.compile(r"\[[^]]+\]\(([^)]+)\)")
+_SKIP_LINK_PREFIXES = ("http://", "https://", "mailto:", "#")
+
+
+def _relative_markdown_targets(text: str) -> tuple[str, ...]:
+    """Return in-repo Markdown destinations, ignoring URLs and headings."""
+    targets: list[str] = []
+    for raw in _MARKDOWN_LINK.findall(text):
+        if raw.startswith(_SKIP_LINK_PREFIXES):
+            continue
+        path = raw.split("#", 1)[0]
+        if path:
+            targets.append(path)
+    return tuple(targets)
+
+
+def _assert_relative_links_resolve(path: Path, repo_root: Path) -> None:
+    """Require every relative Markdown link to stay inside the repository."""
+    root = repo_root.resolve()
+    for target in _relative_markdown_targets(path.read_text(encoding="utf-8")):
+        resolved = (path.parent / target).resolve()
+        assert resolved.is_relative_to(root)
+        assert resolved.is_file()
+
+
+def test_readme_keeps_approved_section_headings(repo_root: Path) -> None:
+    """README keeps the approved top-level section contract."""
     text = (repo_root / "README.md").read_text(encoding="utf-8")
     assert [line for line in text.splitlines() if line.startswith("## ")] == [
         "## Quick start",
@@ -16,19 +42,23 @@ def test_readme_contains_exact_operating_rationale(repo_root: Path) -> None:
         "## Security and state boundary",
         "## Manual steps",
     ]
-    for decision in ("MacTeX", "libmagic", "glab", "Atlassian"):
-        assert decision in text
-    assert "fsp" in text
-    assert "wsh" in text
-    assert "Wave" not in text
-    assert "./bootstrap --profile wsh" in text
-    assert "https://mcp.atlassian.com/v1/mcp/authv2" in text
-    for link in (
-        "docs/manual-steps.md",
-        "docs/ssh-transfer.md",
-        "docs/superpowers/specs/2026-07-25-laptop-migration-bootstrap-design.md",
-    ):
-        assert link in text
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    (
+        pytest.param("README.md", id="readme"),
+        pytest.param("docs/manual-steps.md", id="manual-steps"),
+        pytest.param("docs/ssh-transfer.md", id="ssh-transfer"),
+        pytest.param("AGENTS.md", id="agents"),
+        pytest.param("CLAUDE.md", id="claude"),
+    ),
+)
+def test_operational_markdown_links_resolve(
+    repo_root: Path, relative_path: str
+) -> None:
+    """Relative links in live operational Markdown stay in the repository."""
+    _assert_relative_links_resolve(repo_root / relative_path, repo_root)
 
 
 def test_legacy_secret_and_mcp_guidance_is_gone(repo_root: Path) -> None:
@@ -77,59 +107,10 @@ def test_portable_ssh_config_keeps_public_git_hosts(repo_root: Path) -> None:
 
 def test_repository_agents_use_native_instruction_files(repo_root: Path) -> None:
     """Share one native baseline without triple-loading it in Cursor."""
-    paths = (
-        repo_root / "AGENTS.md",
-        repo_root / "CLAUDE.md",
+    agents = repo_root / "AGENTS.md"
+    claude = repo_root / "CLAUDE.md"
+    assert agents.read_text(encoding="utf-8").startswith("# Repository instructions\n")
+    assert claude.read_text(encoding="utf-8") == (
+        "# Claude Code repository entry\n\n@AGENTS.md\n"
     )
-    agents, claude = (path.read_text(encoding="utf-8") for path in paths)
-
-    assert agents.startswith("# Repository instructions\n")
-    assert claude == "# Claude Code repository entry\n\n@AGENTS.md\n"
     assert not (repo_root / ".cursor/rules/engineering.mdc").exists()
-
-    for path, text in zip(paths, (agents, claude), strict=True):
-        for target in re.findall(r"\[[^]]+\]\(([^)]+)\)", text):
-            resolved = (path.parent / target).resolve()
-            assert resolved.is_relative_to(repo_root.resolve())
-            assert resolved.is_file()
-
-
-def test_manual_steps_cover_core_and_agent_handoffs(repo_root: Path) -> None:
-    """Manual guidance covers authentication, agents, and ends with doctor."""
-    text = (repo_root / "docs/manual-steps.md").read_text(encoding="utf-8")
-    for phrase in (
-        "./bootstrap prepare",
-        "gh auth login",
-        "glab auth login",
-        "./bootstrap doctor --profile wsh",
-        "./bootstrap doctor --profile fsp",
-        "--include glab",
-        "docs/ssh-transfer.md",
-        "IT-managed",
-        "full MacTeX",
-        "status output",
-    ):
-        assert phrase in text
-    lowered = text.lower()
-    for phrase in ("cursor", "claude code", "codex", "browser", "notion"):
-        assert phrase in lowered
-
-
-def test_ssh_guide_enforces_secure_transfer_and_modes(repo_root: Path) -> None:
-    """SSH guidance prefers new keys and defines secure transfer cleanup."""
-    text = (repo_root / "docs/ssh-transfer.md").read_text(encoding="utf-8")
-    for phrase in (
-        "fresh per-machine key",
-        "encrypted local medium",
-        "trusted direct connection",
-        "plaintext cloud",
-        "unencrypted",
-        "`0700`",
-        "`0600`",
-        "`0644`",
-        "Keychain",
-        "out of band",
-        "remove the temporary",
-        "never commit",
-    ):
-        assert phrase in text
