@@ -3,10 +3,10 @@
 1. Complete any Command Line Tools or Homebrew prompt from `prepare`, then run
    `./bootstrap prepare` again.
 2. Authenticate GitHub with `gh auth login`. Authenticate GitLab with
-   `glab auth login` when you need GitLab remotes. Authentication status output
-   is diagnostic and is not committed to this repository.
-3. For the work profile, complete the organization's AWS sign-in flow. Verify
-   it only through `./bootstrap doctor --profile work`; do not copy identity or
+   `glab auth login` only when you used `--include glab`. Authentication
+   status output is diagnostic and is not committed to this repository.
+3. For the `fsp` profile, complete the organization's AWS sign-in flow. Verify
+   it only through `./bootstrap doctor --profile fsp`; do not copy identity or
    credential output into Git.
 4. Follow the [SSH transfer guide](ssh-transfer.md) in
    `docs/ssh-transfer.md` for any SSH key work.
@@ -34,12 +34,12 @@
 11. Enable each enabled agent's first-party browser capability and authorize
     the official Notion integration when needed. Prefer one Notion connector:
     use a team install when it opens the right workspace; otherwise keep a
-    user install and remove the duplicate. For work-profile Cursor, complete
-    OAuth for the reviewed Atlassian HTTP compatibility entry when prompted.
-    The bootstrap manages only its secret-free endpoint; do not add Playwright
-    or GitLab servers to that file.
+    user install and remove the duplicate. For `fsp` Cursor, complete OAuth for
+    the reviewed Atlassian HTTP compatibility entry when prompted. The bootstrap
+    manages only its secret-free endpoint; do not add Playwright or GitLab
+    servers to that file.
 12. Do not manually install the abandoned experimental marketplace setup; it is
     not part of desired state.
-13. Finish with `./bootstrap doctor --profile work`, or use
-    `./bootstrap doctor --profile default` for the default profile. Resolve only
+13. Finish with `./bootstrap doctor --profile wsh`, `./bootstrap doctor
+    --profile fsp`, or `./bootstrap doctor --profile default`. Resolve only
     the normalized manual findings.

@@ -446,16 +446,15 @@ def test_identical_destination_is_a_no_op(
     destination = temporary_home / ".cursor/skills/example-skill"
     destination.parent.mkdir(parents=True)
     shutil.copytree(source_skill, destination)
-    assert (
-        plan_skill_copies(
-            source=source_skill,
-            name="example-skill",
-            targets=(AgentName.CURSOR,),
-            home=temporary_home,
-            state=BootstrapState(),
-        )
-        == ()
+    actions = plan_skill_copies(
+        source=source_skill,
+        name="example-skill",
+        targets=(AgentName.CURSOR,),
+        home=temporary_home,
+        state=BootstrapState(),
     )
+    assert len(actions) == 1
+    assert actions[0].state == "unchanged"
 
 
 def test_clean_managed_destination_is_an_update(

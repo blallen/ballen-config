@@ -390,7 +390,7 @@ def test_orchestrator_rejects_every_runtime_path_difference(
     "changed_request",
     [
         pytest.param(
-            ResolutionRequest(profile="work"),
+            ResolutionRequest(profile="wsh"),
             id="profiles",
         ),
         pytest.param(

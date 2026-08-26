@@ -349,7 +349,7 @@ def test_prepared_plan_preserves_original_arguments_without_sync(
         root,
         "plan",
         "--profile",
-        "work",
+        "wsh",
         "--include",
         "signal",
         "--skip",
@@ -361,7 +361,7 @@ def test_prepared_plan_preserves_original_arguments_without_sync(
     command_log = read_command_log(fake_stage_zero_tools)
     assert (
         "uv run --frozen --no-sync python -m ballen_config "
-        "plan --profile work --include signal --skip cursor"
+        "plan --profile wsh --include signal --skip cursor"
     ) in command_log
     assert "uv sync " not in command_log
 

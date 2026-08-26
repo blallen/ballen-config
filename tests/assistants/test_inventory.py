@@ -256,7 +256,7 @@ class RecordingPlanContributor:
     def actions(self, resolved: ResolvedSetup) -> tuple[PlanAction, ...]:
         """Record one call and assert the whole-agent skip is resolved."""
         self.calls["plan"] += 1
-        assert "work" in resolved.profiles
+        assert "wsh" in resolved.profiles
         assert resolved.skipped == ("codex",)
         assert not resolved.is_enabled("codex")
         return ()
@@ -272,7 +272,7 @@ def test_core_invokes_each_supplier_once_with_resolved_skip(
     home = isolated_environment.resolve()
     fake_runner.satisfy_core_commands()
     resolved = ManifestRepository.load(repo_root / "manifests").resolve(
-        ResolutionRequest(profile="work", skips=("codex",))
+        ResolutionRequest(profile="wsh", skips=("codex",))
     )
     for component in resolved.components:
         if component.manager is Manager.GIT:
@@ -287,7 +287,7 @@ def test_core_invokes_each_supplier_once_with_resolved_skip(
             fake_runner.add_uv_tool(component.package)
 
     def assert_setup(setup: ResolvedSetup) -> None:
-        assert "work" in setup.profiles
+        assert "wsh" in setup.profiles
         assert setup.skipped == ("codex",)
         assert not setup.is_enabled("codex")
 
@@ -331,7 +331,7 @@ def test_core_invokes_each_supplier_once_with_resolved_skip(
         assert runner is fake_runner
         return ()
 
-    arguments = ("--profile", "work", "--skip", "codex")
+    arguments = ("--profile", "wsh", "--skip", "codex")
     plan_contributor: PlanContributor = RecordingPlanContributor(calls)
     install_supplier: InstallActionSupplier = installs
     configuration_supplier = cast(ConfigurationSupplier, configuration)
