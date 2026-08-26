@@ -145,7 +145,8 @@ def test_run_configure_prunes_owned_file_that_left_the_plan(
     assert extra_path.exists() is False
     assert "extra" not in engine(config_paths).state_store.load().managed
     assert any(
-        action.id == "extra" and action.outcome == "removed" for action in report.actions
+        action.id == "extra" and action.outcome == "removed"
+        for action in report.actions
     )
 
 
@@ -163,8 +164,7 @@ def test_prune_skips_when_destination_digest_no_longer_matches(
     assert extra_path.read_bytes() == b"user edited\n"
     assert "extra" in engine(config_paths).state_store.load().managed
     assert all(
-        action.id != "extra" or action.outcome != "removed"
-        for action in report.actions
+        action.id != "extra" or action.outcome != "removed" for action in report.actions
     )
 
 
