@@ -82,7 +82,7 @@ def test_plan_preserves_install_order_and_redacts_native_values(
     assert [action.component_id for action in plan.actions[: len(expected)]] == expected
     output = format_plan(plan)
     assert "install gh (owner=bootstrap): present" in output
-    assert "install glab (owner=bootstrap): install" in output
+    assert "install glab" not in output
     assert "~/.config/example/settings.json" in output
     assert "prompt: confirm package and configuration changes" in output
     assert "glpat-secret-value" not in output
