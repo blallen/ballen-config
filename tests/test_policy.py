@@ -432,6 +432,8 @@ def test_ci_runs_complete_pre_commit_contract(repo_root: Path) -> None:
     """CI executes every repository hook instead of a hand-maintained subset."""
     workflow = (repo_root / ".github/workflows/ci.yml").read_text()
     assert "run: uv run --frozen pre-commit run --all-files" in workflow
+    assert "./bootstrap plan --profile wsh" in workflow
+    assert "--profile work" not in workflow
 
 
 def test_jj_config_defines_no_unsafe_global_content_transformers(

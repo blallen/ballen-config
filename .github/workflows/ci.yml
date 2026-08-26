@@ -38,5 +38,5 @@ jobs:
           /usr/bin/shasum -a 256 uv.lock | /usr/bin/awk '{print $1}' > .venv/.ballen-config-lock.sha256
           /bin/chmod 0600 .venv/.ballen-config-lock.sha256
 
-      - name: Validate prepared work plan
-        run: ./bootstrap plan --profile work
+      - name: Validate prepared wsh plan
+        run: ./bootstrap plan --profile wsh
