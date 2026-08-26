@@ -79,12 +79,11 @@ def run_with_assistants(
         Result returned by the production core CLI function.
     """
     runner.satisfy_core_commands()
+    profile = "default"
+    if "--profile" in arguments:
+        profile = arguments[arguments.index("--profile") + 1]
     resolved = ManifestRepository.load(repo_root / "manifests").resolve(
-        ResolutionRequest(
-            profile="work"
-            if "--profile" in arguments and "work" in arguments
-            else "default"
-        )
+        ResolutionRequest(profile=profile)
     )
     for component in resolved.components:
         if component.manager is Manager.GIT:
@@ -616,7 +615,7 @@ def test_work_all_converges_native_resources_and_skips_codex(
     )
 
     result = run_with_assistants(
-        ("all", "--profile", "work", "--skip", "codex"),
+        ("all", "--profile", "wsh", "--skip", "codex"),
         repo_root=repo_root,
         home=temporary_home,
         runner=fake_runner,
@@ -626,7 +625,6 @@ def test_work_all_converges_native_resources_and_skips_codex(
     assert not (temporary_home / ".codex").exists()
     settings = json.loads((cursor / "settings.json").read_text())
     assert settings["native"] is True
-    assert "claudeCode.environmentVariables" in settings
     keybindings = json.loads((cursor / "keybindings.json").read_text())
     assert {binding["key"] for binding in keybindings} >= {"cmd+k", "cmd+i"}
     claude_settings = json.loads((claude / "settings.json").read_text())
@@ -687,7 +685,7 @@ def test_plan_redacts_native_and_secret_values(
     )
 
     result = run_with_assistants(
-        ("plan", "--profile", "work", "--skip", "codex"),
+        ("plan", "--profile", "wsh", "--skip", "codex"),
         repo_root=repo_root,
         home=temporary_home,
         runner=fake_runner,
@@ -703,18 +701,18 @@ def test_plan_redacts_native_and_secret_values(
     assert "secret" not in rendered
 
 
-def test_work_all_is_idempotent_for_agent_managed_state(
+def test_wsh_all_is_idempotent_for_agent_managed_state(
     repo_root: Path,
     temporary_home: Path,
     fake_runner: StatefulAssistantFake,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A second work run stabilizes managed resources and native install state."""
+    """A second wsh run stabilizes managed resources and native install state."""
     monkeypatch.setattr(
         "ballen_config.assistants.cursor.read_bundled_extensions",
         lambda _root: frozenset(),
     )
-    arguments = ("all", "--profile", "work", "--skip", "codex")
+    arguments = ("all", "--profile", "wsh", "--skip", "codex")
     first = run_with_assistants(
         arguments, repo_root=repo_root, home=temporary_home, runner=fake_runner
     )
@@ -863,22 +861,22 @@ def test_all_agent_skips_leave_no_assistant_plan_or_native_commands(
     assert "codex." not in rendered
 
 
-def test_default_and_work_profiles_diverge_only_in_cursor_bedrock_resources(
+def test_default_and_fsp_profiles_diverge_only_in_cursor_bedrock_resources(
     repo_root: Path, temporary_home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Only the work production path adds Cursor Bedrock configuration."""
+    """Only the fsp production path adds Cursor Bedrock configuration."""
     monkeypatch.setattr(
         "ballen_config.assistants.cursor.read_bundled_extensions",
         lambda _root: frozenset(),
     )
     default_home = temporary_home / "default"
-    work_home = temporary_home / "work"
+    fsp_home = temporary_home / "fsp"
     default_home.mkdir()
-    work_home.mkdir()
+    fsp_home.mkdir()
     default_runner = StatefulAssistantFake(default_home)
-    work_runner = StatefulAssistantFake(work_home)
+    fsp_runner = StatefulAssistantFake(fsp_home)
     default_output: list[str] = []
-    work_output: list[str] = []
+    fsp_output: list[str] = []
 
     default_result = run_with_assistants(
         ("all",),
@@ -887,48 +885,48 @@ def test_default_and_work_profiles_diverge_only_in_cursor_bedrock_resources(
         runner=default_runner,
         output=default_output,
     )
-    work_result = run_with_assistants(
-        ("all", "--profile", "work"),
+    fsp_result = run_with_assistants(
+        ("all", "--profile", "fsp"),
         repo_root=repo_root,
-        home=work_home,
-        runner=work_runner,
-        output=work_output,
+        home=fsp_home,
+        runner=fsp_runner,
+        output=fsp_output,
     )
-    assert default_result.exit_code == work_result.exit_code == 0
+    assert default_result.exit_code == fsp_result.exit_code == 0
 
     default_settings = json.loads(
         (
             default_home / "Library/Application Support/Cursor/User/settings.json"
         ).read_text()
     )
-    work_settings = json.loads(
+    fsp_settings = json.loads(
         (
-            work_home / "Library/Application Support/Cursor/User/settings.json"
+            fsp_home / "Library/Application Support/Cursor/User/settings.json"
         ).read_text()
     )
     assert "claudeCode.environmentVariables" not in default_settings
-    assert "claudeCode.environmentVariables" in work_settings
+    assert "claudeCode.environmentVariables" in fsp_settings
     default_agent_commands = [
         command
         for command in default_runner.commands
         if command[0] in {"claude", "codex"}
     ]
-    work_agent_commands = [
-        command for command in work_runner.commands if command[0] in {"claude", "codex"}
+    fsp_agent_commands = [
+        command for command in fsp_runner.commands if command[0] in {"claude", "codex"}
     ]
-    assert work_agent_commands == default_agent_commands
+    assert fsp_agent_commands == default_agent_commands
     default_agent_outcomes = [
         outcome
         for outcome in default_result.report.outcomes
         if outcome.startswith(("claude.", "codex."))
     ]
-    work_agent_outcomes = [
+    fsp_agent_outcomes = [
         outcome
-        for outcome in work_result.report.outcomes
+        for outcome in fsp_result.report.outcomes
         if outcome.startswith(("claude.", "codex."))
     ]
-    assert work_agent_outcomes == default_agent_outcomes
-    assert all("BEDROCK" not in outcome for outcome in work_result.report.outcomes)
+    assert fsp_agent_outcomes == default_agent_outcomes
+    assert all("BEDROCK" not in outcome for outcome in fsp_result.report.outcomes)
 
 
 def test_doctor_continues_after_cursor_native_inspection_failure(
@@ -998,7 +996,7 @@ def test_work_all_preserves_excluded_agent_state_bytes_and_tree_identity(
     )
 
     result = run_with_assistants(
-        ("all", "--profile", "work"),
+        ("all", "--profile", "wsh"),
         repo_root=repo_root,
         home=temporary_home,
         runner=fake_runner,
@@ -1027,7 +1025,7 @@ def test_core_install_id_collision_stops_before_mutation(
     """A supplied core-ID collision is rejected before install or state mutation."""
     fake_runner.satisfy_core_commands()
     resolved = ManifestRepository.load(repo_root / "manifests").resolve(
-        ResolutionRequest(profile="work")
+        ResolutionRequest(profile="wsh")
     )
     core_component_id = resolved.components[0].id
     state_path = (
@@ -1047,7 +1045,7 @@ def test_core_install_id_collision_stops_before_mutation(
         )
 
     result = cli.run(
-        (stage, "--profile", "work"),
+        (stage, "--profile", "wsh"),
         repo_root=repo_root,
         home=temporary_home,
         runner=fake_runner,
@@ -1069,7 +1067,7 @@ def test_core_install_id_collision_stops_before_mutation(
     "profile",
     (
         pytest.param("default", id="default"),
-        pytest.param("work", id="work"),
+        pytest.param("wsh", id="wsh"),
     ),
 )
 def test_candidate_actions_cover_every_possible_native_action(

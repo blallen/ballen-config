@@ -396,7 +396,12 @@ class ConfigurationEngine:
             outcome="removed",
         )
 
-    def _stale_records(self, specs: Sequence[ManagedSpec]) -> tuple[ManagedRecord, ...]:
+    def _stale_records(
+        self,
+        specs: Sequence[ManagedSpec],
+        *,
+        protected_resource_ids: frozenset[str] = frozenset(),
+    ) -> tuple[ManagedRecord, ...]:
         """Return owned records whose resource ids are not in the current spec set."""
         current_ids = {spec.id for spec in specs}
         state = self.state_store.load()
@@ -404,9 +409,15 @@ class ConfigurationEngine:
             record
             for resource_id, record in sorted(state.managed.items())
             if resource_id not in current_ids
+            and resource_id not in protected_resource_ids
         )
 
-    def prune_stale(self, specs: Sequence[ManagedSpec]) -> tuple[ConfigAction, ...]:
+    def prune_stale(
+        self,
+        specs: Sequence[ManagedSpec],
+        *,
+        protected_resource_ids: frozenset[str] = frozenset(),
+    ) -> tuple[ConfigAction, ...]:
         """Backup and remove owned destinations that left the current spec set.
 
         The calling thread must already own the mutation lock. Symlink destinations
@@ -417,12 +428,16 @@ class ConfigurationEngine:
 
         Args:
             specs: Specs that remain in the current configure plan.
+            protected_resource_ids: Managed resource ids to keep until rename
+                cleanup completes.
 
         Returns:
             Removal actions actually applied, in resource-id order.
         """
         applied: list[ConfigAction] = []
-        for record in self._stale_records(specs):
+        for record in self._stale_records(
+            specs, protected_resource_ids=protected_resource_ids
+        ):
             action = self._live_prune_action(record)
             if action is None:
                 continue
@@ -752,10 +767,21 @@ def run_configure(
     with engine.state_store.mutation():
         planned = engine.plan(specs)
         frozen_renames = tuple(skill_renames)
+        protected_rename_records = frozenset(
+            action.legacy_record.resource_id
+            for action in frozen_renames
+            if action.legacy_record is not None
+        )
         preflight_skill_rename_cleanups(engine, frozen_renames)
         ordered = tuple(sorted(specs, key=lambda spec: spec.id))
         applied = tuple(engine.apply(spec) for spec in ordered)
-        removed = engine.prune_stale(specs)
+        removed = (
+            engine.prune_stale(
+                specs, protected_resource_ids=protected_rename_records
+            )
+            if specs
+            else ()
+        )
         verify_skill_rename_successors(engine, frozen_renames)
         apply_skill_rename_cleanups(engine, frozen_renames)
     actions = applied + removed

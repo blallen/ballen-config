@@ -4,8 +4,9 @@ Portable, agent-friendly setup for a personal/work macOS development machine.
 
 ## Quick start
 
-Run `./bootstrap --profile work` for the work setup, or `./bootstrap` for the
-default personal development baseline.
+Run `./bootstrap --profile wsh` for the current-job setup, `./bootstrap --profile fsp`
+for the previous-job setup, or `./bootstrap` for the default personal development
+baseline.
 
 Run `prepare`, `plan`, `install`, `configure`, and `doctor` independently when
 reviewing or repairing one stage. In particular, use `./bootstrap plan` before
@@ -32,34 +33,27 @@ exceptions without weakening the safety boundary.
 
 ## Profiles
 
-`default` installs the broad portable development baseline. `work` extends it
-with AWS tooling, work-specific prerequisites, and reviewed coding-agent
-overlays. Repository-specific behavior belongs in add-ons, not the base
-profile.
-
-Repeated `--include` flags opt into personal applications such as Obsidian,
-Signal, and full MacTeX. Repeated `--skip` flags are global selections: they
-remove Cursor, Claude Code, Codex, or Wave as whole components from every
-applicable stage. For example, `./bootstrap --profile work --skip wave` keeps
-the remainder of the work profile while leaving the terminal choice unmanaged.
+`default` is the baseline. `wsh` adds current-job extra env. `fsp` adds AWS CLI,
+`libmagic`, Bedrock overlay, and Atlassian MCP. Includes: Obsidian, Signal,
+MacTeX, `glab`. Skips: Cursor, Claude Code, Codex. Example:
+`./bootstrap --profile wsh --skip codex`.
 
 ## Software choices
 
-Wave is the default terminal trial. The bootstrap does not uninstall iTerm, so
-it remains an easy fallback while Wave is evaluated.
+There is no dedicated terminal in desired state. iTerm remains an unmanaged
+fallback.
 
 The `mactex` include installs the full MacTeX distribution matching this
 laptop's TUG MacTeX/TeX Live setup, not BasicTeX. It is opt-in because the
 download and disk footprint are large.
 
-`libmagic` belongs to the work profile because it is a direct runtime
-prerequisite for repositories using `python-magic`, including Plato and code
-inherited by Avogadro. Homebrew resolves its transitive dependencies; only
-intentional formulae and casks are declared here.
+`libmagic` belongs to the `fsp` profile because it is a direct runtime
+prerequisite for repositories using `python-magic`. Homebrew resolves its
+transitive dependencies; only intentional formulae and casks are declared here.
 
-`glab` is included so GitLab authentication, merge-request work, and other
-reviewed GitLab operations use the supported CLI rather than stored tokens or
-ad hoc API scripts.
+`glab` is included with `--include glab` so GitLab authentication,
+merge-request work, and other reviewed GitLab operations use the supported CLI
+rather than stored tokens or ad hoc API scripts.
 
 ## Coding-agent portability
 
@@ -76,7 +70,7 @@ Cursor, Claude Code, and Codex adapters independently install and inspect only
 their own destinations and native identifiers. The adapters do not synchronize
 live configuration between agents or use one agent's installed files as input.
 
-Cursor uses a base settings file plus a work-only Bedrock overlay. Curated
+Cursor uses a base settings file plus an `fsp`-only Bedrock overlay. Curated
 feature extensions include Jupyter's transitive support, and the optional JJ
 Graph extension is a pinned VSIX. Claude Code and Codex use their respective
 native marketplace commands. The production Cursor marketplace and local-plugin
@@ -89,7 +83,7 @@ additions). Use each agent's first-party browser capability rather than a
 global Playwright MCP, GitHub through `gh` by default (GitLab through `glab`
 when the remote is GitLab), and official Notion integrations.
 
-The work profile has one narrow MCP exception: it manages a secret-free
+The `fsp` profile has one narrow MCP exception: it manages a secret-free
 Atlassian HTTP entry in `~/.cursor/mcp.json` because Cursor's official
 Atlassian integration is currently unreliable for this account. The reviewed
 endpoint is `https://mcp.atlassian.com/v1/mcp/authv2`; OAuth still happens on

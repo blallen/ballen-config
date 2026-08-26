@@ -46,7 +46,7 @@ def repeated_selection_arguments() -> list[str]:
     return [
         "plan",
         "--profile",
-        "work",
+        "wsh",
         "--include",
         "mactex",
         "--include",
@@ -65,7 +65,7 @@ def test_cli_accepts_stage_profile_and_repeated_selections(
     options = parse_args(repeated_selection_arguments)
 
     assert options.stage == "plan"
-    assert options.request.profile == "work"
+    assert options.request.profile == "wsh"
     assert options.request.includes == ("mactex", "signal")
     assert options.request.skips == ("cursor", "codex")
 

@@ -116,7 +116,7 @@ def test_complete_configure_flow_is_idempotent(
     assert ssh_spec.destination == Path(".ssh/config")
     assert ssh_spec.method is ApplyMethod.COPY
     assert ssh_spec.mode == 0o600
-    assert len(specs) == 8
+    assert len(specs) == 7
     assert {action.id: action.outcome for action in first_plan} == expected_outcomes
     first_report = run_configure(first_engine, specs)
     assert {

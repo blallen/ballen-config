@@ -74,7 +74,7 @@ class SkillCopyAction:
     destination: Path
     relative_destination: Path
     digest: str
-    state: Literal["create", "update", "repair"]
+    state: Literal["create", "update", "repair", "unchanged"]
     resource_id: str
     target: AgentName
 
@@ -831,6 +831,17 @@ def plan_skill_copies(
     for destination, entry in desired.items():
         destination_digest = current_digests.get(destination)
         if destination_digest == source_digest:
+            actions.append(
+                SkillCopyAction(
+                    source=source,
+                    destination=destination,
+                    relative_destination=entry.relative,
+                    digest=source_digest,
+                    state="unchanged",
+                    resource_id=entry.resource_id,
+                    target=entry.target,
+                )
+            )
             continue
         if destination_digest is None:
             action_state: Literal["create", "update", "repair"] = "create"

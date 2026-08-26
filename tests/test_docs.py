@@ -16,8 +16,12 @@ def test_readme_contains_exact_operating_rationale(repo_root: Path) -> None:
         "## Security and state boundary",
         "## Manual steps",
     ]
-    for decision in ("Wave", "MacTeX", "libmagic", "glab", "Atlassian"):
+    for decision in ("MacTeX", "libmagic", "glab", "Atlassian"):
         assert decision in text
+    assert "fsp" in text
+    assert "wsh" in text
+    assert "Wave" not in text
+    assert "./bootstrap --profile wsh" in text
     assert "https://mcp.atlassian.com/v1/mcp/authv2" in text
     for link in (
         "docs/manual-steps.md",
@@ -97,7 +101,9 @@ def test_manual_steps_cover_core_and_agent_handoffs(repo_root: Path) -> None:
         "./bootstrap prepare",
         "gh auth login",
         "glab auth login",
-        "./bootstrap doctor --profile work",
+        "./bootstrap doctor --profile wsh",
+        "./bootstrap doctor --profile fsp",
+        "--include glab",
         "docs/ssh-transfer.md",
         "IT-managed",
         "full MacTeX",
