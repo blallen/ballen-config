@@ -1,9 +1,10 @@
 profile default
-profile work
+profile fsp
+profile wsh
+include glab
 include mactex
 include obsidian
 include signal
 skip claude-code
 skip codex
 skip cursor
-skip wave
