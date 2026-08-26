@@ -16,6 +16,7 @@ from ballen_config.assistants.models import AgentName, ConcreteAgentName
 from ballen_config.assistants.skills import LegacyRenameState, SkillRenameAction
 from ballen_config.configure import (
     ApplyMethod,
+    ConfigAction,
     ConfigurationContribution,
     ConfigurationEngine,
     ConfigurationPlanContributor,
@@ -26,6 +27,7 @@ from ballen_config.configure import (
     core_validators,
     digest_tree,
     merge_configuration_contributions,
+    run_configure,
 )
 from ballen_config.models import ResolvedSetup
 from ballen_config.planning import PlanAction
@@ -104,6 +106,74 @@ def engine(
         renderers=renderers,
         validators=validators,
     )
+
+
+def owned_spec(
+    paths: RuntimePaths, spec_id: str, destination: str, payload: bytes
+) -> ManagedFileSpec:
+    """Build a copy spec with its own source path."""
+    source = paths.repo_root / spec_id
+    source.write_bytes(payload)
+    return ManagedFileSpec(
+        id=spec_id,
+        source=source,
+        destination=Path(destination),
+        method=ApplyMethod.COPY,
+        mode=0o600,
+        component="shell",
+    )
+
+
+def test_run_configure_prunes_owned_file_that_left_the_plan(
+    config_paths: RuntimePaths,
+) -> None:
+    """Owned extras disappear when their spec is no longer selected."""
+    extra = owned_spec(config_paths, "extra", ".config/extra", b"extra\n")
+    keep = owned_spec(config_paths, "keep", ".config/keep", b"keep\n")
+    subject = engine(config_paths, timestamp="first")
+    run_configure(subject, (extra, keep))
+    extra_path = config_paths.home / extra.destination
+    assert extra_path.is_file()
+    planned = engine(config_paths).plan((keep,))
+    assert extra_path.is_file()
+    assert planned[-1] == ConfigAction(
+        id="extra", destination=".config/extra", outcome="removed"
+    )
+
+    report = run_configure(engine(config_paths, timestamp="second"), (keep,))
+
+    assert extra_path.exists() is False
+    assert "extra" not in engine(config_paths).state_store.load().managed
+    assert any(
+        action.id == "extra" and action.outcome == "removed" for action in report.actions
+    )
+
+
+def test_prune_skips_when_destination_digest_no_longer_matches(
+    config_paths: RuntimePaths,
+) -> None:
+    """Hand-edited leftovers stay, and ownership remains so a later apply can update."""
+    spec = file_spec(config_paths)
+    subject = engine(config_paths)
+    run_configure(subject, (spec,))
+    destination = config_paths.home / spec.destination
+    destination.write_bytes(b"user edited\n")
+    report = run_configure(engine(config_paths, timestamp="later"), ())
+    assert destination.read_bytes() == b"user edited\n"
+    assert "example" in engine(config_paths).state_store.load().managed
+    assert all(action.id != "example" for action in report.actions)
+
+
+def test_single_spec_apply_does_not_prune_siblings(
+    config_paths: RuntimePaths,
+) -> None:
+    """Per-spec apply is not a configure stage and must not delete other owned files."""
+    extra = owned_spec(config_paths, "extra", ".config/extra", b"extra\n")
+    keep = owned_spec(config_paths, "keep", ".config/keep", b"keep\n")
+    subject = engine(config_paths)
+    run_configure(subject, (extra, keep))
+    subject.apply(keep)
+    assert (config_paths.home / extra.destination).is_file()
 
 
 def test_apply_replaces_regular_file_after_private_backup(
