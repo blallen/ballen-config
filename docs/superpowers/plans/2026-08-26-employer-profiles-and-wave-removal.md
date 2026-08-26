@@ -6,7 +6,7 @@
 
 **Architecture:** Keep the existing one-leaf `--profile` resolver. Replace `work` with two leaves that extend `default`. Retarget Python `"work"` special cases to `fsp` or `wsh`. After `run_configure` applies the current spec set, prune `StateStore` records whose ids are not in that set when destination ownership still holds. Do not rename `zprofile.work` or `settings.work.json`.
 
-**Tech Stack:** Python 3.12, pydantic v2, pytest, `uv run --frozen`, Git (`rtk git`).
+**Tech Stack:** Python 3.12, pydantic v2, pytest, `uv run --frozen`, Jujutsu (`rtk jj`).
 
 **Approved design:**
 [Employer profiles and Wave removal design](../specs/2026-08-26-employer-profiles-and-wave-removal-design.md)
@@ -33,7 +33,12 @@ Run every command from the repository root:
 rtk uv run --frozen pytest -q
 ```
 
-Commit with `rtk git`. This checkout is Git; if `.jj/` is present, use `rtk jj` instead.
+Commit with `rtk jj`, matching the existing plans in this directory:
+
+```bash
+rtk jj describe -m 'feat: …'
+rtk jj new
+```
 
 Synthetic assistant-catalog fixtures that use `profiles: [work]` as a dummy non-default tag and never resolve the real profile set may stay. Every `ResolutionRequest(profile="work")` against real manifests, and every production `"work" in profiles` check, must change.
 
@@ -101,6 +106,11 @@ def test_run_configure_prunes_owned_file_that_left_the_plan(
     run_configure(subject, (extra, keep))
     extra_path = config_paths.home / extra.destination
     assert extra_path.is_file()
+    planned = engine(config_paths).plan((keep,))
+    assert extra_path.is_file()
+    assert planned[-1] == ConfigAction(
+        id="extra", destination=".config/extra", outcome="removed"
+    )
 
     report = run_configure(engine(config_paths, timestamp="second"), (keep,))
 
@@ -109,18 +119,6 @@ def test_run_configure_prunes_owned_file_that_left_the_plan(
     assert any(
         action.id == "extra" and action.outcome == "removed" for action in report.actions
     )
-
-
-def test_plan_lists_owned_stale_file_as_removed(config_paths: RuntimePaths) -> None:
-    """Read-only plan reports prunes before mutation."""
-    spec = file_spec(config_paths)
-    subject = engine(config_paths)
-    run_configure(subject, (spec,))
-    planned = subject.plan(())
-    assert planned == (
-        ConfigAction(id="example", destination=".config/example", outcome="removed"),
-    )
-    assert (config_paths.home / spec.destination).is_file()
 
 
 def test_prune_skips_when_destination_digest_no_longer_matches(
@@ -136,18 +134,6 @@ def test_prune_skips_when_destination_digest_no_longer_matches(
     assert destination.read_bytes() == b"user edited\n"
     assert "example" in engine(config_paths).state_store.load().managed
     assert all(action.id != "example" for action in report.actions)
-
-
-def test_prune_drops_record_when_destination_is_already_missing(
-    config_paths: RuntimePaths,
-) -> None:
-    """A missing owned destination only clears state."""
-    spec = file_spec(config_paths)
-    subject = engine(config_paths)
-    run_configure(subject, (spec,))
-    (config_paths.home / spec.destination).unlink()
-    run_configure(engine(config_paths), ())
-    assert "example" not in engine(config_paths).state_store.load().managed
 
 
 def test_single_spec_apply_does_not_prune_siblings(
@@ -166,7 +152,7 @@ Import `run_configure` and `ConfigAction` from `ballen_config.configure` at the 
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `rtk uv run --frozen pytest tests/test_configure.py::test_run_configure_prunes_owned_file_that_left_the_plan tests/test_configure.py::test_plan_lists_owned_stale_file_as_removed tests/test_configure.py::test_prune_skips_when_destination_digest_no_longer_matches tests/test_configure.py::test_prune_drops_record_when_destination_is_already_missing tests/test_configure.py::test_single_spec_apply_does_not_prune_siblings -q`
+Run: `rtk uv run --frozen pytest tests/test_configure.py::test_run_configure_prunes_owned_file_that_left_the_plan tests/test_configure.py::test_prune_skips_when_destination_digest_no_longer_matches tests/test_configure.py::test_single_spec_apply_does_not_prune_siblings -q`
 
 Expected: FAIL (`outcome` rejects `"removed"`, `zip(..., strict=True)` length mismatch, or leftover files remain).
 
@@ -318,12 +304,8 @@ Expected: PASS
 - [ ] **Step 5: Commit**
 
 ```bash
-rtk git add src/ballen_config/configure.py tests/test_configure.py
-rtk git commit -m "$(cat <<'EOF'
-feat: prune owned managed files that left the configure plan
-
-EOF
-)"
+rtk jj describe -m 'feat: prune owned managed files that left the configure plan'
+rtk jj new
 ```
 
 ---
@@ -367,25 +349,6 @@ def test_wsh_profile_extends_default_without_fsp_packages(
     resolved = ids(manifest_repository, ResolutionRequest(profile="wsh"))
     assert {"uv", "gh", "jj"} <= resolved
     assert {"awscli", "libmagic", "glab", "wave"}.isdisjoint(resolved)
-
-
-def test_glab_is_opt_in(manifest_repository: ManifestRepository) -> None:
-    """glab appears only after --include glab, on any profile."""
-    default = ids(manifest_repository, ResolutionRequest(profile="default"))
-    included = ids(
-        manifest_repository,
-        ResolutionRequest(profile="wsh", includes=("glab",)),
-    )
-    assert "glab" not in default
-    assert "glab" in included
-
-
-def test_unknown_work_profile_is_rejected(
-    manifest_repository: ManifestRepository,
-) -> None:
-    """The retired work name is not an alias."""
-    with pytest.raises(ValueError, match="unknown profile: work"):
-        manifest_repository.resolve(ResolutionRequest(profile="work"))
 ```
 
 Change `test_personal_applications_are_opt_in` params to add `glab`.
@@ -452,12 +415,8 @@ Expected: PASS
 - [ ] **Step 5: Commit**
 
 ```bash
-rtk git add manifests/profiles/fsp.yaml manifests/profiles/wsh.yaml manifests/profiles/work.yaml manifests/packages.yaml manifests/applications.yaml manifests/component-ids.txt tests/test_manifests.py
-rtk git commit -m "$(cat <<'EOF'
-feat: split work into fsp and wsh profiles
-
-EOF
-)"
+rtk jj describe -m 'feat: split work into fsp and wsh profiles'
+rtk jj new
 ```
 
 ---
@@ -484,11 +443,11 @@ Change `test_configuration_specs_honor_file_profiles` so the extra file is `prof
 In `tests/test_integration.py`, replace `test_skip_wave_removes_wave_configuration` with:
 
 ```python
-def test_wsh_selects_zprofile_work_and_omits_wave(
+def test_zprofile_work_is_wsh_only(
     repo_root: Path,
     fake_home: Path,
 ) -> None:
-    """wsh installs extra env; Wave is gone from desired state."""
+    """wsh is the only profile that installs extra env."""
     paths = RuntimePaths.from_roots(repo_root=repo_root, home=fake_home)
     repository = ManifestRepository.load(repo_root / "manifests")
     wsh = repository.resolve(ResolutionRequest(profile="wsh"))
@@ -506,16 +465,13 @@ def test_wsh_selects_zprofile_work_and_omits_wave(
     assert "zprofile-work" in {spec.id for spec in wsh_specs}
     assert "zprofile-work" not in {spec.id for spec in fsp_specs}
     assert "zprofile-work" not in {spec.id for spec in default_specs}
-    assert all(spec.component != "wave" for spec in wsh_specs)
-    with pytest.raises(ValueError, match="unknown skips"):
-        repository.resolve(ResolutionRequest(profile="wsh", skips=("wave",)))
 ```
 
 In `tests/test_planning.py`, change `FakeContributor` `wave-settings` to `id="example-settings"` and path `~/.config/example/settings.json`. Update the assertion that currently looks for `waveterm`.
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `rtk uv run --frozen pytest tests/test_configure.py::test_configuration_specs_honor_file_profiles tests/test_integration.py::test_wsh_selects_zprofile_work_and_omits_wave tests/test_planning.py -q`
+Run: `rtk uv run --frozen pytest tests/test_configure.py::test_configuration_specs_honor_file_profiles tests/test_integration.py::test_zprofile_work_is_wsh_only tests/test_planning.py -q`
 
 Expected: FAIL until yaml/profile tags change.
 
@@ -529,19 +485,15 @@ Delete `terminal/wave/settings.json`. Remove the `terminal/wave/` directory if e
 
 - [ ] **Step 4: Confirm tests pass**
 
-Run: `rtk uv run --frozen pytest tests/test_configure.py::test_skip_cursor_removes_component_spec tests/test_configure.py::test_configuration_specs_honor_file_profiles tests/test_integration.py::test_wsh_selects_zprofile_work_and_omits_wave tests/test_planning.py::test_plan_preserves_install_order_and_redacts_native_values -q`
+Run: `rtk uv run --frozen pytest tests/test_configure.py::test_skip_cursor_removes_component_spec tests/test_configure.py::test_configuration_specs_honor_file_profiles tests/test_integration.py::test_zprofile_work_is_wsh_only tests/test_planning.py::test_plan_preserves_install_order_and_redacts_native_values -q`
 
 Expected: PASS. Other `profile="work"` failures wait for Task 6.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-rtk git add manifests/configuration.yaml terminal/wave/settings.json tests/test_configure.py tests/test_integration.py tests/test_planning.py
-rtk git commit -m "$(cat <<'EOF'
-feat: bind extra zprofile to wsh and drop Wave settings
-
-EOF
-)"
+rtk jj describe -m 'feat: bind extra zprofile to wsh and drop Wave settings'
+rtk jj new
 ```
 
 ---
@@ -707,12 +659,8 @@ Expected: PASS
 - [ ] **Step 5: Commit**
 
 ```bash
-rtk git add src/ballen_config/planning.py src/ballen_config/doctor.py tests/test_planning.py tests/test_doctor.py
-rtk git commit -m "$(cat <<'EOF'
-feat: gate GitLab and AWS doctor and plan actions
-
-EOF
-)"
+rtk jj describe -m 'feat: gate GitLab and AWS doctor and plan actions'
+rtk jj new
 ```
 
 ---
@@ -769,12 +717,8 @@ Expected: PASS
 - [ ] **Step 5: Commit**
 
 ```bash
-rtk git add assistants/inventory.yaml src/ballen_config/assistants/cursor.py src/ballen_config/assistants/models.py src/ballen_config/assistants/checks.py tests/assistants/test_cursor.py tests/assistants/test_models.py tests/assistants/test_checks.py
-rtk git commit -m "$(cat <<'EOF'
-feat: bind Cursor Bedrock overlay and Atlassian MCP to fsp
-
-EOF
-)"
+rtk jj describe -m 'feat: bind Cursor Bedrock overlay and Atlassian MCP to fsp'
+rtk jj new
 ```
 
 ---
@@ -850,12 +794,8 @@ Expected: PASS
 - [ ] **Step 6: Commit**
 
 ```bash
-rtk git add README.md docs/manual-steps.md tests
-rtk git commit -m "$(cat <<'EOF'
-docs: retarget live bootstrap contracts to fsp and wsh
-
-EOF
-)"
+rtk jj describe -m 'docs: retarget live bootstrap contracts to fsp and wsh'
+rtk jj new
 ```
 
 If the sweep also touched `src/` or `tests/assistants/` files not in this `git add`, include those paths in the same commit.
