@@ -135,7 +135,7 @@ class ConfigAction(BaseModel):
 
     id: str
     destination: str
-    outcome: Literal["created", "updated", "unchanged"]
+    outcome: Literal["created", "updated", "unchanged", "removed"]
 
 
 class ConfigureStageReport(BaseModel):
@@ -355,7 +355,96 @@ class ConfigurationEngine:
         ordered = tuple(sorted(specs, key=lambda spec: spec.id))
         for spec in ordered:
             self._validate(spec)
-        return tuple(self._action(spec) for spec in ordered)
+        actions = tuple(self._action(spec) for spec in ordered)
+        prunes = tuple(
+            action
+            for record in self._stale_records(specs)
+            if (action := self._live_prune_action(record)) is not None
+        )
+        return actions + prunes
+
+    def _live_prune_action(self, record: ManagedRecord) -> ConfigAction | None:
+        """Return a removal action when ownership still holds, else None."""
+        destination = assert_contained(
+            self.paths.home / record.destination, self.paths.home
+        )
+        try:
+            metadata = os.lstat(destination)
+        except FileNotFoundError:
+            return ConfigAction(
+                id=record.resource_id,
+                destination=record.destination,
+                outcome="removed",
+            )
+        if stat.S_ISLNK(metadata.st_mode):
+            return ConfigAction(
+                id=record.resource_id,
+                destination=record.destination,
+                outcome="removed",
+            )
+        if stat.S_ISREG(metadata.st_mode):
+            digest = hashlib.sha256(destination.read_bytes()).hexdigest()
+        elif stat.S_ISDIR(metadata.st_mode):
+            digest = digest_tree(destination)
+        else:
+            raise ValueError(f"unsupported destination type: {destination}")
+        if digest != record.destination_digest:
+            return None
+        return ConfigAction(
+            id=record.resource_id,
+            destination=record.destination,
+            outcome="removed",
+        )
+
+    def _stale_records(self, specs: Sequence[ManagedSpec]) -> tuple[ManagedRecord, ...]:
+        """Return owned records whose resource ids are not in the current spec set."""
+        current_ids = {spec.id for spec in specs}
+        state = self.state_store.load()
+        return tuple(
+            record
+            for resource_id, record in sorted(state.managed.items())
+            if resource_id not in current_ids
+        )
+
+    def prune_stale(self, specs: Sequence[ManagedSpec]) -> tuple[ConfigAction, ...]:
+        """Backup and remove owned destinations that left the current spec set.
+
+        The calling thread must already own the mutation lock. Symlink destinations
+        are treated as owned when the link still exists, matching ``_record`` which
+        stores ``source_digest`` as ``destination_digest`` for symlinks. Digest
+        mismatch leaves the file and the record. ``compare_and_remove`` failure
+        restores the backup and raises.
+
+        Args:
+            specs: Specs that remain in the current configure plan.
+
+        Returns:
+            Removal actions actually applied, in resource-id order.
+        """
+        applied: list[ConfigAction] = []
+        for record in self._stale_records(specs):
+            action = self._live_prune_action(record)
+            if action is None:
+                continue
+            destination = assert_contained(
+                self.paths.home / record.destination, self.paths.home
+            )
+            backup: Path | None = None
+            try:
+                if os.path.lexists(destination):
+                    backup = self.backup_managed_destination(destination)
+                    if os.path.lexists(destination):
+                        if destination.is_dir() and not destination.is_symlink():
+                            shutil.rmtree(destination)
+                        else:
+                            destination.unlink()
+                if not self.state_store.compare_and_remove(record):
+                    raise ValueError("stale managed record changed")
+            except Exception:
+                self.restore_managed_destination(backup, destination)
+                raise
+            applied.append(action)
+        return tuple(applied)
 
     def _private_parent(self, path: Path) -> None:
         assert_contained(path, self.paths.home)
@@ -629,12 +718,13 @@ def run_configure(
 
     Under the state-store mutation lock, work proceeds in this exact order:
     (1) validate/plan all managed specs, (2) globally preflight frozen rename
-    actions, (3) apply managed specs, (4) globally verify all successors, and
-    (5) clean legacy actions. Steps 2, 4, and 5 span every action, so rename
-    cleanup is all-or-nothing. Managed specs are not: each spec rolls its own
-    destination back on failure, and a spec that fails leaves the specs already
-    applied in place. The lock is acquired blocking and reentrantly, so a
-    competing process waits rather than failing.
+    actions, (3) apply managed specs, (4) prune stale owned destinations,
+    (5) globally verify all successors, and (6) clean legacy actions. Steps 2,
+    5, and 6 span every action, so rename cleanup is all-or-nothing. Managed
+    specs are not: each spec rolls its own destination back on failure, and a
+    spec that fails leaves the specs already applied in place. The lock is
+    acquired blocking and reentrantly, so a competing process waits rather than
+    failing.
 
     Args:
         engine: Configuration engine that owns paths, state, and the mutation lock.
@@ -643,8 +733,8 @@ def run_configure(
             Actions must be in clean, exact-live, or exact-stale legacy states.
 
     Returns:
-        Deterministic applied-spec actions and their changed count. Rename cleanup
-        actions are intentionally not included.
+        Deterministic applied-spec and prune actions and their changed count.
+        Rename cleanup actions are intentionally not included.
 
     Raises:
         StateMutationContentionError: If another thread of this process already
@@ -664,14 +754,14 @@ def run_configure(
         frozen_renames = tuple(skill_renames)
         preflight_skill_rename_cleanups(engine, frozen_renames)
         ordered = tuple(sorted(specs, key=lambda spec: spec.id))
-        applied = tuple(
-            engine.apply(spec) for spec, _ in zip(ordered, planned, strict=True)
-        )
+        applied = tuple(engine.apply(spec) for spec in ordered)
+        removed = engine.prune_stale(specs)
         verify_skill_rename_successors(engine, frozen_renames)
         apply_skill_rename_cleanups(engine, frozen_renames)
+    actions = applied + removed
     return ConfigureStageReport(
-        actions=applied,
-        changed_count=sum(action.outcome != "unchanged" for action in applied),
+        actions=actions,
+        changed_count=sum(action.outcome != "unchanged" for action in actions),
     )
 
 
