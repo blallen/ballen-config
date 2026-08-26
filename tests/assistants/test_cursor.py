@@ -153,7 +153,7 @@ def test_default_settings_exactly_match_reviewed_base(repo_root: Path) -> None:
 
 def test_work_settings_add_only_reviewed_bedrock_overlay(repo_root: Path) -> None:
     """Overlay exactly the reviewed work-only Claude environment."""
-    rendered = render_settings(repo_root, profiles=("default", "work"))
+    rendered = render_settings(repo_root, profiles=("default", "fsp"))
     base = render_settings(repo_root, profiles=("default",))
     assert rendered == {
         **base,
@@ -272,12 +272,12 @@ def test_configuration_validates_every_json_source_before_specs(
     [
         pytest.param(("default",), None, id="default-profile"),
         pytest.param(
-            ("default", "work"),
+            ("default", "fsp"),
             [
                 "CLAUDE_CODE_USE_BEDROCK=1",
                 "AWS_REGION=us-east-1",
             ],
-            id="default-work-profiles",
+            id="default-fsp-profiles",
         ),
     ],
 )
@@ -318,7 +318,7 @@ def test_configuration_emits_one_profile_aware_settings_spec(
     ("profiles", "managed"),
     [
         pytest.param(("default",), False, id="default-profile"),
-        pytest.param(("default", "work"), True, id="work-profile"),
+        pytest.param(("default", "fsp"), True, id="fsp-profile"),
     ],
 )
 def test_configuration_manages_atlassian_mcp_only_for_work(
@@ -389,7 +389,7 @@ def test_settings_renderer_converges_on_cursor_native_indentation(
     """Keep a converged four-space native settings document byte-stable."""
     paths = RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home)
     contribution = configuration(
-        _resolved_setup("cursor", profiles=("default", "work")),
+        _resolved_setup("cursor", profiles=("default", "fsp")),
         paths,
     )
     spec = next(spec for spec in contribution.specs if spec.id == "cursor-settings")
@@ -929,11 +929,11 @@ def test_inventory_is_synchronized_with_cursor_sources_and_catalog(
     assert settings.role == "render-source"
     assert isinstance(work, FileResource)
     assert work.role == "overlay"
-    assert work.profiles == ("work",)
+    assert work.profiles == ("fsp",)
     assert work.destination == settings.destination
     assert isinstance(keybindings, FileResource)
     assert isinstance(atlassian_mcp, FileResource)
-    assert atlassian_mcp.profiles == ("work",)
+    assert atlassian_mcp.profiles == ("fsp",)
     assert atlassian_mcp.destination == Path(".cursor/mcp.json")
     assert isinstance(rules, ManualResource)
     assert rules.source is not None

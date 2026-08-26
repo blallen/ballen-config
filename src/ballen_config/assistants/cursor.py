@@ -155,7 +155,7 @@ def render_settings(
         cursor_root / "settings.base.json",
         label="Cursor settings base",
     )
-    if "work" not in profiles:
+    if "fsp" not in profiles:
         return document
     overlay = _load_json_object(
         cursor_root / "settings.work.json",
@@ -468,7 +468,7 @@ def configuration(
             paths,
             Path("assistants/cursor/atlassian-workaround.json"),
         )
-        if "work" in setup.profiles
+        if "fsp" in setup.profiles
         else None
     )
     _load_json_object(base, label="Cursor settings base")
@@ -534,7 +534,7 @@ def configuration(
         renderers={
             "cursor-settings": cursor_settings_renderer(
                 paths,
-                work="work" in setup.profiles,
+                work="fsp" in setup.profiles,
             ),
             "cursor-keybindings": cursor_keybindings_renderer(),
         },

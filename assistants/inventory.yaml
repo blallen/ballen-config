@@ -46,7 +46,7 @@ resources:
     owner: cursor
     source: assistants/cursor/settings.work.json
     destination: Library/Application Support/Cursor/User/settings.json
-    profiles: [work]
+    profiles: [fsp]
     role: overlay
 
   - id: cursor.keybindings
@@ -60,7 +60,7 @@ resources:
     owner: cursor
     source: assistants/cursor/atlassian-workaround.json
     destination: .cursor/mcp.json
-    profiles: [work]
+    profiles: [fsp]
 
   - id: cursor.user-rules
     kind: manual
