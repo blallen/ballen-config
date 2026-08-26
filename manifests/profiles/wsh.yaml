@@ -1,0 +1,3 @@
+name: wsh
+extends:
+  - default

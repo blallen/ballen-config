@@ -1,10 +1,4 @@
 components:
-  - id: wave
-    manager: brew_cask
-    package: wave
-    profiles: [default]
-    skip_key: wave
-    application_paths: [/Applications/Wave.app]
   - id: cursor
     manager: brew_cask
     package: cursor

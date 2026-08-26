@@ -1,7 +1,13 @@
 components:
   - {id: uv, manager: brew_formula, package: uv, profiles: [default]}
   - {id: gh, manager: brew_formula, package: gh, profiles: [default]}
-  - {id: glab, manager: brew_formula, package: glab, profiles: [default]}
+  - id: glab
+    manager: brew_formula
+    package: glab
+    profiles: [default]
+    enabled_by_default: false
+    include_key: glab
+    required: false
   - {id: jj, manager: brew_formula, package: jj, profiles: [default]}
   - {id: node, manager: brew_formula, package: node, profiles: [default]}
   - {id: ripgrep, manager: brew_formula, package: ripgrep, profiles: [default]}
@@ -14,8 +20,8 @@ components:
   # presence probe matches `uv tool list` on the bare tool name.
   - {id: pre-commit, manager: uv_tool, package: pre-commit, depends_on: [uv], profiles: [default]}
   - {id: ruff, manager: uv_tool, package: ruff, depends_on: [uv], profiles: [default]}
-  - {id: libmagic, manager: brew_formula, package: libmagic, profiles: [work]}
-  - {id: awscli, manager: brew_formula, package: awscli, profiles: [work]}
+  - {id: libmagic, manager: brew_formula, package: libmagic, profiles: [fsp]}
+  - {id: awscli, manager: brew_formula, package: awscli, profiles: [fsp]}
   - id: oh-my-zsh
     manager: git
     package: https://github.com/ohmyzsh/ohmyzsh.git

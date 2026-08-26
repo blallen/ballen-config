@@ -30,20 +30,27 @@ def ids(repository: ManifestRepository, request: ResolutionRequest) -> set[str]:
     return {component.id for component in repository.resolve(request).components}
 
 
-def test_work_profile_extends_default(manifest_repository: ManifestRepository) -> None:
-    """Work includes its inherited tools without optional personal apps."""
-    resolved = ids(manifest_repository, ResolutionRequest(profile="work"))
+def test_fsp_profile_extends_default(manifest_repository: ManifestRepository) -> None:
+    """fsp adds previous-job packages without optional personal apps or glab."""
+    resolved = ids(manifest_repository, ResolutionRequest(profile="fsp"))
     assert {
         "uv",
         "gh",
-        "glab",
         "jj",
         "pre-commit",
-        "wave",
         "libmagic",
         "awscli",
     } <= resolved
-    assert {"obsidian", "signal", "mactex"}.isdisjoint(resolved)
+    assert {"obsidian", "signal", "mactex", "glab", "wave"}.isdisjoint(resolved)
+
+
+def test_wsh_profile_extends_default_without_fsp_packages(
+    manifest_repository: ManifestRepository,
+) -> None:
+    """wsh inherits the baseline and does not install AWS, libmagic, or glab."""
+    resolved = ids(manifest_repository, ResolutionRequest(profile="wsh"))
+    assert {"uv", "gh", "jj"} <= resolved
+    assert {"awscli", "libmagic", "glab", "wave"}.isdisjoint(resolved)
 
 
 def test_shell_parent_precedes_nested_git_components(
@@ -137,6 +144,7 @@ def test_profile_cycle_is_rejected(tmp_path: Path) -> None:
         pytest.param("obsidian", id="obsidian"),
         pytest.param("signal", id="signal"),
         pytest.param("mactex", id="mactex"),
+        pytest.param("glab", id="glab"),
     ],
 )
 def test_personal_applications_are_opt_in(
@@ -157,7 +165,6 @@ def test_personal_applications_are_opt_in(
         pytest.param("cursor", id="cursor"),
         pytest.param("claude-code", id="claude-code"),
         pytest.param("codex", id="codex"),
-        pytest.param("wave", id="wave"),
     ],
 )
 def test_skip_removes_complete_component(
@@ -166,7 +173,7 @@ def test_skip_removes_complete_component(
 ) -> None:
     """Skipping a component removes it from resolution and records the choice."""
     result = manifest_repository.resolve(
-        ResolutionRequest(profile="work", skips=(skip,)),
+        ResolutionRequest(profile="fsp", skips=(skip,)),
     )
     assert skip not in {component.id for component in result.components}
     assert skip in result.skipped
@@ -178,14 +185,15 @@ def test_interface_ids_match_manifests(
     """Published selection IDs remain synchronized with resolved manifests."""
     expected = (
         "profile default",
-        "profile work",
+        "profile fsp",
+        "profile wsh",
+        "include glab",
         "include mactex",
         "include obsidian",
         "include signal",
         "skip claude-code",
         "skip codex",
         "skip cursor",
-        "skip wave",
     )
     assert manifest_repository.interface_lines() == expected
     interface_path = manifest_repository.root / "component-ids.txt"
