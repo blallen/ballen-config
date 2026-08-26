@@ -252,37 +252,29 @@ class Doctor:
             for action in engine.plan(specs)
         )
 
-    def authentication_checks(self) -> tuple[DoctorCheck, ...]:
+    def authentication_checks(
+        self, enabled: frozenset[str] = frozenset()
+    ) -> tuple[DoctorCheck, ...]:
         """Check relevant authentication without exposing identity output."""
-        checks: list[DoctorFinding] = []
         commands: list[tuple[str, tuple[str, ...]]] = [
             ("github-auth", ("gh", "auth", "status")),
-            ("gitlab-auth", ("glab", "auth", "status")),
         ]
-        if "work" in self.profiles:
+        if "glab" in enabled:
+            commands.append(("gitlab-auth", ("glab", "auth", "status")))
+        if "fsp" in self.profiles:
             commands.append(("aws-auth", ("aws", "sts", "get-caller-identity")))
+        checks: list[DoctorFinding] = []
         for finding_id, command in commands:
             result = self.runner.run(command)
             ready = result["returncode"] == 0
-            optional_gitlab = finding_id == "gitlab-auth" and not ready
             checks.append(
                 DoctorFinding(
                     id=finding_id,
                     status=(FindingStatus.READY if ready else FindingStatus.MANUAL),
                     severity=(
-                        CheckSeverity.INFO
-                        if ready or optional_gitlab
-                        else CheckSeverity.WARNING
+                        CheckSeverity.INFO if ready else CheckSeverity.WARNING
                     ),
-                    message=(
-                        "ready"
-                        if ready
-                        else (
-                            "optional; authenticate when using GitLab remotes"
-                            if optional_gitlab
-                            else "not authenticated"
-                        )
-                    ),
+                    message=("ready" if ready else "not authenticated"),
                 )
             )
         return tuple(checks)
@@ -360,7 +352,9 @@ def core_doctor_checks(
         doctor.homebrew_check(),
         *doctor.component_checks(resolved.components),
         *doctor.managed_checks(engine, specs),
-        *doctor.authentication_checks(),
+        *doctor.authentication_checks(
+            frozenset(component.id for component in resolved.components)
+        ),
         *doctor.manual_checks(),
         *doctor.skipped_checks(resolved.skipped),
     )
