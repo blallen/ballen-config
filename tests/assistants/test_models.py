@@ -681,7 +681,7 @@ def test_file_resource_allows_exact_work_cursor_atlassian_mcp_destination() -> N
                     "owner": "cursor",
                     "source": "assistants/cursor/atlassian-workaround.json",
                     "destination": ".cursor/mcp.json",
-                    "profiles": ["work"],
+                    "profiles": ["fsp"],
                 }
             ]
         }
@@ -690,7 +690,7 @@ def test_file_resource_allows_exact_work_cursor_atlassian_mcp_destination() -> N
     resource = inventory.resources[0]
     assert isinstance(resource, FileResource)
     assert resource.destination.as_posix() == ".cursor/mcp.json"
-    assert resource.profiles == ("work",)
+    assert resource.profiles == ("fsp",)
 
 
 @pytest.mark.parametrize(
@@ -704,7 +704,7 @@ def test_file_resource_allows_exact_work_cursor_atlassian_mcp_destination() -> N
             id="wrong-source",
         ),
         pytest.param("profiles", ["default"], id="default-profile"),
-        pytest.param("profiles", ["default", "work"], id="extra-profile"),
+        pytest.param("profiles", ["default", "fsp"], id="extra-profile"),
         pytest.param("mode", 0o700, id="wrong-mode"),
         pytest.param("role", "overlay", id="wrong-role"),
         pytest.param("required", False, id="optional"),
@@ -722,7 +722,7 @@ def test_cursor_atlassian_mcp_path_rejects_every_other_resource_shape(
         "owner": "cursor",
         "source": "assistants/cursor/atlassian-workaround.json",
         "destination": ".cursor/mcp.json",
-        "profiles": ["work"],
+        "profiles": ["fsp"],
     }
     resource[field] = value
 

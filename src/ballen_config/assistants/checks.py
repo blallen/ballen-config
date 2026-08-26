@@ -472,7 +472,7 @@ def assistant_checks(
                 approved = is_approved_atlassian_mcp(mcp.read_bytes())
             except OSError:
                 approved = False
-            if "work" not in profiles or not approved:
+            if "fsp" not in profiles or not approved:
                 add(
                     _finding(
                         "cursor.legacy-mcp",

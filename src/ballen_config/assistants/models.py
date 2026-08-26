@@ -128,7 +128,7 @@ class FileResource(ResourceBase):
 
     @model_validator(mode="after")
     def validate_managed_state_exception(self) -> Self:
-        """Bind the Cursor MCP path exception to one exact work resource."""
+        """Bind the Cursor MCP path exception to one exact fsp resource."""
         uses_exception = (
             self.source in _APPROVED_MANAGED_STATE_PATHS
             or self.destination in _APPROVED_MANAGED_STATE_PATHS
@@ -140,7 +140,7 @@ class FileResource(ResourceBase):
             and self.owner is AgentName.CURSOR
             and self.source == _CURSOR_ATLASSIAN_MCP_SOURCE
             and self.destination == _CURSOR_ATLASSIAN_MCP_DESTINATION
-            and self.profiles == ("work",)
+            and self.profiles == ("fsp",)
             and self.required
             and self.mode == 0o600
             and not self.targets

@@ -146,7 +146,7 @@ def test_cursor_inspection_redacts_invalid_mcp_and_counts_immediate_worktrees(
     ("profiles", "warns"),
     [
         pytest.param(("default",), True, id="default-profile"),
-        pytest.param(("default", "work"), False, id="work-profile"),
+        pytest.param(("default", "fsp"), False, id="fsp-profile"),
     ],
 )
 def test_approved_cursor_atlassian_mcp_is_work_profile_only(
@@ -221,7 +221,7 @@ def test_work_profile_warns_on_every_other_cursor_mcp_document(
         enabled=frozenset({"cursor"}),
         paths=paths,
         runner=StatefulAssistantFake(paths.home),
-        profiles=("default", "work"),
+        profiles=("default", "fsp"),
     )
 
     assert "cursor.legacy-mcp" in {finding.id for finding in findings}
