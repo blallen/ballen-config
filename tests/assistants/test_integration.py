@@ -900,9 +900,7 @@ def test_default_and_fsp_profiles_diverge_only_in_cursor_bedrock_resources(
         ).read_text()
     )
     fsp_settings = json.loads(
-        (
-            fsp_home / "Library/Application Support/Cursor/User/settings.json"
-        ).read_text()
+        (fsp_home / "Library/Application Support/Cursor/User/settings.json").read_text()
     )
     assert "claudeCode.environmentVariables" not in default_settings
     assert "claudeCode.environmentVariables" in fsp_settings

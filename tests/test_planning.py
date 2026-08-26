@@ -133,7 +133,9 @@ def test_core_manual_actions_gate_gitlab_and_aws(
     assert "gitlab-auth" in {
         action.component_id for action in contributor.actions(with_glab)
     }
-    assert [action.component_id for action in contributor.actions(fsp)][-1] == "aws-auth"
+    assert [action.component_id for action in contributor.actions(fsp)][
+        -1
+    ] == "aws-auth"
 
 
 def test_duplicate_plan_action_component_id_fails_closed(

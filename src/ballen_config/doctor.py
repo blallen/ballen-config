@@ -271,9 +271,7 @@ class Doctor:
                 DoctorFinding(
                     id=finding_id,
                     status=(FindingStatus.READY if ready else FindingStatus.MANUAL),
-                    severity=(
-                        CheckSeverity.INFO if ready else CheckSeverity.WARNING
-                    ),
+                    severity=(CheckSeverity.INFO if ready else CheckSeverity.WARNING),
                     message=("ready" if ready else "not authenticated"),
                 )
             )

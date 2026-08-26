@@ -79,9 +79,7 @@ def test_gitlab_auth_runs_only_when_glab_is_enabled(fake_home: Path) -> None:
     assert "gitlab-auth" not in {
         finding.id for finding in doctor.authentication_checks(enabled=frozenset())
     }
-    report = run_doctor(
-        doctor.authentication_checks(enabled=frozenset({"glab"}))
-    )
+    report = run_doctor(doctor.authentication_checks(enabled=frozenset({"glab"})))
     finding = report.finding("gitlab-auth")
     assert finding.status is FindingStatus.MANUAL
     assert finding.severity is CheckSeverity.WARNING
