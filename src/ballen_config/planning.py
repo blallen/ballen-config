@@ -64,30 +64,37 @@ class CoreManualContributor:
                 owner="user",
                 required=False,
             ),
-            PlanAction(
-                component_id="gitlab-auth",
-                category="manual",
-                action="run-glab-auth-login",
-                owner="user",
-                required=False,
-            ),
-            PlanAction(
-                component_id="ssh-transfer",
-                category="manual",
-                action="follow-secure-transfer-guide",
-                owner="user",
-                path="docs/ssh-transfer.md",
-                required=False,
-            ),
-            PlanAction(
-                component_id="it-managed-applications",
-                category="manual",
-                action="use-company-supported-channel",
-                owner="user",
-                required=False,
-            ),
         ]
-        if "work" in resolved.profiles:
+        if resolved.is_enabled("glab"):
+            actions.append(
+                PlanAction(
+                    component_id="gitlab-auth",
+                    category="manual",
+                    action="run-glab-auth-login",
+                    owner="user",
+                    required=False,
+                )
+            )
+        actions.extend(
+            [
+                PlanAction(
+                    component_id="ssh-transfer",
+                    category="manual",
+                    action="follow-secure-transfer-guide",
+                    owner="user",
+                    path="docs/ssh-transfer.md",
+                    required=False,
+                ),
+                PlanAction(
+                    component_id="it-managed-applications",
+                    category="manual",
+                    action="use-company-supported-channel",
+                    owner="user",
+                    required=False,
+                ),
+            ]
+        )
+        if "fsp" in resolved.profiles:
             actions.append(
                 PlanAction(
                     component_id="aws-auth",

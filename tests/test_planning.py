@@ -112,29 +112,28 @@ def test_build_plan_delegates_to_resolved_plan(
     )
 
 
-def test_core_manual_actions_are_stable_and_work_aware(
+def test_core_manual_actions_gate_gitlab_and_aws(
     manifest_repository: ManifestRepository,
 ) -> None:
-    """Manual actions remain ordered and gain AWS only for work."""
+    """GitLab login is include-gated; AWS sign-in is fsp-only."""
     contributor = CoreManualContributor()
     default = manifest_repository.resolve(ResolutionRequest(profile="default"))
-    work = manifest_repository.resolve(ResolutionRequest(profile="work"))
-
-    assert [
-        (action.component_id, action.action) for action in contributor.actions(default)
-    ] == [
-        ("github-auth", "run-gh-auth-login"),
-        ("gitlab-auth", "run-glab-auth-login"),
-        ("ssh-transfer", "follow-secure-transfer-guide"),
-        ("it-managed-applications", "use-company-supported-channel"),
-    ]
-    assert [
-        (action.component_id, action.action) for action in contributor.actions(work)
-    ][-1] == ("aws-auth", "complete-organization-sign-in")
-    assert all(
-        action.category == "manual" and action.owner == "user" and not action.required
-        for action in contributor.actions(work)
+    wsh = manifest_repository.resolve(ResolutionRequest(profile="wsh"))
+    fsp = manifest_repository.resolve(ResolutionRequest(profile="fsp"))
+    with_glab = manifest_repository.resolve(
+        ResolutionRequest(profile="wsh", includes=("glab",))
     )
+    default_ids = [action.component_id for action in contributor.actions(default)]
+    assert default_ids == [
+        "github-auth",
+        "ssh-transfer",
+        "it-managed-applications",
+    ]
+    assert [action.component_id for action in contributor.actions(wsh)] == default_ids
+    assert "gitlab-auth" in {
+        action.component_id for action in contributor.actions(with_glab)
+    }
+    assert [action.component_id for action in contributor.actions(fsp)][-1] == "aws-auth"
 
 
 def test_duplicate_plan_action_component_id_fails_closed(

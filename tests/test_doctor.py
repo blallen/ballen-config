@@ -64,47 +64,54 @@ def test_auth_output_is_never_returned(fake_home: Path) -> None:
         }
     )
 
-    report = run_doctor(Doctor(runner, fake_home).authentication_checks())
+    report = run_doctor(
+        Doctor(runner, fake_home).authentication_checks(enabled=frozenset({"glab"}))
+    )
 
     assert report.finding("gitlab-auth").message == "ready"
     assert secret_stdout not in report.render()
     assert secret_stderr not in report.render()
 
 
-def test_missing_gitlab_auth_is_explicitly_optional(fake_home: Path) -> None:
-    """Unauthenticated GitLab is informational until a GitLab remote is used."""
-    report = run_doctor(Doctor(FakeRunner({}), fake_home).authentication_checks())
-
+def test_gitlab_auth_runs_only_when_glab_is_enabled(fake_home: Path) -> None:
+    """GitLab auth is checked only when the glab include is selected."""
+    doctor = Doctor(FakeRunner({}), fake_home)
+    assert "gitlab-auth" not in {
+        finding.id for finding in doctor.authentication_checks(enabled=frozenset())
+    }
+    report = run_doctor(
+        doctor.authentication_checks(enabled=frozenset({"glab"}))
+    )
     finding = report.finding("gitlab-auth")
     assert finding.status is FindingStatus.MANUAL
-    assert finding.severity is CheckSeverity.INFO
-    assert finding.message == "optional; authenticate when using GitLab remotes"
+    assert finding.severity is CheckSeverity.WARNING
+    assert finding.message == "not authenticated"
     assert report.exit_code == 0
 
 
 def test_skip_is_informational_not_missing(fake_home: Path) -> None:
     """An explicit skip is healthy, intentional state."""
-    report = run_doctor(Doctor(FakeRunner({}), fake_home).skipped_checks(("wave",)))
-    finding = report.finding("wave")
+    report = run_doctor(Doctor(FakeRunner({}), fake_home).skipped_checks(("cursor",)))
+    finding = report.finding("cursor")
     assert finding.status is FindingStatus.SKIPPED
     assert finding.severity is CheckSeverity.INFO
     assert report.exit_code == 0
 
 
-def test_aws_readiness_runs_only_for_work(fake_home: Path) -> None:
-    """AWS authentication is relevant only to the work profile."""
+def test_aws_readiness_runs_only_for_fsp(fake_home: Path) -> None:
+    """AWS authentication is relevant only to the fsp profile."""
     default = Doctor(
         FakeRunner({}),
         fake_home,
         profiles=("default",),
-    ).authentication_checks()
-    work = Doctor(
+    ).authentication_checks(enabled=frozenset())
+    fsp = Doctor(
         FakeRunner({}),
         fake_home,
-        profiles=("default", "work"),
-    ).authentication_checks()
+        profiles=("default", "fsp"),
+    ).authentication_checks(enabled=frozenset())
     assert "aws-auth" not in {finding.id for finding in default}
-    assert "aws-auth" in {finding.id for finding in work}
+    assert "aws-auth" in {finding.id for finding in fsp}
 
 
 def test_core_manual_checks_are_limited_to_cross_cutting_actions(
@@ -441,7 +448,7 @@ def test_core_doctor_check_order_is_stable(
     resolved = ResolvedSetup(
         profiles=("default",),
         components=(component,),
-        skipped=("wave",),
+        skipped=("cursor",),
     )
     checks = core_doctor_checks(
         resolved,
@@ -454,9 +461,8 @@ def test_core_doctor_check_order_is_stable(
         "homebrew",
         "gh",
         "github-auth",
-        "gitlab-auth",
         "ssh-transfer",
-        "wave",
+        "cursor",
     ]
 
 
@@ -477,7 +483,12 @@ def test_doctor_does_not_mutate_home(fake_home: Path) -> None:
         fake_home,
     )
 
-    report = run_doctor((*doctor.authentication_checks(), *doctor.manual_checks()))
+    report = run_doctor(
+        (
+            *doctor.authentication_checks(enabled=frozenset()),
+            *doctor.manual_checks(),
+        )
+    )
 
     assert home_snapshot(fake_home) == before
     assert "token-like" not in report.render()
