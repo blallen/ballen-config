@@ -670,8 +670,8 @@ def test_file_resources_reject_managed_local_state_paths(
         AssistantInventory.model_validate({"resources": [resource]})
 
 
-def test_file_resource_allows_exact_work_cursor_atlassian_mcp_destination() -> None:
-    """Permit only the reviewed work-profile Cursor MCP destination."""
+def test_file_resource_allows_exact_fsp_cursor_atlassian_mcp_destination() -> None:
+    """Permit only the reviewed fsp Cursor MCP destination."""
     inventory = AssistantInventory.model_validate(
         {
             "resources": [

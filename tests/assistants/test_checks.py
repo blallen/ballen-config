@@ -127,7 +127,7 @@ def test_cursor_inspection_redacts_invalid_mcp_and_counts_immediate_worktrees(
         enabled=frozenset({"cursor"}),
         paths=paths,
         runner=StatefulAssistantFake(paths.home),
-        profiles=("default", "work"),
+        profiles=("default",),
         unmanaged_extension_count=2,
     )
     report = run_doctor(findings)
@@ -149,12 +149,12 @@ def test_cursor_inspection_redacts_invalid_mcp_and_counts_immediate_worktrees(
         pytest.param(("default", "fsp"), False, id="fsp-profile"),
     ],
 )
-def test_approved_cursor_atlassian_mcp_is_work_profile_only(
+def test_approved_cursor_atlassian_mcp_is_fsp_profile_only(
     paths: RuntimePaths,
     profiles: tuple[str, ...],
     warns: bool,
 ) -> None:
-    """Accept the exact secret-free Atlassian endpoint only for work."""
+    """Accept the exact secret-free Atlassian endpoint only for fsp."""
     cursor = paths.home / ".cursor"
     cursor.mkdir()
     (cursor / "mcp.json").write_text(
@@ -208,7 +208,7 @@ def test_approved_cursor_atlassian_mcp_is_work_profile_only(
         ),
     ],
 )
-def test_work_profile_warns_on_every_other_cursor_mcp_document(
+def test_fsp_profile_warns_on_every_other_cursor_mcp_document(
     paths: RuntimePaths,
     content: bytes,
 ) -> None:
