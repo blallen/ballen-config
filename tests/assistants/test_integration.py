@@ -585,13 +585,13 @@ def test_aggregate_install_and_doctor_normalize_bundled_cursor_read_failure(
     assert unavailable.message == "Cursor native inspection unavailable"
 
 
-def test_work_all_converges_native_resources_and_skips_codex(
+def test_wsh_all_converges_native_resources_and_skips_codex(
     repo_root: Path,
     temporary_home: Path,
     fake_runner: StatefulAssistantFake,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The real all path manages work Cursor and Claude resources only once."""
+    """The real all path manages wsh Cursor and Claude resources only once."""
     monkeypatch.setattr(
         "ballen_config.assistants.cursor.read_bundled_extensions",
         lambda _root: frozenset(),
@@ -951,13 +951,13 @@ def test_doctor_continues_after_cursor_native_inspection_failure(
     assert "token" not in rendered and "secret" not in rendered
 
 
-def test_work_all_preserves_excluded_agent_state_bytes_and_tree_identity(
+def test_wsh_all_preserves_excluded_agent_state_bytes_and_tree_identity(
     repo_root: Path,
     temporary_home: Path,
     fake_runner: StatefulAssistantFake,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Aggregate work setup leaves explicit local-state sentinels untouched."""
+    """Aggregate wsh setup leaves explicit local-state sentinels untouched."""
     monkeypatch.setattr(
         "ballen_config.assistants.cursor.read_bundled_extensions",
         lambda _root: frozenset(),

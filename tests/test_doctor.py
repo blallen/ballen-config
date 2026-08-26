@@ -119,7 +119,7 @@ def test_core_manual_checks_are_limited_to_cross_cutting_actions(
     checks = Doctor(
         FakeRunner({}),
         fake_home,
-        profiles=("default", "work"),
+        profiles=("default", "wsh"),
     ).manual_checks()
     assert {finding.id for finding in checks} == {"ssh-transfer"}
     rendered = run_doctor(checks).render().lower()

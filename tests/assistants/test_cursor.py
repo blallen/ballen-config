@@ -144,15 +144,15 @@ def cursor_source_repo(tmp_path: Path) -> Path:
 
 
 def test_default_settings_exactly_match_reviewed_base(repo_root: Path) -> None:
-    """Keep work-only Claude environment out of the default profile."""
+    """Keep the fsp Bedrock overlay out of the default profile."""
     rendered = render_settings(repo_root, profiles=("default",))
     base = json.loads((repo_root / "assistants/cursor/settings.base.json").read_text())
     assert rendered == base
     assert "claudeCode.environmentVariables" not in rendered
 
 
-def test_work_settings_add_only_reviewed_bedrock_overlay(repo_root: Path) -> None:
-    """Overlay exactly the reviewed work-only Claude environment."""
+def test_fsp_settings_add_only_reviewed_bedrock_overlay(repo_root: Path) -> None:
+    """Overlay exactly the reviewed fsp Bedrock environment."""
     rendered = render_settings(repo_root, profiles=("default", "fsp"))
     base = render_settings(repo_root, profiles=("default",))
     assert rendered == {
@@ -287,7 +287,7 @@ def test_configuration_emits_one_profile_aware_settings_spec(
     profiles: tuple[str, ...],
     expected_environment: list[str] | None,
 ) -> None:
-    """Render one settings destination for default and expanded work setups."""
+    """Render one settings destination for default and fsp setups."""
     paths = RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home)
     contribution = configuration(
         _resolved_setup("cursor", profiles=profiles),
@@ -321,13 +321,13 @@ def test_configuration_emits_one_profile_aware_settings_spec(
         pytest.param(("default", "fsp"), True, id="fsp-profile"),
     ],
 )
-def test_configuration_manages_atlassian_mcp_only_for_work(
+def test_configuration_manages_atlassian_mcp_only_for_fsp(
     repo_root: Path,
     temporary_home: Path,
     profiles: tuple[str, ...],
     managed: bool,
 ) -> None:
-    """Install the exact secret-free Atlassian workaround only for work."""
+    """Install the exact secret-free Atlassian workaround only for fsp."""
     paths = RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home)
     contribution = configuration(
         _resolved_setup("cursor", profiles=profiles),
