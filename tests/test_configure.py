@@ -667,17 +667,17 @@ def test_git_validator_uses_read_only_list_action(
     assert runner.commands == [("git", "config", "--file", str(source), "--list")]
 
 
-def test_skip_wave_removes_wave_spec(config_paths: RuntimePaths) -> None:
+def test_skip_cursor_removes_component_spec(config_paths: RuntimePaths) -> None:
     """Core configuration honors component skips from setup resolution."""
     from ballen_config.configure import configuration_specs
 
     manifest = config_paths.repo_root / "manifests"
     manifest.mkdir()
     (manifest / "configuration.yaml").write_text(
-        "files:\n  - id: wave-settings\n    source: source\n    destination: .config/waveterm/settings.json\n    method: copy\n    mode: '0600'\n    component: wave\n"
+        "files:\n  - id: cursor-settings\n    source: source\n    destination: .config/cursor/settings.json\n    method: copy\n    mode: '0600'\n    component: cursor\n"
     )
     (config_paths.repo_root / "source").write_text("{}")
-    resolved = ResolvedSetup(profiles=("default",), components=(), skipped=("wave",))
+    resolved = ResolvedSetup(profiles=("default",), components=(), skipped=("cursor",))
     assert (
         configuration_specs(manifest / "configuration.yaml", resolved, config_paths)
         == ()
@@ -685,7 +685,7 @@ def test_skip_wave_removes_wave_spec(config_paths: RuntimePaths) -> None:
 
 
 def test_configuration_specs_honor_file_profiles(config_paths: RuntimePaths) -> None:
-    """Work-only managed files stay out of the default profile selection."""
+    """Wsh-only managed files stay out of the default profile selection."""
     from ballen_config.configure import configuration_specs
 
     manifest = config_paths.repo_root / "manifests"
@@ -704,7 +704,7 @@ def test_configuration_specs_honor_file_profiles(config_paths: RuntimePaths) -> 
     method: symlink
     mode: '0600'
     component: shell
-    profiles: [work]
+    profiles: [wsh]
 """
     )
     (config_paths.repo_root / "zprofile").write_text("base\n")
@@ -715,14 +715,14 @@ def test_configuration_specs_honor_file_profiles(config_paths: RuntimePaths) -> 
         ResolvedSetup(profiles=("default",), components=(), skipped=()),
         config_paths,
     )
-    work_specs = configuration_specs(
+    wsh_specs = configuration_specs(
         manifest / "configuration.yaml",
-        ResolvedSetup(profiles=("default", "work"), components=(), skipped=()),
+        ResolvedSetup(profiles=("default", "wsh"), components=(), skipped=()),
         config_paths,
     )
 
     assert [spec.id for spec in default_specs] == ["zprofile"]
-    assert [spec.id for spec in work_specs] == ["zprofile", "zprofile-work"]
+    assert [spec.id for spec in wsh_specs] == ["zprofile", "zprofile-work"]
 
 
 def test_configuration_plan_contributor_returns_structural_action_read_only(

@@ -31,11 +31,11 @@ class FakeContributor:
         """Return redacted structural actions."""
         return (
             PlanAction(
-                component_id="wave-settings",
+                component_id="example-settings",
                 category="configure",
                 action="update-fields",
                 owner="bootstrap",
-                path="~/.config/waveterm/settings.json",
+                path="~/.config/example/settings.json",
             ),
             PlanAction(
                 component_id="gitlab-auth",
@@ -83,7 +83,7 @@ def test_plan_preserves_install_order_and_redacts_native_values(
     output = format_plan(plan)
     assert "install gh (owner=bootstrap): present" in output
     assert "install glab (owner=bootstrap): install" in output
-    assert "~/.config/waveterm/settings.json" in output
+    assert "~/.config/example/settings.json" in output
     assert "prompt: confirm package and configuration changes" in output
     assert "glpat-secret-value" not in output
 
