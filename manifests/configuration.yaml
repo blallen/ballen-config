@@ -19,7 +19,7 @@ files:
     method: symlink
     mode: "0600"
     component: shell
-    profiles: [work]
+    profiles: [wsh]
     validator_id: zsh
   - id: p10k
     source: dotfiles/shell/p10k.zsh
@@ -54,10 +54,3 @@ files:
     method: copy
     mode: "0600"
     component: ssh
-  - id: wave-settings
-    source: terminal/wave/settings.json
-    destination: .config/waveterm/settings.json
-    method: copy
-    mode: "0600"
-    component: wave
-    validator_id: json

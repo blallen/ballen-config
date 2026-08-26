@@ -154,21 +154,25 @@ def test_complete_configure_flow_is_idempotent(
     assert not (paths.backup_root / "20260725T120001Z").exists()
 
 
-def test_skip_wave_removes_wave_configuration(
+def test_zprofile_work_is_wsh_only(
     repo_root: Path,
     fake_home: Path,
 ) -> None:
-    """Apply a whole-component skip before constructing managed specs."""
+    """wsh is the only profile that installs extra env."""
     paths = RuntimePaths.from_roots(repo_root=repo_root, home=fake_home)
-    resolved = ManifestRepository.load(repo_root / "manifests").resolve(
-        ResolutionRequest(profile="work", skips=("wave",))
+    repository = ManifestRepository.load(repo_root / "manifests")
+    wsh = repository.resolve(ResolutionRequest(profile="wsh"))
+    fsp = repository.resolve(ResolutionRequest(profile="fsp"))
+    default = repository.resolve(ResolutionRequest(profile="default"))
+    wsh_specs = configuration_specs(
+        repo_root / "manifests/configuration.yaml", wsh, paths
     )
-    specs = configuration_specs(
-        repo_root / "manifests/configuration.yaml",
-        resolved,
-        paths,
+    fsp_specs = configuration_specs(
+        repo_root / "manifests/configuration.yaml", fsp, paths
     )
-
-    assert "wave" in resolved.skipped
-    assert "wave-settings" not in {spec.id for spec in specs}
-    assert all(spec.component != "wave" for spec in specs)
+    default_specs = configuration_specs(
+        repo_root / "manifests/configuration.yaml", default, paths
+    )
+    assert "zprofile-work" in {spec.id for spec in wsh_specs}
+    assert "zprofile-work" not in {spec.id for spec in fsp_specs}
+    assert "zprofile-work" not in {spec.id for spec in default_specs}
