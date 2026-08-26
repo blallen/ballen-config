@@ -765,7 +765,7 @@ def run_configure(
     )
 
     with engine.state_store.mutation():
-        planned = engine.plan(specs)
+        engine.plan(specs)
         frozen_renames = tuple(skill_renames)
         protected_rename_records = frozenset(
             action.legacy_record.resource_id
@@ -775,12 +775,8 @@ def run_configure(
         preflight_skill_rename_cleanups(engine, frozen_renames)
         ordered = tuple(sorted(specs, key=lambda spec: spec.id))
         applied = tuple(engine.apply(spec) for spec in ordered)
-        removed = (
-            engine.prune_stale(
-                specs, protected_resource_ids=protected_rename_records
-            )
-            if specs
-            else ()
+        removed = engine.prune_stale(
+            specs, protected_resource_ids=protected_rename_records
         )
         verify_skill_rename_successors(engine, frozen_renames)
         apply_skill_rename_cleanups(engine, frozen_renames)

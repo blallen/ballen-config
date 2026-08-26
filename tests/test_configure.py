@@ -153,15 +153,19 @@ def test_prune_skips_when_destination_digest_no_longer_matches(
     config_paths: RuntimePaths,
 ) -> None:
     """Hand-edited leftovers stay, and ownership remains so a later apply can update."""
-    spec = file_spec(config_paths)
+    extra = owned_spec(config_paths, "extra", ".config/extra", b"extra\n")
+    keep = owned_spec(config_paths, "keep", ".config/keep", b"keep\n")
     subject = engine(config_paths)
-    run_configure(subject, (spec,))
-    destination = config_paths.home / spec.destination
-    destination.write_bytes(b"user edited\n")
-    report = run_configure(engine(config_paths, timestamp="later"), ())
-    assert destination.read_bytes() == b"user edited\n"
-    assert "example" in engine(config_paths).state_store.load().managed
-    assert all(action.id != "example" for action in report.actions)
+    run_configure(subject, (extra, keep))
+    extra_path = config_paths.home / extra.destination
+    extra_path.write_bytes(b"user edited\n")
+    report = run_configure(engine(config_paths, timestamp="later"), (keep,))
+    assert extra_path.read_bytes() == b"user edited\n"
+    assert "extra" in engine(config_paths).state_store.load().managed
+    assert all(
+        action.id != "extra" or action.outcome != "removed"
+        for action in report.actions
+    )
 
 
 def test_single_spec_apply_does_not_prune_siblings(
