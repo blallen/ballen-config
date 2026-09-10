@@ -469,10 +469,7 @@ def test_instruction_renderer_uses_canonical_guidance_and_claude_suffix(
     )
     assert rendered.startswith("# Engineering defaults\n")
     assert "# RTK\n" in rendered
-    assert rendered.endswith(
-        "Do not copy credentials, sessions, project trust, or generated plugin state\n"
-        "between machines.\n"
-    )
+    assert rendered.endswith(suffix.rstrip() + "\n")
 
 
 def test_install_then_configure_preserves_plugin_native_state(
