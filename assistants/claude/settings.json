@@ -1,6 +1,6 @@
 {
   "agentPushNotifEnabled": true,
-  "model": "opus",
+  "model": "fable",
   "remoteControlAtStartup": true,
   "tui": "fullscreen"
 }

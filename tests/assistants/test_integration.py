@@ -667,6 +667,10 @@ def test_single_agent_skip_removes_its_production_surface(
     assert result.exit_code == 0
     executable = {"claude-code": "claude"}.get(skipped, skipped)
     assert not any(command[0] == executable for command in fake_runner.commands)
+    if skipped == "cursor":
+        assert not any(
+            Path(command[0]).name == "cursor-agent" for command in fake_runner.commands
+        )
     directory = {"cursor": ".cursor", "claude-code": ".claude", "codex": ".codex"}[
         skipped
     ]

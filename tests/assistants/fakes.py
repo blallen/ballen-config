@@ -197,6 +197,18 @@ class StatefulAssistantFake:
                 "stdout": "\n".join(sorted(self.cursor_extensions)),
                 "stderr": "",
             }
+        if normalized == ("cursor-agent", "--version"):
+            return {
+                "returncode": 0,
+                "stdout": "2026.09.15-d2fe57e\n",
+                "stderr": "",
+            }
+        if normalized == ("cursor-agent", "status"):
+            return {
+                "returncode": 0,
+                "stdout": "Not logged in\n",
+                "stderr": "",
+            }
         if normalized[:2] == ("cursor", "--install-extension"):
             operand = normalized[2]
             extension_id = self.downloaded_extension_ids.get(Path(operand), operand)

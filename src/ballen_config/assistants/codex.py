@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import TypedDict, cast
 
 import tomlkit
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from ballen_config.assistants.desired_state import PluginCatalogProjection
 from ballen_config.assistants.instructions import render_native_instructions
@@ -41,6 +41,14 @@ class CodexStableSettings(BaseModel):
     model: str
     model_reasoning_effort: str
     service_tier: str
+    model_context_window: int | None = Field(
+        default=None,
+        gt=0,
+        strict=True,
+        description=(
+            "Positive integer token budget; omission leaves the native value unmanaged."
+        ),
+    )
 
 
 class CodexNativePluginEntry(TypedDict):
@@ -96,6 +104,8 @@ def codex_settings_renderer() -> Renderer:
         document["model"] = stable.model
         document["model_reasoning_effort"] = stable.model_reasoning_effort
         document["service_tier"] = stable.service_tier
+        if stable.model_context_window is not None:
+            document["model_context_window"] = stable.model_context_window
         return tomlkit.dumps(document).encode("utf-8")
 
     return render

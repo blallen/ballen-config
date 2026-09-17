@@ -27,6 +27,13 @@ class Component(BaseModel):
     revision: str | None = Field(default=None, pattern=r"^[0-9a-f]{40}$")
     depends_on: tuple[str, ...] = ()
     application_paths: tuple[str, ...] = ()
+    home_executable: str | None = Field(
+        default=None,
+        description=(
+            "Home-relative executable path providing installation-presence evidence "
+            "instead of application/receipt checks; does not establish runtime health."
+        ),
+    )
     receipt_prefixes: tuple[str, ...] = ()
     enabled_by_default: bool = True
     include_key: str | None = None
@@ -49,6 +56,10 @@ class Component(BaseModel):
             destination = Path(self.destination)
             if destination.is_absolute() or ".." in destination.parts:
                 raise ValueError("component destination must be home-relative")
+        if self.home_executable is not None:
+            executable = Path(self.home_executable)
+            if executable.is_absolute() or ".." in executable.parts:
+                raise ValueError("component executable must be home-relative")
         return self
 
 

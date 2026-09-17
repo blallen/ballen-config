@@ -163,6 +163,8 @@ class Doctor:
                     receipt_prefixes=component.receipt_prefixes,
                     path_exists=self.path_exists,
                     read_receipts=lambda: self.runner.run(("pkgutil", "--pkgs")),
+                    home=self.home,
+                    home_executable=component.home_executable,
                 )
                 if not present:
                     type_flag = (

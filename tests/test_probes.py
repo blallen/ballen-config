@@ -1,14 +1,37 @@
 """Tests for the shared presence predicates over native command output."""
 
+import sys
+from pathlib import Path
+
 import pytest
 
 from ballen_config.probes import (
     application_paths_present,
     brew_artifact_present,
     receipts_match,
+    run_command_with_fallback,
     uv_tool_listed,
 )
-from ballen_config.runner import CommandResult
+from ballen_config.runner import CommandResult, SubprocessRunner
+
+
+def test_executable_fallback_handles_real_non_executable_primary(
+    tmp_path: Path,
+) -> None:
+    """Reach a usable fallback after the primary launcher raises EACCES."""
+    primary = tmp_path / "not-executable"
+    primary.write_text("#!/bin/sh\nexit 0\n")
+    primary.chmod(0o600)
+
+    result = run_command_with_fallback(
+        SubprocessRunner(),
+        (str(primary), "--version"),
+        Path(sys.executable),
+    )
+
+    assert result["returncode"] == 0
+    assert result["stdout"].startswith("Python ")
+    assert result["stderr"] == ""
 
 
 @pytest.mark.parametrize(

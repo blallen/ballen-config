@@ -12,6 +12,7 @@ import pytest
 from ballen_config.assistants.checks import assistant_checks
 from ballen_config.doctor import CheckSeverity, FindingStatus, run_doctor
 from ballen_config.install import InstallAction
+from ballen_config.runner import SubprocessRunner
 from ballen_config.runtime import RuntimePaths
 from ballen_config.state import ManagedRecord, StateStore
 from tests.assistants.fakes import StatefulAssistantFake
@@ -54,8 +55,18 @@ def paths(tmp_path: Path) -> RuntimePaths:
 def test_authentication_uses_exact_commands_and_hides_native_output(
     paths: RuntimePaths,
 ) -> None:
-    """Use return codes only and never render authentication output."""
+    """Normalize authentication status without rendering native account output."""
     runner = StatefulAssistantFake(paths.home)
+    runner.add(
+        ("cursor-agent", "--version"),
+        returncode=0,
+        stdout="2026.09.15-d2fe57e\n",
+    )
+    runner.add(
+        ("cursor-agent", "status"),
+        returncode=0,
+        stdout="✓ Logged in as private@example.test\n",
+    )
     runner.add(("claude", "auth", "status"), returncode=0, stdout="user@example")
     runner.add(("codex", "login", "status"), returncode=1, stderr="token=secret")
 
@@ -66,17 +77,160 @@ def test_authentication_uses_exact_commands_and_hides_native_output(
     )
 
     assert runner.commands == [
+        ("cursor-agent", "--version"),
+        ("cursor-agent", "status"),
         ("claude", "auth", "status"),
         ("codex", "login", "status"),
     ]
     rendered = run_doctor(findings).render()
+    assert "private@example.test" not in rendered
     assert "user@example" not in rendered
     assert "token=secret" not in rendered
     assert run_doctor(findings).finding("claude.sign-in").status is FindingStatus.READY
+    assert run_doctor(findings).finding("cursor.cli").message == (
+        "ready (version 2026.09.15-d2fe57e)"
+    )
+    assert run_doctor(findings).finding("cursor.sign-in").status is FindingStatus.READY
     assert (
         run_doctor(findings).finding("codex.sign-in").message
         == "Codex sign-in requires manual login"
     )
+
+
+@pytest.mark.parametrize(
+    ("returncode", "stdout", "status", "message"),
+    [
+        pytest.param(
+            0,
+            "Not logged in\n",
+            FindingStatus.MANUAL,
+            "Cursor sign-in requires manual login",
+            id="not-logged-in-exit-zero",
+        ),
+        pytest.param(
+            0,
+            "unexpected account output\n",
+            FindingStatus.UNAVAILABLE,
+            "Cursor sign-in status unavailable",
+            id="unknown-exit-zero-output",
+        ),
+        pytest.param(
+            1,
+            "private@example.test\n",
+            FindingStatus.UNAVAILABLE,
+            "Cursor sign-in status unavailable",
+            id="command-failure",
+        ),
+    ],
+)
+def test_cursor_authentication_normalizes_status_without_identity(
+    paths: RuntimePaths,
+    returncode: int,
+    stdout: str,
+    status: FindingStatus,
+    message: str,
+) -> None:
+    """Distinguish logged-out and unavailable Cursor status without PII."""
+    runner = StatefulAssistantFake(paths.home)
+    runner.add(
+        ("cursor-agent", "--version"),
+        returncode=0,
+        stdout="2026.09.15-d2fe57e\n",
+    )
+    runner.add(("cursor-agent", "status"), returncode=returncode, stdout=stdout)
+
+    report = run_doctor(
+        assistant_checks(enabled=frozenset({"cursor"}), paths=paths, runner=runner)
+    )
+
+    finding = report.finding("cursor.sign-in")
+    assert finding.status is status
+    assert finding.message == message
+    assert stdout.strip() not in report.render()
+
+
+@pytest.mark.parametrize(
+    "stdout",
+    [
+        pytest.param("private@example.test\n", id="malformed-version"),
+        pytest.param(
+            "2026.09.15-d2fe57e\nprivate@example.test\n",
+            id="multiline-version",
+        ),
+    ],
+)
+def test_cursor_version_rejects_and_hides_malformed_success_output(
+    paths: RuntimePaths,
+    stdout: str,
+) -> None:
+    """Reject unexpected version output without exposing its contents."""
+    runner = StatefulAssistantFake(paths.home)
+    runner.add(("cursor-agent", "--version"), returncode=0, stdout=stdout)
+    runner.add(("cursor-agent", "status"), returncode=0, stdout="Not logged in\n")
+
+    report = run_doctor(
+        assistant_checks(enabled=frozenset({"cursor"}), paths=paths, runner=runner)
+    )
+
+    assert report.finding("cursor.cli").status is FindingStatus.UNAVAILABLE
+    rendered = report.render()
+    assert all(line not in rendered for line in stdout.splitlines())
+
+
+def test_cursor_agent_diagnostics_fall_back_to_vendor_executable(
+    paths: RuntimePaths,
+) -> None:
+    """Probe the known vendor executable when cursor-agent is absent from PATH."""
+    vendor = paths.home / ".local/bin/cursor-agent"
+    runner = StatefulAssistantFake(paths.home)
+    runner.add(("cursor-agent", "--version"), returncode=127)
+    runner.add(
+        (str(vendor), "--version"),
+        returncode=0,
+        stdout="2026.09.15-d2fe57e\n",
+    )
+    runner.add(("cursor-agent", "status"), returncode=127)
+    runner.add(
+        (str(vendor), "status"),
+        returncode=0,
+        stdout="Not logged in\n",
+    )
+
+    report = run_doctor(
+        assistant_checks(enabled=frozenset({"cursor"}), paths=paths, runner=runner)
+    )
+
+    assert report.finding("cursor.cli").status is FindingStatus.READY
+    assert report.finding("cursor.sign-in").status is FindingStatus.MANUAL
+    assert runner.commands == [
+        ("cursor-agent", "--version"),
+        (str(vendor), "--version"),
+        ("cursor-agent", "status"),
+        (str(vendor), "status"),
+    ]
+
+
+def test_non_executable_vendor_agent_is_normalized_unavailable(
+    paths: RuntimePaths,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Keep doctor running when neither PATH nor vendor launcher is executable."""
+    vendor = paths.home / ".local/bin/cursor-agent"
+    vendor.parent.mkdir(parents=True)
+    vendor.write_text("#!/bin/sh\nexit 0\n")
+    vendor.chmod(0o600)
+    monkeypatch.setenv("PATH", "")
+
+    report = run_doctor(
+        assistant_checks(
+            enabled=frozenset({"cursor"}),
+            paths=paths,
+            runner=SubprocessRunner(),
+        )
+    )
+
+    assert report.finding("cursor.cli").status is FindingStatus.UNAVAILABLE
+    assert report.finding("cursor.sign-in").status is FindingStatus.UNAVAILABLE
 
 
 def test_disabled_agents_do_not_run_or_inspect_their_roots(paths: RuntimePaths) -> None:

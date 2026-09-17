@@ -9,10 +9,61 @@ The predicates take their effects as arguments rather than performing them,
 so the rules stay testable without a subprocess or a filesystem.
 """
 
+import os
 from collections.abc import Callable, Sequence
 from pathlib import Path
+from typing import Final
 
-from ballen_config.runner import CommandResult
+from ballen_config.runner import CommandResult, Runner
+
+CURSOR_EDITOR_CLI: Final = Path(
+    "/Applications/Cursor.app/Contents/Resources/app/bin/cursor"
+)
+
+
+def _is_executable_file(path: Path) -> bool:
+    """Return whether a path resolves to an executable regular file."""
+    return path.is_file() and os.access(path, os.X_OK)
+
+
+def home_executable_present(
+    relative_path: str | None,
+    home: Path | None,
+    path_is_executable: Callable[[Path], bool] = _is_executable_file,
+) -> bool:
+    """Return whether a declared home-relative executable is usable."""
+    if relative_path is None or home is None:
+        return False
+    return path_is_executable(home / relative_path)
+
+
+def run_cursor_editor_command(
+    runner: Runner,
+    command: Sequence[str],
+) -> CommandResult:
+    """Run a Cursor editor command with the known app-bundle fallback.
+
+    The PATH command remains authoritative when it resolves, including when
+    Cursor itself reports an operation failure. Only shell-style unavailable
+    statuses fall back to the executable shipped inside ``Cursor.app``.
+    """
+    if not command or command[0] != "cursor":
+        raise ValueError("Cursor editor command must start with cursor")
+    return run_command_with_fallback(runner, command, CURSOR_EDITOR_CLI)
+
+
+def run_command_with_fallback(
+    runner: Runner,
+    command: Sequence[str],
+    fallback_executable: Path,
+) -> CommandResult:
+    """Run a command, retrying an unavailable executable at one known path."""
+    if not command:
+        raise ValueError("command must not be empty")
+    result = runner.run(command)
+    if result["returncode"] not in {126, 127}:
+        return result
+    return runner.run((str(fallback_executable), *command[1:]))
 
 
 def application_paths_present(
@@ -81,15 +132,18 @@ def brew_artifact_present(
     receipt_prefixes: Sequence[str],
     path_exists: Callable[[Path], bool],
     read_receipts: Callable[[], CommandResult],
+    home: Path | None = None,
+    home_executable: str | None = None,
+    path_is_executable: Callable[[Path], bool] = _is_executable_file,
 ) -> bool:
     """Return whether declared artifacts prove a Homebrew component installed.
 
     This is the whole declared-artifact rule, not one of its parts. A
-    component is proven present when every declared application path exists
-    and, when it also declares ``receipt_prefixes``, a readable
-    ``pkgutil --pkgs`` matches all of them. Declared paths without a matching
-    receipt are not proof: BasicTeX provides the same ``latex`` binary as full
-    MacTeX, so the receipt is what distinguishes them.
+    component is proven present when its declared home-relative executable is
+    usable, or when every declared application path exists and a readable
+    ``pkgutil --pkgs`` matches every declared receipt prefix. Declared paths
+    without a matching required receipt are not proof: BasicTeX provides the
+    same ``latex`` binary as full MacTeX, so the receipt distinguishes them.
 
     A negative answer means only that the declared artifacts did not prove
     presence. Callers fall back to their own package query, so the component
@@ -108,10 +162,15 @@ def brew_artifact_present(
         receipt_prefixes: A component's declared receipt prefixes.
         path_exists: Injected existence check, so this function stays pure.
         read_receipts: Injected ``pkgutil --pkgs`` reader, called at most once.
+        home: Home root used to resolve ``home_executable``.
+        home_executable: Optional reviewed executable path relative to home.
+        path_is_executable: Injected executable-file predicate.
 
     Returns:
         Whether the declared artifacts prove the component is installed.
     """
+    if home_executable_present(home_executable, home, path_is_executable):
+        return True
     if not application_paths_present(application_paths, path_exists):
         return False
     if not receipt_prefixes:

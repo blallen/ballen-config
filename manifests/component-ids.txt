@@ -5,6 +5,7 @@ include glab
 include mactex
 include obsidian
 include signal
+include t3-code
 skip claude-code
 skip codex
 skip cursor

@@ -18,6 +18,7 @@ from ballen_config.configure import (
 )
 from ballen_config.install import InstallAction
 from ballen_config.models import ResolvedSetup
+from ballen_config.probes import run_cursor_editor_command
 from ballen_config.runner import Runner
 from ballen_config.runtime import RuntimePaths
 
@@ -316,7 +317,7 @@ def install_actions(
     """
     if not setup.is_enabled("cursor"):
         return ()
-    listed = runner.run(("cursor", "--list-extensions"))
+    listed = run_cursor_editor_command(runner, ("cursor", "--list-extensions"))
     if listed["returncode"] != 0:
         raise CursorExtensionInspectionError("Cursor extension inspection failed")
     installed = frozenset(

@@ -42,9 +42,10 @@ def test_overlay_is_an_exact_portable_allowlist(repo_root: Path) -> None:
     """Track exactly the portable Codex model preferences."""
     settings = load_stable_settings(repo_root / "assistants/codex/config.overlay.toml")
     assert settings.model_dump() == {
-        "model": "gpt-5.6-sol",
+        "model": "gpt-6-astra",
         "model_reasoning_effort": "xhigh",
-        "service_tier": "priority",
+        "service_tier": "default",
+        "model_context_window": 872000,
     }
     source = (repo_root / "assistants/codex/config.overlay.toml").read_text()
     assert all(
@@ -69,17 +70,55 @@ def test_renderer_preserves_native_toml_and_changes_only_overlay(
     repo_root: Path,
 ) -> None:
     """Preserve native tables, comments, and unrelated user preferences."""
-    current = b"""# retain this comment\nmodel = "old"\nservice_tier = "standard"\n[projects."/work"]\ntrust_level = "trusted"\n[plugins]\nkeep = true\n[mcp_servers.local]\ncommand = "native"\n"""
+    current = b"""# retain this comment\nmodel = "old"\nservice_tier = "standard"\nmodel_context_window = 400000\nmodel_auto_compact_token_limit = 360000\n[projects."/work"]\ntrust_level = "trusted"\n[plugins]\nkeep = true\n[mcp_servers.local]\ncommand = "native"\n"""
     rendered = codex_settings_renderer()(
         (repo_root / "assistants/codex/config.overlay.toml").read_bytes(), current
     ).decode()
     assert "# retain this comment" in rendered
-    assert 'model = "gpt-5.6-sol"' in rendered
+    assert 'model = "gpt-6-astra"' in rendered
     assert 'model_reasoning_effort = "xhigh"' in rendered
-    assert 'service_tier = "priority"' in rendered
+    assert 'service_tier = "default"' in rendered
+    assert "model_context_window = 872000" in rendered
+    assert "model_auto_compact_token_limit = 360000" in rendered
     assert '[projects."/work"]' in rendered
     assert "[plugins]" in rendered
     assert "[mcp_servers.local]" in rendered
+
+
+def test_renderer_leaves_undeclared_context_window_alone() -> None:
+    """Keep the native context window unmanaged when the overlay omits it."""
+    source = b"""model = "gpt-6-astra"\nmodel_reasoning_effort = "xhigh"\nservice_tier = "default"\n"""
+    current = b"model_context_window = 400000\n"
+
+    rendered = codex_settings_renderer()(source, current).decode()
+
+    assert "model_context_window = 400000" in rendered
+
+
+@pytest.mark.parametrize(
+    "model_context_window",
+    [
+        pytest.param("0", id="zero"),
+        pytest.param("-1", id="negative"),
+        pytest.param("true", id="boolean"),
+        pytest.param("1.0", id="float"),
+        pytest.param('"872000"', id="numeric-string"),
+    ],
+)
+def test_stable_settings_reject_invalid_context_window(
+    tmp_path: Path, model_context_window: str
+) -> None:
+    """Require a positive TOML integer for the model's usable token capacity."""
+    path = tmp_path / "config.overlay.toml"
+    path.write_text(
+        'model = "gpt-6-astra"\n'
+        'model_reasoning_effort = "xhigh"\n'
+        'service_tier = "default"\n'
+        f"model_context_window = {model_context_window}\n"
+    )
+
+    with pytest.raises(CodexSettingsError, match="invalid Codex settings"):
+        load_stable_settings(path)
 
 
 @pytest.mark.parametrize(

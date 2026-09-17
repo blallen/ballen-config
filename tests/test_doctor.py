@@ -171,6 +171,27 @@ def test_declared_application_path_satisfies_component(fake_home: Path) -> None:
     assert finding.status is FindingStatus.READY
 
 
+def test_vendor_cursor_agent_is_ready_without_homebrew(fake_home: Path) -> None:
+    """Diagnose an executable vendor Cursor agent as satisfying the cask."""
+    executable = fake_home / ".local/bin/cursor-agent"
+    executable.parent.mkdir(parents=True)
+    executable.write_text("#!/bin/sh\n")
+    executable.chmod(0o700)
+    component = Component(
+        id="cursor-cli",
+        manager=Manager.BREW_CASK,
+        package="cursor-cli",
+        home_executable=".local/bin/cursor-agent",
+    )
+    runner = FakeRunner({})
+
+    finding = Doctor(runner, fake_home).component_checks((component,))[0]
+
+    assert finding.status is FindingStatus.READY
+    assert finding.message == "ready"
+    assert runner.commands == []
+
+
 def test_declared_application_path_without_matching_receipt_is_missing(
     fake_home: Path,
 ) -> None:

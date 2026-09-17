@@ -877,6 +877,63 @@ def test_failed_cursor_extension_inspection_never_plans_installs(
     assert fake_runner.downloads == []
 
 
+def test_cursor_extension_inspection_uses_bundled_editor_cli_fallback(
+    fake_runner: StatefulAssistantFake,
+    temporary_home: Path,
+    tmp_path: Path,
+    extension_catalog: ExtensionCatalog,
+) -> None:
+    """Use Cursor's app-bundled editor CLI when `cursor` is absent from PATH."""
+    bundled_cli = Path("/Applications/Cursor.app/Contents/Resources/app/bin/cursor")
+    fake_runner.add(("cursor", "--list-extensions"), returncode=127)
+    fake_runner.add(
+        (str(bundled_cli), "--list-extensions"),
+        returncode=0,
+        stdout="bierner.markdown-mermaid\n",
+    )
+
+    actions = install_actions(
+        _resolved_setup("cursor"),
+        extension_catalog,
+        fake_runner,
+        bundled_root=tmp_path,
+    )
+
+    assert fake_runner.commands[:2] == [
+        ("cursor", "--list-extensions"),
+        (str(bundled_cli), "--list-extensions"),
+    ]
+    assert all(
+        action.component_id != "cursor.extension.bierner.markdown-mermaid"
+        for action in actions
+    )
+
+
+def test_cursor_extension_inspection_fails_when_both_editor_clis_are_missing(
+    fake_runner: StatefulAssistantFake,
+    temporary_home: Path,
+    tmp_path: Path,
+    extension_catalog: ExtensionCatalog,
+) -> None:
+    """Normalize inspection failure after PATH and bundle resolution both fail."""
+    bundled_cli = Path("/Applications/Cursor.app/Contents/Resources/app/bin/cursor")
+    fake_runner.add(("cursor", "--list-extensions"), returncode=127)
+    fake_runner.add((str(bundled_cli), "--list-extensions"), returncode=127)
+
+    with pytest.raises(CursorExtensionInspectionError):
+        install_actions(
+            _resolved_setup("cursor"),
+            extension_catalog,
+            fake_runner,
+            bundled_root=tmp_path,
+        )
+
+    assert fake_runner.commands == [
+        ("cursor", "--list-extensions"),
+        (str(bundled_cli), "--list-extensions"),
+    ]
+
+
 @pytest.mark.parametrize(
     "identifier",
     [

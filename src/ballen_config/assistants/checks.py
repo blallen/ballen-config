@@ -2,6 +2,7 @@
 
 import hashlib
 import os
+import re
 import stat
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
@@ -29,6 +30,7 @@ from ballen_config.doctor import (
 )
 from ballen_config.install import InstallAction
 from ballen_config.paths import assert_contained
+from ballen_config.probes import run_command_with_fallback
 from ballen_config.runner import Runner
 from ballen_config.runtime import RuntimePaths
 from ballen_config.state import BootstrapState, StateStore
@@ -96,6 +98,9 @@ _MAX_SKILL_ROOT_ENTRIES: Final[int] = 512
 _MAX_SKILL_TREE_ENTRIES: Final[int] = 2048
 _MAX_SKILL_TREE_BYTES: Final[int] = 32 * 1024 * 1024
 _MAX_CURSOR_WORKTREES: Final[int] = 512
+_CURSOR_AGENT_VERSION: Final = re.compile(
+    r"\A\d{4}\.\d{2}\.\d{2}-[A-Za-z0-9][A-Za-z0-9._-]*\Z"
+)
 
 
 def _enabled(enabled: Collection[str], name: str) -> bool:
@@ -530,6 +535,55 @@ def assistant_checks(
                     f"{unmanaged_extension_count} unmanaged Cursor extension(s) require review",
                 )
             )
+
+        cursor_agent = paths.home / ".local/bin/cursor-agent"
+        version_result = run_command_with_fallback(
+            runner,
+            ("cursor-agent", "--version"),
+            cursor_agent,
+        )
+        version = version_result["stdout"].strip()
+        version_ready = (
+            version_result["returncode"] == 0
+            and _CURSOR_AGENT_VERSION.fullmatch(version) is not None
+        )
+        add(
+            _finding(
+                "cursor.cli",
+                FindingStatus.READY if version_ready else FindingStatus.UNAVAILABLE,
+                CheckSeverity.INFO if version_ready else CheckSeverity.WARNING,
+                f"ready (version {version})"
+                if version_ready
+                else "Cursor agent CLI unavailable",
+            )
+        )
+
+        status_result = run_command_with_fallback(
+            runner,
+            ("cursor-agent", "status"),
+            cursor_agent,
+        )
+        status_output = status_result["stdout"].strip().removeprefix("✓ ")
+        if status_result["returncode"] != 0:
+            status = FindingStatus.UNAVAILABLE
+            severity = CheckSeverity.WARNING
+            message = "Cursor sign-in status unavailable"
+        elif status_output == "Not logged in":
+            status = FindingStatus.MANUAL
+            severity = CheckSeverity.INFO
+            message = "Cursor sign-in requires manual login"
+        elif (
+            status_output.startswith("Logged in as ")
+            and len(status_output.removeprefix("Logged in as ").strip()) > 0
+        ):
+            status = FindingStatus.READY
+            severity = CheckSeverity.INFO
+            message = "ready"
+        else:
+            status = FindingStatus.UNAVAILABLE
+            severity = CheckSeverity.WARNING
+            message = "Cursor sign-in status unavailable"
+        add(_finding("cursor.sign-in", status, severity, message))
 
     for agent, command, label in (
         ("claude-code", ("claude", "auth", "status"), "Claude"),

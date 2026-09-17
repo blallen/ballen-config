@@ -5,6 +5,12 @@ components:
     profiles: [default]
     skip_key: cursor
     application_paths: [/Applications/Cursor.app]
+  - id: cursor-cli
+    manager: brew_cask
+    package: cursor-cli
+    profiles: [default]
+    skip_key: cursor
+    home_executable: .local/bin/cursor-agent
   - {id: claude-code, manager: brew_cask, package: claude-code, profiles: [default], skip_key: claude-code}
   - {id: codex, manager: brew_cask, package: codex, profiles: [default], skip_key: codex}
   - id: brave-browser
@@ -28,6 +34,14 @@ components:
     application_paths: [/Applications/Signal.app]
     enabled_by_default: false
     include_key: signal
+    required: false
+  - id: t3-code
+    manager: brew_cask
+    package: t3-code
+    profiles: [default]
+    application_paths: [/Applications/T3 Code (Alpha).app]
+    enabled_by_default: false
+    include_key: t3-code
     required: false
   - id: mactex
     manager: brew_cask

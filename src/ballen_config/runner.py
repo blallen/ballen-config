@@ -1,3 +1,4 @@
+import errno
 import subprocess
 from collections.abc import Sequence
 from typing import Protocol, TypedDict
@@ -32,6 +33,10 @@ class SubprocessRunner:
             )
         except FileNotFoundError:
             return {"returncode": 127, "stdout": "", "stderr": ""}
+        except OSError as error:
+            if error.errno in {errno.EACCES, errno.ENOEXEC}:
+                return {"returncode": 126, "stdout": "", "stderr": ""}
+            raise
         return {
             "returncode": completed.returncode,
             "stdout": completed.stdout,

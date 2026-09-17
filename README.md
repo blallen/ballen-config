@@ -35,13 +35,18 @@ exceptions without weakening the safety boundary.
 
 `default` is the baseline. `wsh` adds current-job extra env. `fsp` adds AWS CLI,
 `libmagic`, Bedrock overlay, and Atlassian MCP. Includes: Obsidian, Signal,
-MacTeX, `glab`. Skips: Cursor, Claude Code, Codex. Example:
+MacTeX, `glab`, T3 Code (`--include t3-code`). Skips: Cursor, Claude Code, Codex. Example:
 `./bootstrap --profile wsh --skip codex`.
 
 ## Software choices
 
 There is no dedicated terminal in desired state. iTerm remains an unmanaged
 fallback.
+
+T3 Code is an optional desktop application, selected with `--include t3-code`.
+An existing T3 Code (Alpha) app is reused. Provider selection remains independent:
+including T3 does not enable an agent excluded with `--skip`. T3 preferences,
+connections, conversations, and other `~/.t3` state remain unmanaged.
 
 The `mactex` include installs the full MacTeX distribution matching this
 laptop's TUG MacTeX/TeX Live setup, not BasicTeX. It is opt-in because the
@@ -64,6 +69,22 @@ required diagnostics while remaining agents still receive targeted shared
 resources. Canonical shared sources are translated by native adapters with
 explicit collision rejection; the agents do not share configuration formats.
 
+Cursor includes its separate agent CLI (`cursor-agent`) as well as the editor.
+The bootstrap preserves an existing executable in the vendor install location;
+on a clean machine it installs the `cursor-cli` Homebrew cask. Doctor checks
+runtime availability and sign-in separately from installation presence. A broken
+existing executable is reported for repair rather than automatically replaced.
+T3's Cursor provider uses `cursor-agent`. The editor's `cursor` launcher serves
+extension installation and inspection instead.
+
+Claude defaults to `fable`, whose long context is native. Codex defaults to
+`gpt-6-astra` with `xhigh` reasoning and the `default` service tier. Its declared
+872,000-token context budget matches the maximum advertised by the reviewed
+Codex 0.154.0 model catalog; compaction remains under Codex's model defaults.
+This is the CLI input budget for the model's 1M-class context, rather than a
+promise of one million user-input tokens. Update this limit against native
+model metadata when changing the model or CLI support.
+
 `ballen-config` is the only desired-state source for coding agents. A shared,
 target-aware catalog can declare a capability for several agents, while native
 Cursor, Claude Code, and Codex adapters independently install and inspect only
@@ -82,6 +103,12 @@ imported as three separate handoffs (engineering defaults, RTK, and Cursor
 additions). Use each agent's first-party browser capability rather than a
 global Playwright MCP, GitHub through `gh` by default (GitLab through `glab`
 when the remote is GitLab), and official Notion integrations.
+
+Ponytail is managed for Claude Code and Codex. Its native Codex package provides
+skills and hooks; hook trust must be approved locally through Codex `/hooks`.
+The bootstrap checks installation, not hook trust or automatic activation.
+Ponytail's current Cursor support is a separate manual hook adapter, so it is
+not declared as a managed Cursor plugin.
 
 The `fsp` profile has one narrow MCP exception: it manages a secret-free
 Atlassian HTTP entry in `~/.cursor/mcp.json` because Cursor's official

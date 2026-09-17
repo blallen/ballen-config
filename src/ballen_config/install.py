@@ -16,7 +16,11 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ballen_config.models import Component, Manager, ResolvedSetup
 from ballen_config.paths import assert_contained, assert_no_symlink_components
-from ballen_config.probes import brew_artifact_present, uv_tool_listed
+from ballen_config.probes import (
+    brew_artifact_present,
+    run_cursor_editor_command,
+    uv_tool_listed,
+)
 from ballen_config.runner import CommandResult, Runner
 from ballen_config.runtime import RuntimePaths
 from ballen_config.state import InstallRecord, StateStore
@@ -266,7 +270,7 @@ class Installer:
                     component_id=action.component_id, state="optional-failure"
                 )
         else:
-            completed = self.runner.run(action.argv)
+            completed = self._run_action_command(action.argv)
         if completed["returncode"] == 0:
             return InstallOutcome(component_id=action.component_id, state="installed")
         if action.required:
@@ -325,10 +329,16 @@ class Installer:
                 str(artifact) if value == "{artifact}" else value
                 for value in action.argv
             )
-            return self.runner.run(argv)
+            return self._run_action_command(argv)
         finally:
             if workspace is not None:
                 shutil.rmtree(workspace, ignore_errors=True)
+
+    def _run_action_command(self, argv: Sequence[str]) -> CommandResult:
+        """Run an install action with native executable discovery."""
+        if argv and argv[0] == "cursor":
+            return run_cursor_editor_command(self.runner, argv)
+        return self.runner.run(argv)
 
     def _brew(self, component: Component) -> InstallOutcome:
         """Return present or install a Homebrew formula or cask."""
@@ -337,6 +347,8 @@ class Installer:
             receipt_prefixes=component.receipt_prefixes,
             path_exists=self.path_exists,
             read_receipts=lambda: self.runner.run(("pkgutil", "--pkgs")),
+            home=self.home,
+            home_executable=component.home_executable,
         ):
             return InstallOutcome(component_id=component.id, state="present")
         type_flag = (

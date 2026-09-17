@@ -161,6 +161,8 @@ class ResolvedInspector:
                 receipt_prefixes=component.receipt_prefixes,
                 path_exists=Path.exists,
                 read_receipts=lambda: self.runner.run(("pkgutil", "--pkgs")),
+                home=self.home,
+                home_executable=component.home_executable,
             ):
                 return ComponentState.PRESENT
             flag = (

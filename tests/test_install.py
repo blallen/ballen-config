@@ -101,6 +101,66 @@ def test_existing_application_bundle_satisfies_cask(tmp_path: Path) -> None:
     assert runner.commands == []
 
 
+def test_existing_vendor_cursor_agent_makes_repeated_install_a_no_op(
+    tmp_path: Path,
+) -> None:
+    """Reuse an executable vendor Cursor agent without asking Homebrew twice."""
+    executable = tmp_path / ".local/bin/cursor-agent"
+    executable.parent.mkdir(parents=True)
+    executable.write_text("#!/bin/sh\n")
+    executable.chmod(0o700)
+    component = Component(
+        id="cursor-cli",
+        manager=Manager.BREW_CASK,
+        package="cursor-cli",
+        home_executable=".local/bin/cursor-agent",
+    )
+    runner = FakeRunner([])
+    installer = Installer(runner, tmp_path)
+
+    assert installer.install(component).state == "present"
+    assert installer.install(component).state == "present"
+    assert runner.commands == []
+
+
+def test_missing_cursor_agent_installs_homebrew_cask(tmp_path: Path) -> None:
+    """Install the Cursor CLI cask when neither vendor nor Homebrew owns it."""
+    runner = FakeRunner([result(1), result()])
+    component = Component(
+        id="cursor-cli",
+        manager=Manager.BREW_CASK,
+        package="cursor-cli",
+        home_executable=".local/bin/cursor-agent",
+    )
+
+    assert Installer(runner, tmp_path).install(component).state == "installed"
+    assert runner.commands == [
+        ("brew", "list", "--cask", "cursor-cli"),
+        ("brew", "install", "--cask", "cursor-cli"),
+    ]
+
+
+def test_cursor_extension_install_uses_bundled_editor_cli_fallback(
+    tmp_path: Path,
+) -> None:
+    """Use the same bundled Cursor CLI fallback when installing extensions."""
+    runner = FakeRunner([result(127), result()])
+    action = InstallAction(
+        component_id="cursor.extension.example.publisher",
+        argv=("cursor", "--install-extension", "example.publisher"),
+    )
+
+    assert Installer(runner, tmp_path).run_action(action).state == "installed"
+    assert runner.commands == [
+        ("cursor", "--install-extension", "example.publisher"),
+        (
+            "/Applications/Cursor.app/Contents/Resources/app/bin/cursor",
+            "--install-extension",
+            "example.publisher",
+        ),
+    ]
+
+
 def test_vendor_mactex_satisfies_opt_in_cask(tmp_path: Path) -> None:
     """A vendor-provided TeX installation satisfies the optional cask."""
     runner = FakeRunner(
@@ -460,6 +520,36 @@ def test_verified_download_checks_size_hash_runs_and_cleans(
     artifact = Path(runner.commands[0][2])
     assert runner.commands[0][:2] == ("cursor", "--install-extension")
     assert not artifact.exists()
+    assert (paths.state_root / "tmp").is_dir()
+
+
+def test_verified_download_uses_bundled_cursor_cli_and_cleans(
+    fake_home: Path, tmp_path: Path
+) -> None:
+    """Retry a verified VSIX with the bundled CLI and remove its workspace."""
+    payload = b"extension bytes"
+    runner = FakeRunner([result(127), result()])
+    downloader = FakeDownloader({"https://example.test/tool.vsix": payload})
+    paths = RuntimePaths.from_roots(repo_root=tmp_path, home=fake_home)
+    installer = Installer(
+        runner,
+        fake_home,
+        downloader=downloader,
+        private_temp_root=paths.state_root / "tmp",
+    )
+
+    assert installer.run_action(make_action(payload)).state == "installed"
+
+    (artifact,) = downloader.destinations
+    assert runner.commands == [
+        ("cursor", "--install-extension", str(artifact)),
+        (
+            "/Applications/Cursor.app/Contents/Resources/app/bin/cursor",
+            "--install-extension",
+            str(artifact),
+        ),
+    ]
+    assert not artifact.parent.exists()
     assert (paths.state_root / "tmp").is_dir()
 
 

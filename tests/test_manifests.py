@@ -44,6 +44,21 @@ def test_fsp_profile_extends_default(manifest_repository: ManifestRepository) ->
     assert {"obsidian", "signal", "mactex", "glab", "wave"}.isdisjoint(resolved)
 
 
+def test_default_profile_selects_cursor_agent_cli(
+    manifest_repository: ManifestRepository,
+) -> None:
+    """Install the Cursor agent CLI with the default coding-agent baseline."""
+    setup = manifest_repository.resolve(ResolutionRequest(profile="default"))
+    resolved = {component.id: component for component in setup.components}
+
+    assert "cursor-cli" in resolved
+    cursor_cli = resolved["cursor-cli"]
+    assert cursor_cli.manager is Manager.BREW_CASK
+    assert cursor_cli.package == "cursor-cli"
+    assert cursor_cli.skip_key == "cursor"
+    assert cursor_cli.home_executable == ".local/bin/cursor-agent"
+
+
 def test_wsh_profile_extends_default_without_fsp_packages(
     manifest_repository: ManifestRepository,
 ) -> None:
@@ -145,6 +160,7 @@ def test_profile_cycle_is_rejected(tmp_path: Path) -> None:
         pytest.param("signal", id="signal"),
         pytest.param("mactex", id="mactex"),
         pytest.param("glab", id="glab"),
+        pytest.param("t3-code", id="t3-code"),
     ],
 )
 def test_personal_applications_are_opt_in(
@@ -179,6 +195,26 @@ def test_skip_removes_complete_component(
     assert skip in result.skipped
 
 
+def test_t3_code_include_does_not_enable_skipped_coding_agents(
+    manifest_repository: ManifestRepository,
+) -> None:
+    """Keep the optional T3 application independent of coding-agent providers."""
+    result = manifest_repository.resolve(
+        ResolutionRequest(
+            profile="default",
+            includes=("t3-code",),
+            skips=("cursor", "claude-code", "codex"),
+        )
+    )
+
+    components = {component.id: component for component in result.components}
+    assert "t3-code" in components
+    assert {"cursor", "claude-code", "codex", "cursor-cli"}.isdisjoint(components)
+    t3_code = components["t3-code"]
+    assert t3_code.application_paths == ("/Applications/T3 Code (Alpha).app",)
+    assert t3_code.required is False
+
+
 def test_interface_ids_match_manifests(
     manifest_repository: ManifestRepository,
 ) -> None:
@@ -191,6 +227,7 @@ def test_interface_ids_match_manifests(
         "include mactex",
         "include obsidian",
         "include signal",
+        "include t3-code",
         "skip claude-code",
         "skip codex",
         "skip cursor",

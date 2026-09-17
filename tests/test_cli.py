@@ -156,6 +156,29 @@ def test_state_reports_present_for_a_listed_uv_tool(fake_home: Path) -> None:
     assert runner.commands == [("uv", "tool", "list")]
 
 
+def test_state_reports_vendor_cursor_agent_present_without_homebrew(
+    fake_home: Path,
+) -> None:
+    """Plan against an existing executable vendor Cursor agent as present."""
+    executable = fake_home / ".local/bin/cursor-agent"
+    executable.parent.mkdir(parents=True)
+    executable.write_text("#!/bin/sh\n")
+    executable.chmod(0o700)
+    component = Component(
+        id="cursor-cli",
+        manager=Manager.BREW_CASK,
+        package="cursor-cli",
+        home_executable=".local/bin/cursor-agent",
+    )
+    runner = FakeRunner()
+
+    assert (
+        cli.ResolvedInspector(runner, (component,), fake_home).state("cursor-cli")
+        is ComponentState.PRESENT
+    )
+    assert runner.commands == []
+
+
 def test_state_reports_missing_for_an_absent_uv_tool(fake_home: Path) -> None:
     """A uv-managed tool absent from the listing resolves to missing."""
     component = Component(

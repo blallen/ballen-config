@@ -16,6 +16,9 @@
 6. Before `--include mactex`, allow for the full MacTeX download and disk
    footprint.
 7. Sign in to each enabled coding agent: Cursor, Claude Code, and Codex.
+   Cursor's agent CLI has a separate browser sign-in: run `cursor-agent login`
+   and verify with `cursor-agent status`. Use the existing CLI's installation
+   owner for updates; do not install a second copy just to update it.
 8. When Cursor is enabled, import each of these state-dir handoffs as its own
    User Rule in Cursor Customize > Rules:
    `~/.local/state/ballen-config/manual/cursor-user-rules-engineering.md`,
@@ -40,6 +43,18 @@
     servers to that file.
 12. Do not manually install the abandoned experimental marketplace setup; it is
     not part of desired state.
+    After Ponytail is installed in Codex, open an interactive `codex` session,
+    use `/hooks` to review and approve its hook entries, then start a new thread.
+    This trust decision stays local. Installation diagnostics do not establish
+    hook trust. Explicit skills use names such as `$ponytail:ponytail-review`.
+    Ponytail is not installed into Cursor by this bootstrap; its upstream
+    manual hook adapter has separate compatibility limits.
 13. Finish with `./bootstrap doctor --profile wsh`, `./bootstrap doctor
     --profile fsp`, or `./bootstrap doctor --profile default`. Resolve only
-    the normalized manual findings.
+    the normalized manual findings. Preserve the same include and skip options
+    used for plan, install, and configure.
+14. With `--include t3-code`, open T3 Code and use **Settings → Providers** to
+    enable the desired installed providers. Keep Cursor's binary path set to
+    `cursor-agent`, then refresh provider status after signing in. A desktop
+    restart may be needed after changing PATH. T3's app installation does not
+    copy settings, credentials, connections, or conversation history.
