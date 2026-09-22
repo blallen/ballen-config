@@ -20,11 +20,14 @@ def _git(repo: Path, *arguments: str) -> str:
     return result.stdout.strip()
 
 
-def _git_repository(repo: Path) -> str:
+def _git_repository(
+    repo: Path,
+    remote: str = "git@github.com:ballen/ballen-config.git",
+) -> str:
     """Create one committed repository with the expected origin."""
     repo.mkdir()
     _git(repo, "init", "-q")
-    _git(repo, "remote", "add", "origin", "git@github.com:ballen/ballen-config.git")
+    _git(repo, "remote", "add", "origin", remote)
     (repo / ".gitignore").write_text(".reviews/\n")
     (repo / "tracked.txt").write_text("tracked\n")
     _git(repo, "add", ".gitignore", "tracked.txt")
@@ -251,3 +254,90 @@ def test_normalize_threads_command_writes_provider_neutral_snapshot(
 
     assert artifact["contract_version"] == "normalized-review-threads/v1"
     assert artifact["threads"][0]["thread_id"] == "10"
+
+
+def test_normalize_gitlab_threads_command_writes_provider_neutral_snapshot(
+    tmp_path: Path,
+) -> None:
+    """Normalize captured GitLab discussions without remote access."""
+    repo = tmp_path / "repo"
+    head = _git_repository(
+        repo,
+        "git@gitlab.example.com:acme/ballen-config.git",
+    )
+    workspace = repo / ".reviews"
+    workspace.mkdir()
+    identity = repo / "identity.json"
+    base = "a" * 40
+    start = "b" * 40
+    identity.write_text(
+        json.dumps(
+            {
+                "provider": "gitlab",
+                "host": "gitlab.example.com",
+                "repository": "acme/ballen-config",
+                "change_number": 17,
+                "base_revision": base,
+                "head_revision": head,
+            }
+        )
+    )
+    source = repo / "gitlab-discussions.json"
+    source.write_text(
+        json.dumps(
+            {
+                "diff_refs": {
+                    "base_sha": base,
+                    "start_sha": start,
+                    "head_sha": head,
+                },
+                "discussions": [
+                    {
+                        "id": "discussion-012345",
+                        "individual_note": False,
+                        "notes": [
+                            {
+                                "id": 987,
+                                "body": "Guard the empty case.",
+                                "author": {"username": "reviewer"},
+                                "system": False,
+                                "position": {
+                                    "position_type": "text",
+                                    "base_sha": base,
+                                    "start_sha": start,
+                                    "head_sha": head,
+                                    "old_path": "src/example.py",
+                                    "new_path": "src/example.py",
+                                    "new_line": 42,
+                                },
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
+    )
+    output = workspace / "threads.json"
+
+    assert (
+        main(
+            [
+                "normalize-threads",
+                "--provider",
+                "gitlab",
+                "--identity",
+                str(identity),
+                "--input",
+                str(source),
+                "--output",
+                str(output),
+                "--repo-root",
+                str(repo),
+            ]
+        )
+        == 0
+    )
+    artifact = json.loads(output.read_text())
+
+    assert artifact["identity"]["provider"] == "gitlab"
+    assert artifact["threads"][0]["thread_id"] == "discussion-012345"
