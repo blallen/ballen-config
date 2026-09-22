@@ -107,6 +107,17 @@ skills:
       review and response design.
     portability_status: reviewed-generic
 
+  - name: respond-to-gitlab-review
+    source: assistants/shared/skills/respond-to-gitlab-review
+    targets: [cursor, claude-code, codex]
+    profiles: [default]
+    dependencies: [prepare-review-response, publish-gitlab-review, resolve-change-scope, discover-project-standards]
+    provenance: >-
+      Genericized from Plato merge-request response behavior at commit
+      5f78cc607ad100c72f6e173bc22620bcebd6c855 under the approved forge
+      review and response design.
+    portability_status: reviewed-generic
+
   - name: review-project-quality
     source: assistants/shared/skills/review-project-quality
     targets: [cursor, claude-code, codex]
