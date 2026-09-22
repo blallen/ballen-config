@@ -17,6 +17,25 @@ The forge review and response train is refined by the approved
 and its executable
 [implementation plan](../plans/2026-07-30-forge-review-response.md).
 
+### Forge train implementation checkpoint
+
+The seven capability MRs are represented by the stacked Jujutsu bookmarks
+`forge-review-github-draft`, `forge-review-github-publish`,
+`forge-review-prepare-response`, `forge-review-github-response`,
+`forge-review-gitlab-draft`, `forge-review-gitlab-publish`, and
+`forge-review-gitlab-response`. The canonical commands are installed from
+`assistants/shared/tools/review/` into
+`~/.local/share/ballen-config/review-tools/`.
+
+The forge train is based on the local `review-foundation-ponytail`
+prerequisite MR, which adds Ponytail to repo-managed Codex desired state and
+routes one bounded simplicity sub-pass through project-quality self-review.
+
+Local contract, transport, full-suite, typing, lock, launcher, catalog, and
+pre-commit verification passes. Live GitHub mutation/dogfood and live GitLab
+write were intentionally skipped pending separate approval of a current safe
+target; GitLab evidence is contract-test and transport-test evidence only.
+
 ## Purpose
 
 Promote the reusable core of Plato's review workflows into `ballen-config`
