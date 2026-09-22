@@ -1,0 +1,29 @@
+{
+  "contract_version": "publication-preview/v1",
+  "plan_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "identity": {
+    "provider": "github",
+    "host": "github.com",
+    "repository": "acme/ballen-config",
+    "change_number": 17,
+    "base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "head_revision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "expected_head": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "observed_head": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "remote_state_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "status": "ready",
+  "items": [
+    {
+      "action_id": "R001",
+      "deduplication_key": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "state": "eligible",
+      "payload": {
+        "path": "src/example.py",
+        "line": 20,
+        "side": "RIGHT",
+        "body": "Guard the empty case."
+      }
+    }
+  ]
+}

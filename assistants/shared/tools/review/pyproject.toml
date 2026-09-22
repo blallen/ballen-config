@@ -11,6 +11,7 @@ dependencies = ["pydantic==2.8.*"]
 
 [project.scripts]
 review-plan = "ballen_review_tools.plan_cli:main"
+publish-github-review = "ballen_review_tools.github_cli:main"
 
 [dependency-groups]
 dev = [

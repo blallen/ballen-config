@@ -74,6 +74,13 @@ read transport, and mutation transport selection.
 - Never put credentials, headers, raw provider responses, or auth state into
   review artifacts.
 
+For publication, `using-github` selects the available mutation transport and
+owns GitHub vocabulary and identity. `publish-github-review` owns the current
+preview, user approval, plan-digest/head gates, per-item outcomes, and receipt.
+If `gh` is unavailable but a connected provider mutation tool exists, pass the
+approved exact request bundle through that provider boundary and validate the
+normalized receipt. If neither is available, report publication as blocked.
+
 ## Provider setup vs workflow
 
 Separate provider setup from workflow guidance.

@@ -1,0 +1,15 @@
+{
+  "contract_version": "publication-vectors/v1",
+  "vectors": [
+    {
+      "name": "preview-selection-is-not-approval",
+      "status": "ready",
+      "assertions": ["preview requires a separate approval", "POST is not authorization"]
+    },
+    {
+      "name": "changed-head-blocks-execution",
+      "status": "blocked",
+      "assertions": ["no mutation call", "requires new preview"]
+    }
+  ]
+}
