@@ -33,6 +33,7 @@ packages = ["src/ballen_config"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["src", "assistants/shared/tools/review/src"]
 addopts = ["-q"]
 
 [tool.mypy]
