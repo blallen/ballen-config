@@ -4,9 +4,17 @@ import json
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Literal, NotRequired, TypedDict
+from pathlib import PurePosixPath
+from typing import Literal, NotRequired, TypedDict, cast
 
-from ballen_review_tools.models import ReviewAction, ReviewCommentPlan, ReviewIdentity
+from ballen_review_tools.models import (
+    NormalizedReviewThreads,
+    NormalizedThread,
+    ReviewAction,
+    ReviewCommentPlan,
+    ReviewIdentity,
+    ReviewSide,
+)
 from ballen_review_tools.providers.base import CommandRunner
 
 API_VERSION = "2026-03-10"
@@ -66,6 +74,7 @@ class GitHubRemoteComment:
 
     comment_id: int
     body: str
+    author: str = "unknown"
     path: str | None = None
     line: int | None = None
     side: str | None = None
@@ -146,6 +155,12 @@ class GitHubProvider:
         return GitHubRemoteComment(
             comment_id=comment_id,
             body=body,
+            author=(
+                value["user"].get("login")
+                if isinstance(value.get("user"), dict)
+                and isinstance(value["user"].get("login"), str)
+                else "unknown"
+            ),
             path=value.get("path") if isinstance(value.get("path"), str) else None,
             line=cls._int(value.get("line")),
             side=value.get("side") if isinstance(value.get("side"), str) else None,
@@ -306,3 +321,51 @@ class GitHubProvider:
             f"repos/{self._repository_path()}/pulls/comments/{action.thread_id}/replies",
             self.reply_payload(action),
         )
+
+
+def normalize_github_comments(
+    *,
+    identity: ReviewIdentity,
+    head_sha: str,
+    comments: list[object],
+) -> NormalizedReviewThreads:
+    """Normalize GitHub review comments without claiming hidden thread state."""
+    normalized = [GitHubProvider._review_comment(item) for item in comments]
+    roots = [comment for comment in normalized if comment.in_reply_to is None]
+    replies_by_root: dict[int, list[GitHubRemoteComment]] = {}
+    for comment in normalized:
+        if comment.in_reply_to is not None:
+            replies_by_root.setdefault(comment.in_reply_to, []).append(comment)
+    threads: list[NormalizedThread] = []
+    for root in roots:
+        replies = replies_by_root.get(root.comment_id, [])
+        chronology = (root, *replies)
+        threads.append(
+            NormalizedThread(
+                thread_id=str(root.comment_id),
+                comment_ids=tuple(str(comment.comment_id) for comment in chronology),
+                state="open",
+                path=PurePosixPath(root.path) if root.path is not None else None,
+                line=root.line,
+                side=(cast(ReviewSide, root.side) if root.side is not None else None),
+                start_line=root.start_line,
+                start_side=(
+                    cast(ReviewSide, root.start_side)
+                    if root.start_side is not None
+                    else None
+                ),
+                author=root.author,
+                body=root.body,
+                chronology=tuple(str(comment.comment_id) for comment in chronology),
+            )
+        )
+    return NormalizedReviewThreads(
+        contract_version="normalized-review-threads/v1",
+        identity=identity,
+        observed_head=head_sha,
+        limitations=(
+            "REST input does not expose GraphQL resolution or outdated state",
+            "Nested replies are retained only when directly attached to a root comment",
+        ),
+        threads=tuple(threads),
+    )

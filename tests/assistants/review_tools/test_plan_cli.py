@@ -189,3 +189,65 @@ def test_compile_response_writes_only_a_validated_plan(tmp_path: Path) -> None:
 
     assert artifact["contract_version"] == "review-response-plan/v1"
     assert artifact["items"][0]["selected_action"] == "propose-change"
+
+
+def test_normalize_threads_command_writes_provider_neutral_snapshot(
+    tmp_path: Path,
+) -> None:
+    """Normalize supplied GitHub observations without provider mutation."""
+    repo = tmp_path / "repo"
+    head = _git_repository(repo)
+    workspace = repo / ".reviews"
+    workspace.mkdir()
+    identity = repo / "identity.json"
+    identity.write_text(
+        json.dumps(
+            {
+                "provider": "github",
+                "host": "github.com",
+                "repository": "ballen-config",
+                "change_number": 17,
+                "base_revision": "a" * 40,
+                "head_revision": head,
+            }
+        )
+    )
+    source = repo / "github-comments.json"
+    source.write_text(
+        json.dumps(
+            {
+                "head_sha": head,
+                "review_comments": [
+                    {
+                        "id": 10,
+                        "body": "Guard the empty case.",
+                        "user": {"login": "reviewer"},
+                    }
+                ],
+            }
+        )
+    )
+    output = workspace / "threads.json"
+
+    assert (
+        main(
+            [
+                "normalize-threads",
+                "--provider",
+                "github",
+                "--identity",
+                str(identity),
+                "--input",
+                str(source),
+                "--output",
+                str(output),
+                "--repo-root",
+                str(repo),
+            ]
+        )
+        == 0
+    )
+    artifact = json.loads(output.read_text())
+
+    assert artifact["contract_version"] == "normalized-review-threads/v1"
+    assert artifact["threads"][0]["thread_id"] == "10"
