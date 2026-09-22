@@ -313,7 +313,7 @@ def test_renderer_replaces_only_the_exact_owned_managed_hook(
         (repo_root / "assistants/claude/settings.json").read_bytes(), current
     )
     document = json.loads(rendered)
-    assert document["model"] == "fable"
+    assert document["model"] == "opus"
     assert document["extraKnownMarketplaces"] == {"native": {"source": "owner/repo"}}
     assert document["enabledPlugins"] == {"native@native": True}
     assert document["effortLevel"] == "high"

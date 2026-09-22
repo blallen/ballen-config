@@ -77,7 +77,9 @@ existing executable is reported for repair rather than automatically replaced.
 T3's Cursor provider uses `cursor-agent`. The editor's `cursor` launcher serves
 extension installation and inspection instead.
 
-Claude defaults to `fable`, whose long context is native. Codex defaults to
+Claude defaults to `opus` (Opus 5.5): native 1M context now matches Fable, and
+it leads on agentic coding at lower cost. Fable remains available per-session
+via `/model fable` for the hardest, longest-running tasks. Codex defaults to
 `gpt-6-astra` with `xhigh` reasoning and the `default` service tier. Its declared
 872,000-token context budget matches the maximum advertised by the reviewed
 Codex 0.154.0 model catalog; compaction remains under Codex's model defaults.

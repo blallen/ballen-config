@@ -11,7 +11,7 @@ components:
     profiles: [default]
     skip_key: cursor
     home_executable: .local/bin/cursor-agent
-  - {id: claude-code, manager: brew_cask, package: claude-code, profiles: [default], skip_key: claude-code}
+  - {id: claude-code, manager: brew_cask, package: claude-code@latest, profiles: [default], skip_key: claude-code}
   - {id: codex, manager: brew_cask, package: codex, profiles: [default], skip_key: codex}
   - id: brave-browser
     manager: brew_cask
