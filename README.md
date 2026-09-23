@@ -43,6 +43,10 @@ MacTeX, `glab`, T3 Code (`--include t3-code`). Skips: Cursor, Claude Code, Codex
 There is no dedicated terminal in desired state. iTerm remains an unmanaged
 fallback.
 
+`jjui` and JayJay are default-managed Jujutsu graph tools. `jjui` is a terminal
+UI; JayJay is a separate GUI installed from the upstream Homebrew tap. JayJay
+requires macOS 26 or later on Apple silicon.
+
 T3 Code is an optional desktop application, selected with `--include t3-code`.
 An existing T3 Code (Alpha) app is reused. Provider selection remains independent:
 including T3 does not enable an agent excluded with `--skip`. T3 preferences,

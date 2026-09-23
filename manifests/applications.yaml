@@ -13,6 +13,11 @@ components:
     home_executable: .local/bin/cursor-agent
   - {id: claude-code, manager: brew_cask, package: claude-code@latest, profiles: [default], skip_key: claude-code}
   - {id: codex, manager: brew_cask, package: codex, profiles: [default], skip_key: codex}
+  - id: jayjay
+    manager: brew_cask
+    package: hewigovens/tap/jayjay
+    profiles: [default]
+    application_paths: [/Applications/JayJay.app]
   - id: brave-browser
     manager: brew_cask
     package: brave-browser

@@ -9,6 +9,7 @@ components:
     include_key: glab
     required: false
   - {id: jj, manager: brew_formula, package: jj, profiles: [default]}
+  - {id: jjui, manager: brew_formula, package: jjui, profiles: [default]}
   - {id: node, manager: brew_formula, package: node, profiles: [default]}
   - {id: ripgrep, manager: brew_formula, package: ripgrep, profiles: [default]}
   - {id: rtk, manager: brew_formula, package: rtk, profiles: [default]}
