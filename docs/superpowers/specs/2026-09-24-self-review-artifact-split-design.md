@@ -103,11 +103,13 @@ template:
 
 ## Limitations
 
-- `<check or code>` (<effect>): <reason or detail>
+- `<reviewer>` (<outcome>)
+- `<check>` (<effect>): <reason>
+- `<code>` (diagnostic): <detail>
 
 ## Blockers
 
-- `<finding-id-prefix>` `<path>:<start>-<end>` · <category>/`<rule>` · <contributors>
+- `<finding-id-prefix>` `<location>` · <category>/`<rule>` · <contributors>
   - Evidence: <evidence>
   - Remediation: <remediation>
 
@@ -124,20 +126,25 @@ template:
 
 Rendering rules:
 
-- Evidence and remediation are copied verbatim from the JSON.
+- Evidence, remediation, reasons, and details are copied verbatim from the
+  JSON.
 - Severity sections appear in blocker, actionable, advisory order; empty
-  severity sections are omitted.
-- Limitations lists every aggregate skip, every aggregate diagnostic, and every
-  reviewer whose outcome is not completed. When there are none, it contains
-  `None.`
-- A finding without a path renders `repository`; a path without a location
-  renders the path alone.
+  severity sections are omitted. Findings keep JSON order within a section.
+- `<location>` is `<path>:<line>` for one line, `<path>:<start>-<end>` for a
+  range, `<path>` without a location, and `repository` without a path.
+- A null rule renders the category alone; a null remediation omits the
+  Remediation line. Contributors are joined with `, ` in JSON order.
+- Limitations lists reviewers whose outcome is not completed, then every
+  aggregate skip, then every aggregate diagnostic, in JSON order. A
+  blocked-scope skip record appends `: <reason>`; a diagnostic with a path
+  renders as `` `<code>` (diagnostic, `<path>`): <detail> ``. When nothing
+  qualifies, the section body is `None.`
 - Coverage has one row per reviewer or blocked-scope skip record, in reviewer
   order. A skip record renders `skipped` as its outcome and `-` for
   applicability and checks.
-- Finding-ID and result-ID prefixes are 12 lowercase hexadecimal characters.
-  Finding prefixes lengthen to the shortest length that is unique within the
-  artifact when 12 characters collide.
+- Scope-identity and result-ID prefixes are 12 lowercase hexadecimal
+  characters. Every finding prefix in one artifact has the same length: 12, or
+  the shortest longer length that makes every prefix unique.
 
 The Markdown may not add, override, or reinterpret machine fields.
 
@@ -321,15 +328,21 @@ Replace `self-review-result.example.md` with the pair
 example's `review-project-tests` coverage lists all eight required checks, and
 its hashes are recomputed. The Markdown follows the template.
 
+The example also gains the cases a reader most needs to see rendered: a
+`theatre`/`tdd-residue` finding with a line range, a pathless repository-wide
+advisory, and an optional skip with effect `none` that still appears under
+Limitations.
+
 ## Verification
 
 `tests/assistants/test_review_contracts.py`:
 
 - loads the example pair instead of the marker and fence;
 - keeps every existing JSON integrity and deduplication assertion;
-- validates Markdown structure derived from the JSON: verdict, counts,
-  result-ID prefix, and the one-to-one mapping of finding prefixes to severity
-  sections; and
+- validates the example Markdown line-for-line against the template rendered
+  from its JSON, which covers verdict, counts, result-ID prefix, limitations,
+  the one-to-one mapping of finding prefixes to severity sections, and
+  coverage; and
 - runs the updated remediation vectors.
 
 Skill prose, rule tables, and check names are not pinned by tests, following
