@@ -64,6 +64,12 @@ plugins:
     profiles: [default]
     required: true
   - kind: native-marketplace
+    id: mattpocock-skills@claude-plugins-official
+    marketplace: claude-plugins-official
+    targets: [claude-code]
+    profiles: [default]
+    required: true
+  - kind: native-marketplace
     id: ponytail@ponytail
     marketplace: ponytail
     targets: [claude-code, codex]
