@@ -1,5 +1,6 @@
 components:
   - {id: uv, manager: brew_formula, package: uv, profiles: [default]}
+  - {id: codeburn, manager: brew_formula, package: codeburn, profiles: [default]}
   - {id: gh, manager: brew_formula, package: gh, profiles: [default]}
   - id: glab
     manager: brew_formula
