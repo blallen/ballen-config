@@ -109,6 +109,11 @@ _REMEDIATION_DIAGNOSTIC_VOCABULARY: Final[frozenset[str]] = frozenset(
         "fresh_review_incomplete",
     }
 )
+_SELF_REVIEW_SEVERITY_HEADINGS: Final[dict[str, str]] = {
+    "blocker": "Blockers",
+    "actionable": "Actionable",
+    "advisory": "Advisories",
+}
 _UTC_RFC3339_PATTERN: Final[re.Pattern[str]] = re.compile(
     r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$"
 )
@@ -157,6 +162,16 @@ def change_scope_reference_root(repo_root: Path) -> Path:
     return repo_root / "assistants/shared/skills/resolve-change-scope/references"
 
 
+@pytest.fixture
+def self_review_example_path(repo_root: Path) -> Path:
+    """Return the canonical self-review example JSON path."""
+    return (
+        repo_root
+        / "assistants/shared/skills/conduct-self-review/references"
+        / "self-review-result.example.json"
+    )
+
+
 def _load_json(path: Path) -> dict[str, Any]:
     """Load a JSON object from a contract fixture."""
     loaded = json.loads(path.read_text())
@@ -164,17 +179,74 @@ def _load_json(path: Path) -> dict[str, Any]:
     return loaded
 
 
-def _load_self_review_artifact(path: Path) -> tuple[dict[str, Any], str]:
-    """Parse the marked JSON block and trailing human summary."""
-    lines = path.read_text().splitlines()
-    assert lines[0] == "<!-- ballen-config:self-review-result:v1 -->"
-    assert lines[1] == "```json"
-    closing_fence = lines.index("```", 2)
-    loaded = json.loads("\n".join(lines[2:closing_fence]))
-    assert isinstance(loaded, dict)
-    summary = "\n".join(lines[closing_fence + 1 :]).strip()
-    assert summary
-    return loaded, summary
+def _render_finding_location(finding: dict[str, Any]) -> str:
+    """Render the contract's human location for one finding."""
+    if finding["path"] is None:
+        return "repository"
+    start = finding["location"]["start_line"]
+    end = finding["location"]["end_line"]
+    return f"{finding['path']}:{start}" + ("" if start == end else f"-{end}")
+
+
+def _render_self_review_markdown(result: dict[str, Any], json_name: str) -> list[str]:
+    """Render the artifact contract's Markdown template for the example's cases."""
+    assert result["diagnostics"] == []
+    assert all(reviewer["outcome"] == "completed" for reviewer in result["reviewers"])
+    counts = result["summary"]["counts"]
+    scope = result["scope"]
+    lines = [
+        f"# Self-review: {result['summary']['verdict']}",
+        "",
+        f"- Findings: {counts['blocker']} blocker, "
+        f"{counts['actionable']} actionable, {counts['advisory']} advisory",
+        f"- Scope: {scope['status']}, {scope['source']}, "
+        f"{len(scope['changed_paths'])} changed paths, "
+        f"scope `{scope['scope_identity'][:12]}`",
+        f"- Result: `{result['result_id'][:12]}` ([machine result]({json_name}))",
+        "",
+        "## Limitations",
+        "",
+        *(
+            [
+                f"- `{skip['check']}` ({skip['effect']}): {skip['reason']}"
+                for skip in result["skips"]
+            ]
+            or ["None."]
+        ),
+    ]
+    for severity, heading in _SELF_REVIEW_SEVERITY_HEADINGS.items():
+        findings = [
+            finding for finding in result["findings"] if finding["severity"] == severity
+        ]
+        if not findings:
+            continue
+        lines += ["", f"## {heading}", ""]
+        for finding in findings:
+            lines += [
+                f"- `{finding['finding_id'][:12]}` "
+                f"`{_render_finding_location(finding)}` "
+                f"· {finding['category']}/`{finding['rule']}` "
+                f"· {', '.join(finding['contributors'])}",
+                f"  - Evidence: {finding['evidence']}",
+                f"  - Remediation: {finding['remediation']}",
+            ]
+    lines += [
+        "",
+        "## Coverage",
+        "",
+        "| Reviewer | Applicability | Outcome | Checks |",
+        "| --- | --- | --- | --- |",
+    ]
+    for reviewer in result["reviewers"]:
+        checks = ", ".join(
+            f"{check['check']}: {check['completion']}"
+            for check in reviewer["coverage"]["checks"]
+        )
+        lines.append(
+            f"| {reviewer['reviewer']} | {reviewer['applicability']} "
+            f"| {reviewer['outcome']} | {checks} |"
+        )
+    return lines
 
 
 def _canonical_sha256(material: object) -> str:
@@ -1244,15 +1316,10 @@ def test_ponytail_quality_contract_is_bounded_and_canonical(
 
 
 def test_self_review_artifact_example_is_portable_and_internally_consistent(
-    repo_root: Path,
+    self_review_example_path: Path,
 ) -> None:
     """Validate persisted review integrity without pinning summary prose."""
-    artifact_path = (
-        repo_root
-        / "assistants/shared/skills/conduct-self-review/references"
-        / "self-review-result.example.md"
-    )
-    result, summary = _load_self_review_artifact(artifact_path)
+    result = _load_json(self_review_example_path)
 
     assert set(result) == _SELF_REVIEW_RESULT_TOP_LEVEL_KEYS
     assert result["contract_version"] == "v1"
@@ -1400,7 +1467,6 @@ def test_self_review_artifact_example_is_portable_and_internally_consistent(
     for invocation_id in command_ids:
         _assert_sha256(invocation_id)
 
-    assert summary.startswith("## ")
     serialized = json.dumps(result, sort_keys=True)
     assert "diff --git" not in serialized
     assert "\n@@ " not in serialized
@@ -1418,4 +1484,16 @@ def test_self_review_artifact_example_is_portable_and_internally_consistent(
         _assert_portable_string(value)
     assert not {key.casefold() for key, _ in _walk_key_values(result)}.intersection(
         _PROHIBITED_KEY_TERMS
+    )
+
+
+def test_self_review_example_markdown_renders_its_json_result(
+    self_review_example_path: Path,
+) -> None:
+    """Keep the human Markdown a faithful, complete rendering of its JSON."""
+    result = _load_json(self_review_example_path)
+    markdown = self_review_example_path.with_suffix(".md").read_text(encoding="utf-8")
+
+    assert markdown.splitlines() == _render_self_review_markdown(
+        result, self_review_example_path.name
     )

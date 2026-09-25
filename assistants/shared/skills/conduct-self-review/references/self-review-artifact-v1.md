@@ -22,43 +22,103 @@ Do not add or edit ignore rules. Do not search for an arbitrary ignored
 directory when the selected directory is unsafe. Ask for a different explicit
 repository-relative directory and repeat preflight.
 
-After scope resolution, construct:
+After scope resolution, construct the stem:
 
 ```text
-<timestamp>-<scope-id-prefix>.md
+<timestamp>-<scope-id-prefix>
 ```
 
 The timestamp is UTC and filename-safe. The scope prefix is the shortest prefix
-that distinguishes the full scope identity from identities already present in
+that distinguishes the full scope identity from the stems already present in
 the selected directory, with a minimum of 12 lowercase hexadecimal
 characters. The complete scope identity remains in the JSON.
 
-Open the final file with exclusive-create semantics. Never overwrite or append
-to an existing artifact. If the same scope and timestamp collide, capture a
-later UTC timestamp or fail safely; do not invent a suffix or replace the file.
+The stem is usable only when neither `<stem>.json` nor `<stem>.md` exists. Open
+each file with exclusive-create semantics. Never overwrite or append to an
+existing file. If the same scope and timestamp collide, capture a later UTC
+timestamp or fail safely; do not invent a suffix or replace either file.
 
-## File layout
+## Files
 
-The first line is exactly:
+Each self-review writes one pair with a shared stem:
 
 ```text
-<!-- ballen-config:self-review-result:v1 -->
+<stem>.json
+<stem>.md
 ```
 
-The next line opens a fenced JSON block:
+The JSON file is authoritative. The Markdown file is a human rendering of it
+and never an input to later workflows.
 
-````text
-```json
-```
+### JSON file
+
+The JSON file contains exactly the top-level object defined below,
+pretty-printed with a trailing newline. File formatting does not affect the
+canonical hashes.
+
+### Markdown file
+
+Render the Markdown from the final JSON with this template:
+
+````markdown
+# Self-review: <verdict>
+
+- Findings: <blocker> blocker, <actionable> actionable, <advisory> advisory
+- Scope: <status>, <source>, <changed path count> changed paths, scope `<scope-id-prefix>`
+- Result: `<result-id-prefix>` ([machine result](<stem>.json))
+
+## Limitations
+
+- `<reviewer>` (<outcome>)
+- `<check>` (<effect>): <reason>
+- `<code>` (diagnostic): <detail>
+
+## Blockers
+
+- `<finding-id-prefix>` `<location>` · <category>/`<rule>` · <contributors>
+  - Evidence: <evidence>
+  - Remediation: <remediation>
+
+## Actionable
+
+## Advisories
+
+## Coverage
+
+| Reviewer | Applicability | Outcome | Checks |
+| --- | --- | --- | --- |
+| <reviewer> | <applicability> | <outcome> | <check>: <completion>, ... |
 ````
 
-The complete JSON object follows, then the closing fence. Human-readable
-Markdown follows the fence. No blank line, heading, or prose may precede the
-marker or intervene between the marker and opening fence.
+Rendering rules:
 
-The JSON block is authoritative. The Markdown summary may restate the verdict,
-counts, important blockers, and limitations for humans, but cannot add,
-override, or reinterpret machine fields.
+- Separate the title, each heading, and each section body with one blank line.
+- Use 12-character lowercase prefixes for the scope identity and result ID.
+- Give every finding prefix in one artifact the same length: 12, or the
+  shortest longer length that makes every prefix unique.
+- Render `<location>` as `<path>:<line>` for one line, `<path>:<start>-<end>`
+  for a range, `<path>` without a location, and `repository` without a path.
+- Render the category alone when `rule` is null, and omit the Remediation line
+  when `remediation` is null.
+- Join contributors with `, ` in JSON order.
+- Copy evidence, remediation, reasons, and details verbatim.
+- Order severity sections blocker, actionable, advisory, and omit empty ones.
+  Keep JSON finding order within a section.
+- In Limitations, list reviewers whose outcome is not `completed`, then
+  aggregate skips, then aggregate diagnostics, each in JSON order. Append
+  `: <reason>` to a blocked-scope skip record, and render a diagnostic with a
+  path as `` `<code>` (diagnostic, `<path>`): <detail> ``. When nothing
+  qualifies, the section body is `None.`
+- In Coverage, give one row per reviewer in JSON order. A blocked-scope skip
+  record renders `skipped` as its outcome and `-` for applicability and
+  checks. Join checks as `<check>: <completion>` with `, `.
+
+The Markdown restates machine fields only through this template. It cannot
+add, override, or reinterpret them.
+
+This rendering is agent-authored and protected by read-back verification. If
+verification keeps catching drift, or persisted pairs are found inconsistent
+with their JSON, replace agent rendering with a deterministic renderer script.
 
 ## Canonical encoding and hashes
 
@@ -158,6 +218,14 @@ For blocked scope, invoke no specialist. Persist four ordered records with:
 
 Do not fabricate empty reviewer results after blocked scope.
 
+### Required reviewer checks
+
+When `review-project-tests` is applicable, its coverage must list every
+required check that skill declares. For each missing check, the orchestrator
+adds one aggregate diagnostic with code `reviewer_check_missing`, path `null`,
+a detail naming the reviewer and check, and contributor
+`conduct-self-review`. It does not edit the specialist result.
+
 ### Findings and deduplication
 
 Each aggregate finding uses the common finding shape. Group findings only when
@@ -239,8 +307,9 @@ clean
 Blocked scope, integrity failure, blocked reviewer work, or a blocked skip
 produces `blocked`. Required unavailable inputs, reviewers, checks, or skips
 produce `unavailable`. Partial scope, unknown applicability, incomplete
-reviewer work, or incomplete required skips produce `incomplete`. Findings
-then determine `blockers_found`, `needs_attention`, or `advisories`.
+reviewer work, incomplete required skips, or a `reviewer_check_missing`
+diagnostic produce `incomplete`. Findings then determine `blockers_found`,
+`needs_attention`, or `advisories`.
 
 `clean` requires resolved or empty complete scope, complete shared inputs,
 every reviewer accounted for, completed applicable reviewers,
@@ -249,22 +318,25 @@ applicability, no skips, no unavailable checks, and no blocked work.
 
 ## Persistence and response
 
-Every attempt whose destination passes preflight writes an artifact, including
+Every attempt whose destination passes preflight writes a pair, including
 empty, partial, blocked, unavailable, and finding-bearing results. Build and
-validate the complete object before the exclusive write.
+validate the complete object before either exclusive write. Write the JSON
+file first, then the Markdown file.
 
-After persistence, verify the marker, parse the JSON back, recompute both
-hashes, and confirm the persisted path remains ignored and untracked. Return a
-concise inline verdict, counts, important blockers or limitations, and a
-clickable repository-relative artifact path.
+After persistence, parse the JSON back, recompute both hashes, verify the
+Markdown against the rendering rules above, and confirm both paths remain
+ignored and untracked. Return a concise inline verdict, counts, important
+blockers or limitations, and a clickable repository-relative link to the
+Markdown file.
 
-If persistence or post-write verification fails, self-review did not complete.
-Report that failure without claiming the computed verdict or a clean result.
+If either write or post-write verification fails, self-review did not
+complete. Report that failure without claiming the computed verdict or a clean
+result. Leave any partial pair in place and never overwrite it.
 
 ## Privacy and authority
 
-The artifact is ignored user-controlled evidence, not signed authorization.
-It never contains:
+The pair is ignored user-controlled evidence, not signed authorization.
+Neither file contains:
 
 - the raw patch or entire diff;
 - large or raw command output;
