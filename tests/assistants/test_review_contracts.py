@@ -1390,6 +1390,10 @@ def test_self_review_artifact_example_is_portable_and_internally_consistent(
         assert reviewer["contract_version"] == "v1"
         assert reviewer["scope_identity"] == scope["scope_identity"]
         assert reviewer["standards_inventory_ref"] == result["standards_inventory_ref"]
+        checks = reviewer["coverage"]["checks"]
+        assert checks == sorted(
+            checks, key=lambda check: (check["check"], check["selected_scope"])
+        )
         reviewer_counts = reviewer["summary"]["counts"]
         assert reviewer_counts == {
             severity: sum(

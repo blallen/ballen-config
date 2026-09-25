@@ -2,7 +2,7 @@
 
 - Findings: 0 blocker, 2 actionable, 1 advisory
 - Scope: resolved, jujutsu, 5 changed paths, scope `eeeeeeeeeeee`
-- Result: `dc67e7f04c1a` ([machine result](self-review-result.example.json))
+- Result: `f1f2159be6c0` ([machine result](self-review-result.example.json))
 
 ## Limitations
 
@@ -29,5 +29,5 @@
 | --- | --- | --- | --- |
 | review-project-standards | applicable | completed | repository-standards: completed |
 | review-project-quality | applicable | completed | configured-quality-gate: completed |
-| review-project-tests | applicable | completed | behavioral-coverage: completed, assertions: completed, fixtures-doubles: completed, execution-policy: completed, theatre: completed, consolidation: completed, generated-output: completed, test-documentation: completed |
+| review-project-tests | applicable | completed | assertions: completed, behavioral-coverage: completed, consolidation: completed, execution-policy: completed, fixtures-doubles: completed, generated-output: completed, test-documentation: completed, theatre: completed |
 | review-python-types | applicable | completed | configured-type-checker: completed |

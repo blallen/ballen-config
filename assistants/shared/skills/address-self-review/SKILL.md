@@ -70,7 +70,8 @@ Require:
 The artifact path must normalize inside the repository and name one existing
 regular file ending in `.json` or `.md`. Derive the stem and require both
 `<stem>.json` and `<stem>.md` to exist as regular files in the same
-directory; a missing sibling means the self-review did not complete. Reject
+directory; a missing sibling means the self-review did not complete. Apply
+every containment check to both files, including the derived sibling: reject
 absolute paths, `..` traversal, symlinks escaping the repository,
 directories, globs, other extensions, and implicit "latest" selection. The
 pair may be ignored and untracked; never require or cause it to be tracked.

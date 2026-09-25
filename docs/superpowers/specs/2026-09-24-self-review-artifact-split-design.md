@@ -69,11 +69,13 @@ hex-entropy detector flags any quoted hex string of about 11 or more
 characters, so existing fixtures escape every eighth character as `\u00XX`.
 The escaping makes fixtures hard to read, grep, and edit.
 
-Exclude those fixture files from the detect-secrets hook, decode the existing
-hex escapes in them, and write new values plain. The contract tests recompute
-every hash, which proves the decode is lossless. `detect-private-key` still
-covers the fixtures, detect-secrets keeps scanning the rest of the repository,
-and existing `# pragma: allowlist secret` comments elsewhere are unchanged.
+Scan those fixture files with every detect-secrets detector except hex
+entropy, decode the existing hex escapes in them, and write new values plain.
+The contract tests recompute every hash, which proves the decode is lossless.
+Credential detectors such as AWS, GitHub, keyword, and Base64 entropy still
+cover the fixtures, the rest of the repository keeps full detect-secrets
+coverage, and existing `# pragma: allowlist secret` comments elsewhere are
+unchanged.
 
 ## Artifact Pair
 
@@ -249,7 +251,8 @@ the finding category for findings it produces.
 | `test-documentation` | Behavioral meaning of test names and docstrings |
 
 When the specialist is applicable, every check appears in coverage. A missing
-or non-completed required check makes the specialist result `incomplete`.
+or non-completed required check makes the specialist result at least
+`incomplete`.
 An evidence-backed `not_applicable` result requires no checks. Test command
 evidence remains governed by the existing command rules.
 
@@ -319,11 +322,13 @@ says to keep separate.
 
 ## Conduct Self-Review Enforcement
 
-When `review-project-tests` is applicable, `conduct-self-review` verifies that
-its coverage contains every required check declared by that skill. It
-references the declaration rather than copying the list.
+When `review-project-tests` is applicable and reports outcome `completed`,
+`conduct-self-review` verifies that its coverage contains every required check
+declared by that skill, each with `required: true` and completion `completed`.
+It references the declaration rather than copying the list.
 
-A missing required check produces an aggregate diagnostic with code
+A declared check that is missing or not completed produces an aggregate
+diagnostic with code
 `reviewer_check_missing`, path `null`, a detail naming the specialist and the
 missing check, and contributor `conduct-self-review`. The aggregate verdict is
 then at least `incomplete`.
