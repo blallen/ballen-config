@@ -24,13 +24,14 @@ Jujutsu, uv.
   finding identity material, and hash rules.
 - No compatibility with existing single-file artifacts; do not read or migrate
   them.
-- No committed renderer script or packaged tooling. The example generator in
-  Task 2 runs once from `/tmp` and is not committed.
+- No committed renderer script or packaged tooling. The one-off scripts in
+  Tasks 1 and 3 run from `/tmp` and are not committed.
 - Tests must not pin skill prose, rule tables, or check names.
-- In reference JSON files, real SHA-256 values and hex prefixes escape every
-  eighth character as `\u00XX`. This is the repository's existing convention
-  for keeping detect-secrets quiet. Placeholder IDs made of one repeated digit
-  stay plain.
+- After Task 1, contract fixture JSON under
+  `assistants/shared/skills/*/references/` is excluded from detect-secrets.
+  Write hashes and hex prefixes in those files plain; never escape them.
+  Everywhere else, keep using `# pragma: allowlist secret` where comments are
+  allowed.
 - Prefix every agent-run shell command with `rtk`. Run Python tools through
   `uv run --frozen`.
 - Use Jujutsu (`jj`), not Git. Work lands on bookmark
@@ -43,21 +44,21 @@ Jujutsu, uv.
 ## Review Focus
 
 1. A pathless, repository-wide finding must render as `repository` instead of
-   crashing or printing `None`. Pinned in Task 2 by the example's `222222222222`
+   crashing or printing `None`. Pinned in Task 3 by the example's `222222222222`
    advisory.
 2. Single-line and range locations must render differently
    (`src/review.py:18` versus `...:40-46`), and deduplicated contributors must
-   all appear. Pinned in Task 2 by the `555555555555` and `111111111111`
+   all appear. Pinned in Task 3 by the `555555555555` and `111111111111`
    findings.
 3. An optional skip with effect `none` does not change the verdict but must
-   still appear under Limitations. Pinned in Task 2 by the `opt-in-evaluation`
+   still appear under Limitations. Pinned in Task 3 by the `opt-in-evaluation`
    skip.
 4. A user may pass the `.md` path of a pair whose JSON write succeeded but
    whose Markdown write failed. Remediation must block with
    `artifact_path_invalid` rather than act on an incomplete review. Pinned in
-   Task 3 by the `missing_sibling` vector.
+   Task 4 by the `missing_sibling` vector.
 5. A user may type an 8- to 11-character prefix from memory. It must block with
-   `selected_finding_unknown` rather than be guessed. Pinned in Task 3 by the
+   `selected_finding_unknown` rather than be guessed. Pinned in Task 4 by the
    `short_prefix_selection` vector.
 
 ---
@@ -66,29 +67,148 @@ Jujutsu, uv.
 
 | File | Change | Task |
 | --- | --- | --- |
-| `assistants/shared/skills/review-project-tests/SKILL.md` | Declared checks, categories, rules, breaking-change probe, TDD residue | 1 |
-| `assistants/shared/standards/testing.md` | Two sentences under "Avoid test theatre" | 1 |
-| `assistants/shared/skills/conduct-self-review/SKILL.md` | Stem, pair persistence, Markdown verification, required-check enforcement | 2 |
-| `assistants/shared/skills/conduct-self-review/references/self-review-artifact-v1.md` | Pair layout, Markdown template, rendering rules, upgrade note | 2 |
-| `assistants/shared/skills/conduct-self-review/references/self-review-result.example.json` | Create: authoritative example JSON | 2 |
-| `assistants/shared/skills/conduct-self-review/references/self-review-result.example.md` | Replace: rendered example Markdown | 2 |
-| `tests/assistants/test_review_contracts.py` | Example-pair fixture and oracle test; vector harness | 2, 3 |
-| `assistants/shared/skills/address-self-review/SKILL.md` | Pair input, JSON-only reads, prefix selection | 3 |
-| `assistants/shared/skills/address-self-review/references/remediation-vectors.json` | Pair and prefix vectors | 3 |
+| `.pre-commit-config.yaml` | Exclude contract fixture JSON from detect-secrets | 1 |
+| `assistants/shared/skills/*/references/*.json` | Decode existing hex escapes | 1 |
+| `assistants/shared/skills/review-project-tests/SKILL.md` | Declared checks, categories, rules, breaking-change probe, TDD residue | 2 |
+| `assistants/shared/standards/testing.md` | Two sentences under "Avoid test theatre" | 2 |
+| `assistants/shared/skills/conduct-self-review/SKILL.md` | Stem, pair persistence, Markdown verification, required-check enforcement | 3 |
+| `assistants/shared/skills/conduct-self-review/references/self-review-artifact-v1.md` | Pair layout, Markdown template, rendering rules, upgrade note | 3 |
+| `assistants/shared/skills/conduct-self-review/references/self-review-result.example.json` | Create: authoritative example JSON | 3 |
+| `assistants/shared/skills/conduct-self-review/references/self-review-result.example.md` | Replace: rendered example Markdown | 3 |
+| `tests/assistants/test_review_contracts.py` | Example-pair fixture and oracle test; vector harness | 3, 4 |
+| `assistants/shared/skills/address-self-review/SKILL.md` | Pair input, JSON-only reads, prefix selection | 4 |
+| `assistants/shared/skills/address-self-review/references/remediation-vectors.json` | Pair and prefix vectors | 1, 4 |
 
 ---
 
-### Task 1: Test review taxonomy
+### Task 1: Stop secret-scanning contract fixtures
+
+**Files:**
+- Modify: `.pre-commit-config.yaml`
+- Modify: every `assistants/shared/skills/*/references/*.json` that contains
+  hex escapes
+
+**Interfaces:**
+- Produces: plain hex values in all contract fixture JSON, and a
+  detect-secrets hook that skips
+  `^assistants/shared/skills/[^/]+/references/[^/]+\.json$`. Tasks 3 and 4
+  write new hashes and prefixes plain.
+
+- [ ] **Step 1: Confirm the baseline**
+
+Run: `rtk uv run --frozen pytest tests/assistants/test_review_contracts.py -q`
+Expected: all tests pass.
+
+- [ ] **Step 2: Decode the hex escapes**
+
+Write this one-off script to `/tmp/decode_fixture_hex.py`. Do not add it to
+the repository. It rewrites only JSON string literals that decode to pure
+lowercase hex of 11 to 64 characters. Any other `\u` escape, such as a
+Unicode normalization case, is left untouched.
+
+```python
+"""One-off: decode every-eighth-character hex escapes in contract fixtures."""
+
+import re
+from pathlib import Path
+
+STRING = re.compile(r'"((?:[0-9a-f]|\\u00[0-9a-f]{2})+)"')
+ESCAPE = re.compile(r"\\u00([0-9a-f]{2})")
+HEX = re.compile(r"[0-9a-f]{11,64}")
+
+
+def decode(match: re.Match[str]) -> str:
+    raw = match.group(1)
+    if "\\u" not in raw:
+        return match.group(0)
+    value = ESCAPE.sub(lambda escape: chr(int(escape.group(1), 16)), raw)
+    return f'"{value}"' if HEX.fullmatch(value) else match.group(0)
+
+
+for path in sorted(Path("assistants/shared/skills").glob("*/references/*.json")):
+    text = path.read_text(encoding="utf-8")
+    decoded = STRING.sub(decode, text)
+    if decoded != text:
+        path.write_text(decoded, encoding="utf-8")
+        print(path)
+```
+
+Run: `rtk uv run --frozen python /tmp/decode_fixture_hex.py`
+Expected: it prints these five paths:
+
+```text
+assistants/shared/skills/address-self-review/references/remediation-vectors.json
+assistants/shared/skills/resolve-change-scope/references/change-scope-vectors.json
+assistants/shared/skills/resolve-change-scope/references/change-scope.example.json
+assistants/shared/skills/resolve-change-scope/references/review-result-vectors.json
+assistants/shared/skills/resolve-change-scope/references/review-result.example.json
+```
+
+Then run
+`rtk grep -rn '\\u00[0-9a-f][0-9a-f]' assistants/shared/skills --include='*.json'`
+and confirm that every remaining match, if any, is a non-hex Unicode case.
+
+- [ ] **Step 3: Prove the decode is lossless**
+
+Run: `rtk uv run --frozen pytest tests/assistants/test_review_contracts.py -q`
+Expected: all tests pass. The tests recompute every result, finding, scope,
+and workspace hash from the decoded values.
+
+- [ ] **Step 4: Run detect-secrets to verify it fails without the exclusion**
+
+Run: `rtk uv run --frozen pre-commit run detect-secrets --all-files`
+Expected: FAIL with `Hex High Entropy String` findings in the decoded
+fixture files.
+
+- [ ] **Step 5: Exclude contract fixtures from detect-secrets**
+
+In `.pre-commit-config.yaml`, replace:
+
+```yaml
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+```
+
+with:
+
+```yaml
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        # Contract fixtures are SHA-256 identities by design; the contract tests
+        # check them for credential-like keys and non-portable values instead.
+        exclude: ^assistants/shared/skills/[^/]+/references/[^/]+\.json$
+```
+
+- [ ] **Step 6: Run detect-secrets to verify it passes**
+
+Run: `rtk uv run --frozen pre-commit run detect-secrets --all-files`
+Expected: PASS.
+
+- [ ] **Step 7: Commit**
+
+```bash
+rtk jj commit -m "chore: stop secret-scanning review contract fixtures
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
+```
+
+---
+
+### Task 2: Test review taxonomy
 
 **Files:**
 - Modify: `assistants/shared/skills/review-project-tests/SKILL.md`
 - Modify: `assistants/shared/standards/testing.md`
 
 **Interfaces:**
-- Produces: the eight required check names, used verbatim by Task 2's example
+- Produces: the eight required check names, used verbatim by Task 3's example
   and generator: `behavioral-coverage`, `assertions`, `fixtures-doubles`,
   `execution-policy`, `theatre`, `consolidation`, `generated-output`,
-  `test-documentation`. Task 2's `conduct-self-review` text refers to "every
+  `test-documentation`. Task 3's `conduct-self-review` text refers to "every
   required check that skill declares".
 
 This task is prose only. Its verification is the existing assistant suite
@@ -331,7 +451,7 @@ Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
 
 ---
 
-### Task 2: Artifact pair contract and example
+### Task 3: Artifact pair contract and example
 
 **Files:**
 - Create: `assistants/shared/skills/conduct-self-review/references/self-review-result.example.json`
@@ -341,11 +461,12 @@ Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
 - Test: `tests/assistants/test_review_contracts.py`
 
 **Interfaces:**
-- Consumes: the eight check names from Task 1.
+- Consumes: the eight check names from Task 2, and the plain-hex fixture
+  convention from Task 1.
 - Produces: the pytest fixture `self_review_example_path(repo_root: Path) ->
   Path`, pointing at `self-review-result.example.json`. Also the diagnostic code
   `reviewer_check_missing`, the rendered finding-prefix convention (first 12
-  hex characters), and the pair layout that Task 3's `address-self-review`
+  hex characters), and the pair layout that Task 4's `address-self-review`
   text relies on.
 
 - [ ] **Step 1: Point the integrity test at the JSON and add the Markdown oracle test**
@@ -584,13 +705,6 @@ def canonical_sha256(material):
     return hashlib.sha256(encoded).hexdigest()
 
 
-def escape_every_eighth(digest):
-    return "".join(
-        f"\\u{ord(char):04x}" if index % 8 == 7 else char
-        for index, char in enumerate(digest)
-    )
-
-
 legacy = (REFERENCES / "self-review-result.example.md").read_text(encoding="utf-8")
 result = json.loads(re.search(r"```json\n(.*?)\n```\n", legacy, re.S).group(1))
 reviewers = {reviewer["reviewer"]: reviewer for reviewer in result["reviewers"]}
@@ -672,12 +786,9 @@ result["result_digest"] = canonical_sha256(
     {key: value for key, value in result.items() if key != "result_digest"}
 )
 
-text = json.dumps(result, indent=2, ensure_ascii=False) + "\n"
-for key in ("result_id", "result_digest"):
-    text = text.replace(
-        f'"{result[key]}"', f'"{escape_every_eighth(result[key])}"', 1
-    )
-(REFERENCES / "self-review-result.example.json").write_text(text, encoding="utf-8")
+(REFERENCES / "self-review-result.example.json").write_text(
+    json.dumps(result, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+)
 print(result["result_id"][:12])
 ```
 
@@ -1275,7 +1386,7 @@ Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
 
 ---
 
-### Task 3: Address-self-review pair input and prefix selection
+### Task 4: Address-self-review pair input and prefix selection
 
 **Files:**
 - Modify: `tests/assistants/test_review_contracts.py`
@@ -1284,7 +1395,7 @@ Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
 
 **Interfaces:**
 - Consumes: the pair layout and 12-character finding-prefix convention from
-  Task 2.
+  Task 3, and the plain-hex fixture convention from Task 1.
 - Produces: vector names `missing_sibling`, `prefix_selection`, and
   `short_prefix_selection`; baseline key `artifact_files`; and per-vector
   artifact key `files`, which replaces `marker`.
@@ -1532,99 +1643,22 @@ with:
 and replace `        "diagnostic_code": "artifact_marker_missing"` with
 `        "diagnostic_code": "artifact_path_invalid"`.
 
-3e. Append the two prefix vectors to the end of `vectors`. Replace:
+3e. Append two prefix vectors to the end of `vectors`, after
+`broader_than_finding` and before the closing `],` of the array. Each one is a
+copy of the `valid_selected_finding` vector with only these fields changed:
 
-```json
-        "diagnostic_code": "remediation_broader_than_finding"
-      }
-    }
-  ],
-```
+| Field | `prefix_selection` | `short_prefix_selection` |
+| --- | --- | --- |
+| `name` | `prefix_selection` | `short_prefix_selection` |
+| `artifact.files` | `inherit` | `inherit` |
+| `selected_finding_ids` | one entry: `d6491cbe5f09` | one entry: `d6491cbe5f0` |
+| `expected.decision` | `proceed` | `block` |
+| `expected.diagnostic_code` | `ok` | `selected_finding_unknown` |
 
-with:
-
-```json
-        "diagnostic_code": "remediation_broader_than_finding"
-      }
-    },
-    {
-      "name": "prefix_selection",
-      "artifact": {
-        "base": "baseline",
-        "files": "inherit",
-        "json_state": "valid",
-        "result_id": "inherit",
-        "result_digest": "inherit",
-        "finding_id": "inherit",
-        "path": "inherit",
-        "location": "inherit"
-      },
-      "current_state": {
-        "base": "reviewed",
-        "repository_identity": "inherit",
-        "scope": "inherit",
-        "workspace": "inherit",
-        "standards_inventory_ref": "inherit",
-        "finding_evidence": "inherit"
-      },
-      "selected_finding_ids": [
-        "d6491cbe5f09"
-      ],
-      "requested_edit": {
-        "paths": [
-          "src/review.py"
-        ],
-        "authority_paths": [
-          "src/review.py"
-        ]
-      },
-      "expected": {
-        "decision": "proceed",
-        "diagnostic_code": "ok"
-      }
-    },
-    {
-      "name": "short_prefix_selection",
-      "artifact": {
-        "base": "baseline",
-        "files": "inherit",
-        "json_state": "valid",
-        "result_id": "inherit",
-        "result_digest": "inherit",
-        "finding_id": "inherit",
-        "path": "inherit",
-        "location": "inherit"
-      },
-      "current_state": {
-        "base": "reviewed",
-        "repository_identity": "inherit",
-        "scope": "inherit",
-        "workspace": "inherit",
-        "standards_inventory_ref": "inherit",
-        "finding_evidence": "inherit"
-      },
-      "selected_finding_ids": [
-        "d6491cbe5f0"
-      ],
-      "requested_edit": {
-        "paths": [
-          "src/review.py"
-        ],
-        "authority_paths": [
-          "src/review.py"
-        ]
-      },
-      "expected": {
-        "decision": "block",
-        "diagnostic_code": "selected_finding_unknown"
-      }
-    }
-  ],
-```
-
-`d6491cbe5f09` decodes to `d6491cbe5f09`, the 12-character prefix of the
-baseline finding ID. `d6491cbe5f0` decodes to the 11-character prefix.
-The escape follows the every-eighth-character convention.
+`d6491cbe5f09` is the 12-character prefix of the baseline finding ID, and
+`d6491cbe5f0` is its 11-character prefix. Write both plain; Task 1 excluded
+fixture JSON from detect-secrets. Keep the file's two-space indentation and
+one-item-per-line arrays.
 
 - [ ] **Step 4: Run the vector test to verify it passes**
 
@@ -1907,7 +1941,7 @@ Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
 
 ---
 
-### Task 4: Full verification and bookmark
+### Task 5: Full verification and bookmark
 
 **Files:** none changed unless a check fails.
 
@@ -1921,10 +1955,11 @@ rtk uv run --frozen mypy
 rtk uv run --frozen pytest -q
 ```
 
-Expected: every pre-commit hook passes, including detect-secrets against the
-new example JSON and vectors. mypy reports no issues, and all tests pass. If
-detect-secrets flags a hex value, apply the every-eighth-character escape to
-that value rather than adding an allowlist.
+Expected: every pre-commit hook passes, mypy reports no issues, and all tests
+pass. If detect-secrets flags a contract fixture, the Task 1 exclusion pattern
+does not cover its path; fix the pattern rather than escaping values. If it
+flags hex elsewhere, such as in this plan, move the value out of quotes or add
+`# pragma: allowlist secret` where comments are allowed.
 
 - [ ] **Step 2: Plan and doctor the bootstrap with the machine's selections**
 
@@ -1945,8 +1980,8 @@ bootstrap is applied. Do not apply bootstrap without the user's approval.
 
 ```bash
 rtk jj bookmark set self-review-artifact-split -r @-
-rtk jj log -n 6 | cat
+rtk jj log -n 8 | cat
 ```
 
-Expected: `self-review-artifact-split` points at the Task 3 commit, and the
-spec, plan, and three task commits sit above `main`.
+Expected: `self-review-artifact-split` points at the Task 4 commit, and the
+spec, plan, and four task commits sit above `main`.

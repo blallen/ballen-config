@@ -57,8 +57,23 @@ work produces most:
 ## Delivery Boundary
 
 One pull request from `main` that closes issue #33. It contains this design,
-the implementation plan, the skill and reference changes below, the updated
-contract example and remediation vectors, and the contract test changes.
+the implementation plan, the fixture secret-scanning change, the skill and
+reference changes below, the updated contract example and remediation vectors,
+and the contract test changes.
+
+## Fixture Secret Scanning
+
+Contract fixture JSON under `assistants/shared/skills/*/references/` holds
+SHA-256 identities and hex prefixes by design. The detect-secrets
+hex-entropy detector flags any quoted hex string of about 11 or more
+characters, so existing fixtures escape every eighth character as `\u00XX`.
+The escaping makes fixtures hard to read, grep, and edit.
+
+Exclude those fixture files from the detect-secrets hook, decode the existing
+hex escapes in them, and write new values plain. The contract tests recompute
+every hash, which proves the decode is lossless. `detect-private-key` still
+covers the fixtures, detect-secrets keeps scanning the rest of the repository,
+and existing `# pragma: allowlist secret` comments elsewhere are unchanged.
 
 ## Artifact Pair
 
@@ -361,3 +376,5 @@ pre-commit hooks, then `./bootstrap doctor`.
   verdict.
 - Breaking-change and TDD-residue theatre findings are explicit, selectable
   rules.
+- Contract fixture JSON contains no `\u00XX` escapes for hex values, and
+  pre-commit passes on all files.
