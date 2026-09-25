@@ -15,7 +15,6 @@
     "artifact_contract_unsupported",
     "artifact_finding_id_mismatch",
     "artifact_json_malformed",
-    "artifact_marker_missing",
     "artifact_path_invalid",
     "artifact_result_digest_mismatch",
     "artifact_result_id_mismatch",
@@ -36,7 +35,10 @@
     "workspace_fingerprint_mismatch"
   ],
   "baseline": {
-    "artifact_marker": "<!-- ballen-config:self-review-result:v1 -->",
+    "artifact_files": [
+      "json",
+      "markdown"
+    ],
     "artifact_result": {
       "contract_version": "v1",
       "result_id": "7a66574d7041852f0355678e363b07ced0b54df4716f742ca29e87ef5fa2b730",
@@ -366,7 +368,7 @@
       "name": "valid_selected_finding",
       "artifact": {
         "base": "baseline",
-        "marker": "inherit",
+        "files": "inherit",
         "json_state": "valid",
         "result_id": "inherit",
         "result_digest": "inherit",
@@ -399,10 +401,12 @@
       }
     },
     {
-      "name": "missing_marker",
+      "name": "missing_sibling",
       "artifact": {
         "base": "baseline",
-        "marker": null,
+        "files": [
+          "json"
+        ],
         "json_state": "valid",
         "result_id": "inherit",
         "result_digest": "inherit",
@@ -431,14 +435,14 @@
       },
       "expected": {
         "decision": "block",
-        "diagnostic_code": "artifact_marker_missing"
+        "diagnostic_code": "artifact_path_invalid"
       }
     },
     {
       "name": "malformed_json",
       "artifact": {
         "base": "baseline",
-        "marker": "inherit",
+        "files": "inherit",
         "json_state": "malformed",
         "result_id": null,
         "result_digest": null,
@@ -474,7 +478,7 @@
       "name": "result_digest_mismatch",
       "artifact": {
         "base": "baseline",
-        "marker": "inherit",
+        "files": "inherit",
         "json_state": "valid",
         "result_id": "inherit",
         "result_digest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
@@ -510,7 +514,7 @@
       "name": "finding_id_tamper",
       "artifact": {
         "base": "baseline",
-        "marker": "inherit",
+        "files": "inherit",
         "json_state": "valid",
         "result_id": "5ee915737ffdb6cd10784b6c9b031551abe65992ca3708b664bda259b3c41f85",
         "result_digest": "1eafae9b63fbc84cbda72f7a3a8aea2fc97f60c356e89e6edd7ee22654271ca4",
@@ -546,7 +550,7 @@
       "name": "repository_identity_unavailable",
       "artifact": {
         "base": "baseline",
-        "marker": "inherit",
+        "files": "inherit",
         "json_state": "valid",
         "result_id": "inherit",
         "result_digest": "inherit",
@@ -629,7 +633,7 @@
       "name": "repository_identity_mismatch",
       "artifact": {
         "base": "baseline",
-        "marker": "inherit",
+        "files": "inherit",
         "json_state": "valid",
         "result_id": "inherit",
         "result_digest": "inherit",
@@ -712,7 +716,7 @@
       "name": "stale_workspace_fingerprint",
       "artifact": {
         "base": "baseline",
-        "marker": "inherit",
+        "files": "inherit",
         "json_state": "valid",
         "result_id": "inherit",
         "result_digest": "inherit",
@@ -773,7 +777,7 @@
       "name": "standards_inventory_changed",
       "artifact": {
         "base": "baseline",
-        "marker": "inherit",
+        "files": "inherit",
         "json_state": "valid",
         "result_id": "inherit",
         "result_digest": "inherit",
@@ -809,7 +813,7 @@
       "name": "broader_than_finding",
       "artifact": {
         "base": "baseline",
-        "marker": "inherit",
+        "files": "inherit",
         "json_state": "valid",
         "result_id": "inherit",
         "result_digest": "inherit",
@@ -841,6 +845,78 @@
         "decision": "block",
         "diagnostic_code": "remediation_broader_than_finding"
       }
+    },
+    {
+      "name": "prefix_selection",
+      "artifact": {
+        "base": "baseline",
+        "files": "inherit",
+        "json_state": "valid",
+        "result_id": "inherit",
+        "result_digest": "inherit",
+        "finding_id": "inherit",
+        "path": "inherit",
+        "location": "inherit"
+      },
+      "current_state": {
+        "base": "reviewed",
+        "repository_identity": "inherit",
+        "scope": "inherit",
+        "workspace": "inherit",
+        "standards_inventory_ref": "inherit",
+        "finding_evidence": "inherit"
+      },
+      "selected_finding_ids": [
+        "d6491cbe5f09"
+      ],
+      "requested_edit": {
+        "paths": [
+          "src/review.py"
+        ],
+        "authority_paths": [
+          "src/review.py"
+        ]
+      },
+      "expected": {
+        "decision": "proceed",
+        "diagnostic_code": "ok"
+      }
+    },
+    {
+      "name": "short_prefix_selection",
+      "artifact": {
+        "base": "baseline",
+        "files": "inherit",
+        "json_state": "valid",
+        "result_id": "inherit",
+        "result_digest": "inherit",
+        "finding_id": "inherit",
+        "path": "inherit",
+        "location": "inherit"
+      },
+      "current_state": {
+        "base": "reviewed",
+        "repository_identity": "inherit",
+        "scope": "inherit",
+        "workspace": "inherit",
+        "standards_inventory_ref": "inherit",
+        "finding_evidence": "inherit"
+      },
+      "selected_finding_ids": [
+        "d6491cbe5f0"
+      ],
+      "requested_edit": {
+        "paths": [
+          "src/review.py"
+        ],
+        "authority_paths": [
+          "src/review.py"
+        ]
+      },
+      "expected": {
+        "decision": "block",
+        "diagnostic_code": "selected_finding_unknown"
+      }
     }
   ],
   "supplemental_vectors": [
@@ -848,7 +924,7 @@
       "name": "rehashed_out_of_scope_path",
       "artifact": {
         "base": "baseline",
-        "marker": "inherit",
+        "files": "inherit",
         "json_state": "valid",
         "result_id": "ff857d0e2d9a2df8cf0e89aa7d45aeba8c746382a4fb0c0942a8d1eaec19b5b3",
         "result_digest": "c6d062061b7abeff317768cececca9f044c2f6dd204b4e647f1f71e0af7cdebc",
@@ -884,7 +960,7 @@
       "name": "rehashed_in_scope_wrong_location",
       "artifact": {
         "base": "baseline",
-        "marker": "inherit",
+        "files": "inherit",
         "json_state": "valid",
         "result_id": "bebd99caadc78c6dd0efc1fb24040c0a42078c56dcff3ae6f62d9b964bf60085",
         "result_digest": "24a5c866cea88b61ac53f4f5e507376ee025d41facc1c118af1012e38c7b295c",
