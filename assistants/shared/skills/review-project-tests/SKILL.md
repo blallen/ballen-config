@@ -240,8 +240,9 @@ source, missing command evidence, nondeterministic opt-in tests, or an
 unreviewable generated artifact.
 
 Record every required check below in coverage whenever this specialist is
-applicable. A missing or non-completed required check makes the result
-`incomplete`. An evidence-backed `not_applicable` result requires no checks.
+applicable. A missing or non-completed required check makes the result at
+least `incomplete`; an unavailable or blocked check keeps its stronger
+precedence. An evidence-backed `not_applicable` result requires no checks.
 Test command evidence follows the command rules instead.
 
 Each check name is also the finding category for the findings it produces:

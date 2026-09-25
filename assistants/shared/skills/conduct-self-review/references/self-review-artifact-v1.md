@@ -220,11 +220,13 @@ Do not fabricate empty reviewer results after blocked scope.
 
 ### Required reviewer checks
 
-When `review-project-tests` is applicable, its coverage must list every
-required check that skill declares. For each missing check, the orchestrator
-adds one aggregate diagnostic with code `reviewer_check_missing`, path `null`,
-a detail naming the reviewer and check, and contributor
-`conduct-self-review`. It does not edit the specialist result.
+When `review-project-tests` is applicable and reports outcome `completed`, its
+coverage must list every required check that skill declares, each with
+`required: true` and completion `completed`. For each declared check that is
+missing or not completed, the orchestrator adds one aggregate diagnostic with
+code `reviewer_check_missing`, path `null`, a detail naming the reviewer and
+check, and contributor `conduct-self-review`. It does not edit the specialist
+result.
 
 ### Findings and deduplication
 

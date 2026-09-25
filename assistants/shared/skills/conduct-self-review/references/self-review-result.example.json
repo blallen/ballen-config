@@ -1,8 +1,8 @@
 {
   "contract_version": "v1",
-  "result_id": "dc67e7f04c1abedaff4b3c3a13de04740f002a4ee65bca99835180834ff5e5c8",
+  "result_id": "f1f2159be6c0c27267eb36be7e33594b736aedf82536777674462f3e388d2421",
   "created_at": "2026-07-30T20:00:00Z",
-  "result_digest": "702b24e8d669b3c27a52c09b77fff86b6c528bf004b47b0a969da255d5af1aba",
+  "result_digest": "63eda5b4775d92685585a865f5cdacd5cac5eed91661102fe295cc61aca74751",
   "repository_identity": {
     "state": "complete",
     "vcs": "jujutsu",
@@ -183,19 +183,19 @@
         "inputs": "complete",
         "checks": [
           {
-            "check": "behavioral-coverage",
-            "required": true,
-            "selected_scope": "changed",
-            "completion": "completed"
-          },
-          {
             "check": "assertions",
             "required": true,
             "selected_scope": "changed",
             "completion": "completed"
           },
           {
-            "check": "fixtures-doubles",
+            "check": "behavioral-coverage",
+            "required": true,
+            "selected_scope": "changed",
+            "completion": "completed"
+          },
+          {
+            "check": "consolidation",
             "required": true,
             "selected_scope": "changed",
             "completion": "completed"
@@ -207,13 +207,7 @@
             "completion": "completed"
           },
           {
-            "check": "theatre",
-            "required": true,
-            "selected_scope": "changed",
-            "completion": "completed"
-          },
-          {
-            "check": "consolidation",
+            "check": "fixtures-doubles",
             "required": true,
             "selected_scope": "changed",
             "completion": "completed"
@@ -226,6 +220,12 @@
           },
           {
             "check": "test-documentation",
+            "required": true,
+            "selected_scope": "changed",
+            "completion": "completed"
+          },
+          {
+            "check": "theatre",
             "required": true,
             "selected_scope": "changed",
             "completion": "completed"

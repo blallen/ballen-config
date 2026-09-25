@@ -153,11 +153,13 @@ evidence-backed `not_applicable` results. Preserve unknown applicability,
 incomplete analysis, missing tools, skips, and blocked work without converting
 them into success.
 
-When `review-project-tests` is applicable, verify that its coverage lists every
-required check that skill declares; do not copy or extend its list here. For
-each missing check, add one aggregate diagnostic with code
-`reviewer_check_missing`, path `null`, a detail naming the reviewer and check,
-and contributor `conduct-self-review`. Do not edit the specialist result.
+When `review-project-tests` is applicable and reports outcome `completed`,
+verify that its coverage lists every required check that skill declares, each
+with `required: true` and completion `completed`; do not copy or extend its
+list here. For each declared check that is missing or not completed, add one
+aggregate diagnostic with code `reviewer_check_missing`, path `null`, a detail
+naming the reviewer and check, and contributor `conduct-self-review`. Do not
+edit the specialist result.
 
 Partial scope forces the aggregate verdict to at least `incomplete`, even when
 every reviewable entry has no finding. Empty complete scope can be clean only
@@ -282,9 +284,12 @@ After writing:
 - confirm reviewer identities, counts, and verdict;
 - confirm the Markdown verdict, counts, and result-ID prefix match the JSON;
 - confirm every JSON finding appears exactly once under its severity section
-  with matching path, lines, category, and rule, and that no other finding
-  appears;
-- confirm every aggregate skip and diagnostic appears under Limitations;
+  with matching path, lines, category, rule, and contributors, and that no
+  other finding appears;
+- confirm each finding's evidence and remediation match the JSON verbatim;
+- confirm Limitations lists every reviewer that did not complete and every
+  aggregate skip and diagnostic;
+- confirm Coverage has one matching row per reviewer;
 - confirm prohibited data and raw diffs are absent from both files;
 - confirm both paths remain ignored and untracked; and
 - confirm ordinary source-control status exposes neither file.
@@ -328,7 +333,7 @@ not a signed result and not permission to edit findings.
 | Reviewer is not applicable | Retain its evidence-backed result |
 | Required reviewer or tool unavailable | Preserve it; overall verdict is unavailable |
 | Quality result contains Ponytail coverage | Preserve it inside quality; keep four reviewers |
-| Applicable test review omits a declared check | Add `reviewer_check_missing`; verdict is at least incomplete |
+| Completed test review omits or skips a declared check | Add `reviewer_check_missing`; verdict is at least incomplete |
 | Duplicate finding evidence | Deduplicate exact semantic match and retain contributors |
 | Similar finding with different reasoning | Keep both findings |
 | Either file of the stem exists | Never overwrite; choose a later timestamp or fail |
@@ -360,8 +365,8 @@ project paths, histories, caches, indexes, or generated plugin state.
   sub-pass during aggregation.
 - Writing only one file of the pair, or Markdown that paraphrases evidence,
   omits a finding, or restates a field differently from the JSON.
-- Accepting a test review whose coverage omits a check that
-  `review-project-tests` declares as required.
+- Accepting a test review whose coverage omits, skips, or leaves incomplete a
+  check that `review-project-tests` declares as required.
 - Overwriting the prior artifact or treating the latest file as implicit input.
 - Returning a computed clean verdict after persistence failed.
 - Offering to fix findings from this report-only orchestration boundary.

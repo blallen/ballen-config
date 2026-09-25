@@ -15,9 +15,13 @@ repos:
     rev: v1.5.0
     hooks:
       - id: detect-secrets
-        # Contract fixtures are SHA-256 identities by design; the contract tests
-        # check them for credential-like keys and non-portable values instead.
         exclude: ^assistants/shared/skills/[^/]+/references/[^/]+\.json$
+      # Contract fixtures are SHA-256 identities by design, so scan them with
+      # every detector except hex entropy.
+      - id: detect-secrets
+        name: detect-secrets (contract fixtures)
+        files: ^assistants/shared/skills/[^/]+/references/[^/]+\.json$
+        args: [--disable-plugin, HexHighEntropyString]
 
   - repo: local
     hooks:
