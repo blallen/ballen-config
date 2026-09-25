@@ -30,7 +30,7 @@
     },
     "resolved_selector": null
   },
-  "workspace_fingerprint": "\u0036220e642\u00379c444c5\u00398061efa\u00617dcd4a5\u0064094c093\u0036f913891\u00663c3eba2\u0037ba268ab",
+  "workspace_fingerprint": "6220e64279c444c598061efaa7dcd4a5d094c0936f913891f3c3eba27ba268ab",
   "changes": [
     {
       "path": "fixtures/model.bin",
@@ -73,5 +73,5 @@
       "detail": "Binary content has a stable digest but no textual patch."
     }
   ],
-  "scope_identity": "\u00650c5fcdb\u00330047b64\u0063c9a7f64\u0034dea0cc4\u00627c6ab98\u00379e469e3\u0061fdfa81a\u006637f39a6"
+  "scope_identity": "e0c5fcdb30047b64cc9a7f644dea0cc4b7c6ab9879e469e3afdfa81af37f39a6"
 }
