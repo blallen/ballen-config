@@ -69,7 +69,9 @@ _SELF_REVIEWER_ORDER: Final[tuple[str, ...]] = (
 _SELF_REVIEWER_NAMES: Final[frozenset[str]] = frozenset(_SELF_REVIEWER_ORDER)
 _REMEDIATION_CASE_DIAGNOSTICS: Final[dict[str, str]] = {
     "valid_selected_finding": "ok",
-    "missing_marker": "artifact_marker_missing",
+    "prefix_selection": "ok",
+    "missing_sibling": "artifact_path_invalid",
+    "short_prefix_selection": "selected_finding_unknown",
     "malformed_json": "artifact_json_malformed",
     "result_digest_mismatch": "artifact_result_digest_mismatch",
     "finding_id_tamper": "artifact_finding_id_mismatch",
@@ -83,11 +85,15 @@ _REMEDIATION_SUPPLEMENTAL_DIAGNOSTICS: Final[dict[str, str]] = {
     "rehashed_out_of_scope_path": "selected_finding_scope_mismatch",
     "rehashed_in_scope_wrong_location": "finding_evidence_not_reproduced",
 }
+_REMEDIATION_PROCEED_CASES: Final[frozenset[str]] = frozenset(
+    {"valid_selected_finding", "prefix_selection"}
+)
+_FINDING_SELECTION_PATTERN: Final[re.Pattern[str]] = re.compile(r"^[0-9a-f]{1,64}$")
+_FINDING_PREFIX_LENGTH: Final[int] = 12
 _REMEDIATION_DIAGNOSTIC_VOCABULARY: Final[frozenset[str]] = frozenset(
     {
         "ok",
         "artifact_path_invalid",
-        "artifact_marker_missing",
         "artifact_json_malformed",
         "artifact_contract_unsupported",
         "artifact_structure_invalid",
@@ -803,12 +809,12 @@ def test_remediation_vectors_freeze_validation_and_authority_boundaries(
 
     baseline = fixture["baseline"]
     assert set(baseline) == {
-        "artifact_marker",
+        "artifact_files",
         "artifact_result",
         "selected_finding_reviewer",
         "reviewed_state",
     }
-    assert baseline["artifact_marker"] == "<!-- ballen-config:self-review-result:v1 -->"
+    assert baseline["artifact_files"] == ["json", "markdown"]
     baseline_result = baseline["artifact_result"]
     assert set(baseline_result) == _SELF_REVIEW_RESULT_TOP_LEVEL_KEYS
     semantic_material = {
@@ -928,7 +934,7 @@ def test_remediation_vectors_freeze_validation_and_authority_boundaries(
         artifact = vector["artifact"]
         assert set(artifact) == {
             "base",
-            "marker",
+            "files",
             "json_state",
             "result_id",
             "result_digest",
@@ -938,10 +944,10 @@ def test_remediation_vectors_freeze_validation_and_authority_boundaries(
         }
         assert artifact["base"] == "baseline"
         assert artifact["json_state"] in {"valid", "malformed"}
-        artifact_marker = (
-            baseline["artifact_marker"]
-            if artifact["marker"] == "inherit"
-            else artifact["marker"]
+        artifact_files = (
+            baseline["artifact_files"]
+            if artifact["files"] == "inherit"
+            else artifact["files"]
         )
         artifact_result_id = (
             baseline_result["result_id"]
@@ -1079,7 +1085,7 @@ def test_remediation_vectors_freeze_validation_and_authority_boundaries(
         assert selected_finding_ids
         assert selected_finding_ids == sorted(set(selected_finding_ids))
         for finding_id in selected_finding_ids:
-            _assert_sha256(finding_id)
+            assert _FINDING_SELECTION_PATTERN.fullmatch(finding_id)
 
         requested_edit = vector["requested_edit"]
         assert set(requested_edit) == {"paths", "authority_paths"}
@@ -1094,11 +1100,11 @@ def test_remediation_vectors_freeze_validation_and_authority_boundaries(
         assert set(expected) == {"decision", "diagnostic_code"}
         assert expected["diagnostic_code"] == expected_diagnostics[name]
         assert expected["decision"] == (
-            "proceed" if name == "valid_selected_finding" else "block"
+            "proceed" if name in _REMEDIATION_PROCEED_CASES else "block"
         )
 
-        if name == "valid_selected_finding":
-            assert artifact_marker == baseline["artifact_marker"]
+        if name in _REMEDIATION_PROCEED_CASES:
+            assert artifact_files == baseline["artifact_files"]
             assert result_id_valid
             assert result_digest_valid
             assert finding_id_valid
@@ -1106,8 +1112,16 @@ def test_remediation_vectors_freeze_validation_and_authority_boundaries(
             assert set(requested_edit["paths"]).issubset(
                 requested_edit["authority_paths"]
             )
-        elif name == "missing_marker":
-            assert artifact_marker is None
+            if name == "prefix_selection":
+                assert selected_finding_ids == [
+                    baseline_finding_id[:_FINDING_PREFIX_LENGTH]
+                ]
+        elif name == "missing_sibling":
+            assert artifact_files == ["json"]
+        elif name == "short_prefix_selection":
+            (short_prefix,) = selected_finding_ids
+            assert len(short_prefix) < _FINDING_PREFIX_LENGTH
+            assert baseline_finding_id.startswith(short_prefix)
         elif name == "malformed_json":
             assert artifact["json_state"] == "malformed"
         elif name == "result_digest_mismatch":

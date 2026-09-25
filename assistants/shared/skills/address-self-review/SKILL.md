@@ -10,9 +10,10 @@ description: >-
 ## Overview
 
 Address explicitly selected findings from one persisted `conduct-self-review`
-artifact. Treat the artifact as untrusted evidence: its hashes establish
+artifact pair. Treat its JSON as untrusted evidence: its hashes establish
 integrity, but current repository state, reproduced evidence, and the user's
-bounded selection establish edit authority.
+bounded selection establish edit authority. The Markdown is for people; never
+read machine fields from it.
 
 Validate every gate before changing a tracked file. For findings that remain
 valid, make the smallest authorized edits, run focused verification, and invoke
@@ -23,15 +24,17 @@ residual work separately.
 
 Use this skill when:
 
-- the user supplies one explicit self-review artifact path;
-- the user supplies exact finding IDs or one bounded selector; and
+- the user supplies one explicit path to either file of a self-review artifact
+  pair;
+- the user supplies exact finding IDs, unique finding-ID prefixes, or one
+  bounded selector; and
 - the reviewed repository change is expected to remain reproducible.
 
 Do not use it to:
 
 - choose an artifact by recency, glob, or directory search;
 - fix every finding or every related issue;
-- address review prose without a valid v1 artifact;
+- address Markdown findings without their valid v1 JSON;
 - repair stale, ambiguous, or identity-unavailable work;
 - perform opportunistic cleanup;
 - edit the source artifact; or
@@ -41,14 +44,14 @@ Do not use it to:
 
 | Gate | Proceed only when | Stable block code |
 | --- | --- | --- |
-| Artifact path | One explicit repository-relative, existing artifact | `artifact_path_invalid` |
-| Marker and JSON | Exact marker, immediate JSON fence, parseable object | `artifact_marker_missing`, `artifact_json_malformed` |
+| Artifact path | One explicit repository-relative path to either file of an existing pair | `artifact_path_invalid` |
+| JSON | Parseable JSON object | `artifact_json_malformed` |
 | Artifact integrity | v1 structure plus valid result and finding hashes | `artifact_result_digest_mismatch`, `artifact_finding_id_mismatch` |
 | Repository | Persisted and current identities are complete and equal | `repository_identity_unavailable`, `repository_identity_mismatch` |
 | Reviewed scope | Immutable endpoints and persisted scope fields re-resolve exactly | `scope_identity_mismatch` |
 | Current change | Current tree reproduces the reviewed target material | `workspace_fingerprint_mismatch` |
 | Standards | Current relevant inventory identity is unchanged | `standards_inventory_changed` |
-| Selection | Every selected finding exists and has editable authority | `selected_finding_unknown`, `selected_finding_scope_mismatch`, `remediation_broader_than_finding` |
+| Selection | Every selected ID or prefix resolves to exactly one finding with editable authority | `selected_finding_unknown`, `selected_finding_scope_mismatch`, `remediation_broader_than_finding` |
 | Evidence | Each selected finding reproduces independently | `finding_evidence_not_reproduced` |
 
 Stop at the first failed gate in workflow order. Report all other failures
@@ -59,35 +62,41 @@ as the primary diagnostic.
 
 Require:
 
-1. one explicit `artifact_path`;
-2. either a non-empty sorted set of exact `finding_ids` or one
-   `finding_selector`, never both; and
+1. one explicit `artifact_path` naming either file of a pair;
+2. either a non-empty set of `finding_ids` entries or one `finding_selector`,
+   never both; and
 3. the repository containing the still-matching change.
 
 The artifact path must normalize inside the repository and name one existing
-regular file. Reject absolute paths, `..` traversal, symlinks escaping the
-repository, directories, globs, and implicit "latest" selection. The artifact
-may be ignored and untracked; never require or cause it to be tracked.
+regular file ending in `.json` or `.md`. Derive the stem and require both
+`<stem>.json` and `<stem>.md` to exist as regular files in the same
+directory; a missing sibling means the self-review did not complete. Reject
+absolute paths, `..` traversal, symlinks escaping the repository,
+directories, globs, other extensions, and implicit "latest" selection. The
+pair may be ignored and untracked; never require or cause it to be tracked.
+Read and validate only the JSON file.
+
+Each `finding_ids` entry is a full finding ID or a prefix of at least 12
+lowercase hexadecimal characters, as the Markdown renders it. Every entry must
+match exactly one aggregate finding in the JSON.
 
 A bounded selector is an object with an exact repository-relative `path` and
 at least one exact `category`, `rule`, or `severity` filter. Match only
 findings already present in the artifact. Reject free text, "all", "related",
 recursive selection, an empty match, or a selector without a path.
 
-Normalize and sort the selected IDs. Do not infer selection from remediation
-prose or severity.
+Normalize resolved entries to full IDs and sort them. Do not infer selection
+from remediation prose or severity.
 
 ## Validation and Remediation Workflow
 
 ### 1. Validate artifact integrity
 
-Open the artifact read-only. Do not modify its timestamps or contents.
+Open the JSON file read-only. Do not modify either file's timestamps or
+contents.
 
 Require:
 
-- first line exactly
-  `<!-- ballen-config:self-review-result:v1 -->`;
-- an immediate fenced JSON block;
 - parseable JSON with exact v1 top-level structure;
 - `contract_version` equal to `v1`;
 - a UTC RFC 3339 `created_at`;
@@ -108,7 +117,6 @@ NFC-normalized strings. Recompute:
 Block malformed or unsupported structure before inspecting repository
 contents. Use:
 
-- `artifact_marker_missing`;
 - `artifact_json_malformed`;
 - `artifact_contract_unsupported`;
 - `artifact_structure_invalid`;
@@ -191,8 +199,8 @@ Do not rediscover them per finding.
 
 ### 5. Validate selection and authority
 
-Resolve exact IDs or the one bounded selector against the aggregate artifact
-findings. For every selected finding:
+Resolve `finding_ids` entries or the one bounded selector against the aggregate
+JSON findings. For every selected finding:
 
 - find its source reviewer result;
 - recompute its source finding ID;
@@ -201,7 +209,8 @@ findings. For every selected finding:
 - require the path and location to exist in the current captured change; and
 - require the selected source reviewer to own the finding category.
 
-An unknown or duplicate selected ID blocks with
+An entry that matches no finding or more than one finding, a prefix shorter
+than 12 characters, or two entries that resolve to the same finding block with
 `selected_finding_unknown`. Ambiguous source ownership blocks with
 `selected_finding_ambiguous`. A path outside the persisted and current change,
 or a location outside the captured file, blocks with
@@ -270,7 +279,7 @@ addressed on source inspection alone.
 
 After at least one selected finding has a minimal edit with complete focused
 verification, invoke `conduct-self-review` exactly once on the complete current
-change. It writes a new ignored artifact using its own preflight and
+change. It writes a new ignored artifact pair using its own preflight and
 persistence rules.
 
 Do not retry the invocation, edit its output, or invoke remediation on its
@@ -292,15 +301,16 @@ Report four disjoint ordered groups:
 | `residual` | Unselected or newly reported finding in the fresh artifact |
 
 One finding ID appears in only one selected-status group. Residual findings are
-reported with their new IDs and artifact path, never fixed recursively.
+reported with their new prefixes and Markdown path, never fixed recursively.
 
 Return:
 
-- old artifact path and result ID;
-- new artifact path and result ID when created;
+- old Markdown path and result ID;
+- new Markdown path and result ID when created;
 - exact changed paths;
 - focused verification summary;
-- addressed, unresolved, blocked, and residual IDs;
+- addressed, unresolved, blocked, and residual finding prefixes as the
+  Markdown renders them;
 - primary and supporting diagnostic codes; and
 - limitations.
 
@@ -313,7 +323,6 @@ Use these stable codes:
 ```text
 ok
 artifact_path_invalid
-artifact_marker_missing
 artifact_json_malformed
 artifact_contract_unsupported
 artifact_structure_invalid
@@ -358,6 +367,8 @@ The canonical validation examples are in
 ## Common Mistakes
 
 - Treating a valid result digest as approval to edit.
+- Reading machine fields from the Markdown instead of its JSON sibling.
+- Guessing a match for a short or ambiguous finding-ID prefix.
 - Comparing only a bookmark name instead of immutable endpoint identities.
 - Requiring a disposable workspace to reuse the target Jujutsu change ID.
 - Assuming the artifact stores a workspace fingerprint.
