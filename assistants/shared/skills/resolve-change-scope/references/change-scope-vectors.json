@@ -49,7 +49,7 @@
         "mode": "current",
         "source": "jujutsu"
       },
-      "expected_sha256": "\u0036220e642\u00379c444c5\u00398061efa\u00617dcd4a5\u0064094c093\u0036f913891\u00663c3eba2\u0037ba268ab"
+      "expected_sha256": "6220e64279c444c598061efaa7dcd4a5d094c0936f913891f3c3eba27ba268ab"
     },
     {
       "name": "unicode_path_normalization",
@@ -77,7 +77,7 @@
         "mode": "current",
         "source": "git"
       },
-      "expected_sha256": "\u006298c170e\u006185f567c\u00310623307\u003385c68b0\u00352df57a8\u00629146f25\u00311b61ca4\u0035503ae91"
+      "expected_sha256": "b98c170ea85f567c10623307385c68b052df57a8b9146f2511b61ca45503ae91"
     },
     {
       "name": "jujutsu_multi_parent_scope",
@@ -117,16 +117,16 @@
           "value": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
         },
         "source": "jujutsu",
-        "workspace_fingerprint": "\u0036220e642\u00379c444c5\u00398061efa\u00617dcd4a5\u0064094c093\u0036f913891\u00663c3eba2\u0037ba268ab"
+        "workspace_fingerprint": "6220e64279c444c598061efaa7dcd4a5d094c0936f913891f3c3eba27ba268ab"
       },
-      "expected_sha256": "\u00650c5fcdb\u00330047b64\u0063c9a7f64\u0034dea0cc4\u00627c6ab98\u00379e469e3\u0061fdfa81a\u006637f39a6"
+      "expected_sha256": "e0c5fcdb30047b64cc9a7f644dea0cc4b7c6ab9879e469e3afdfa81af37f39a6"
     }
   ],
   "existing_scope_ids": [
-    "\u00650c5fcdb\u00330047b64\u0063c9a7f64\u0034dea0cc4\u00627c6ab98\u00379e469e3\u0061fdfa81a\u006637f39a6",
+    "e0c5fcdb30047b64cc9a7f644dea0cc4b7c6ab9879e469e3afdfa81af37f39a6",
     "e0c5fcdb3004f000000000000000000000000000000000000000000000000000"
   ],
-  "expected_filename_prefix": "\u00650c5fcdb\u00330047",
+  "expected_filename_prefix": "e0c5fcdb30047",
   "repository_identity_cases": [
     {
       "name": "single_remote",
@@ -144,7 +144,7 @@
         "namespace": "Acme/Scope",
         "vcs": "git"
       },
-      "expected_identity_digest": "\u00385968316\u003988764b5\u00632eb7aae\u00397ed759b\u00669a2b2e4\u003008177ec\u0030e5e2e5d\u0063693d134",
+      "expected_identity_digest": "85968316988764b5c2eb7aae97ed759bf9a2b2e4008177ec0e5e2e5dc693d134",
       "diagnostic_code": null
     },
     {
@@ -169,7 +169,7 @@
         "namespace": "Team/Scope",
         "vcs": "git"
       },
-      "expected_identity_digest": "\u0034fc0f1fc\u006389fe79d\u003345e5742\u0036fedc22d\u003060097d6\u0066bc475cb\u00369439f1f\u003412653be",
+      "expected_identity_digest": "4fc0f1fcc89fe79d345e57426fedc22d060097d6fbc475cb69439f1f412653be",
       "diagnostic_code": null
     },
     {
@@ -192,7 +192,7 @@
         "namespace": "Acme/Scope",
         "vcs": "git"
       },
-      "expected_identity_digest": "\u0062b856b6e\u00325d09f59\u0038287e7e5\u0031352661c\u00333979014\u0036559d3b1\u003197fd005\u0033c9eb5d9",
+      "expected_identity_digest": "bb856b6e25d09f598287e7e51352661c339790146559d3b1197fd0053c9eb5d9",
       "diagnostic_code": null
     },
     {

@@ -5,7 +5,7 @@
       "name": "quality_lint_finding",
       "material": {
         "category": "lint",
-        "evidence_digest": "\u00634f9d862\u0065123dd99\u00394843c2b\u00325f789fe\u00646894aa5\u0032e095d7d\u0062afd8ad5\u00628932a0d",
+        "evidence_digest": "c4f9d862e123dd9994843c2b25f789fed6894aa52e095d7dbafd8ad5b8932a0d",
         "location": {
           "end_line": 12,
           "path": "src/model.py",
@@ -14,7 +14,7 @@
         "reviewer": "review-project-quality",
         "rule": "E501"
       },
-      "expected_sha256": "\u0032b46ec8e\u00399eb8a91\u00639960844\u0066db9342b\u00323bcbc06\u00645e890ee\u00342ef656d\u00399c528f7"
+      "expected_sha256": "2b46ec8e99eb8a91c9960844fdb9342b23bcbc06d5e890ee42ef656d99c528f7"
     }
   ],
   "verdict_vectors": [
