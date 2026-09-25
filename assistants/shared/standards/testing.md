@@ -86,7 +86,10 @@ that deterministic assertions cannot.
 Reject test theatre: do not re-test framework guarantees, assert configuration
 that existing behavior tests already cover, or create mocks whose assertions
 can pass without exercising production control flow. Every test should be able
-to fail for a meaningful regression in code the repository owns.
+to fail for a meaningful regression in code the repository owns. Name the
+plausible owned change that would make a new test fail; if none exists, the
+test is theatre. Delete or fold stepping-stone tests from red-green cycles once
+behavioral tests subsume them.
 
 Do not pin human-authored documentation, instructions, or prompt prose with
 substring assertions or opaque digests unless production code consumes that

@@ -102,7 +102,7 @@ execution evidence; it does not prove test value. If command evidence is
 absent, record that limitation rather than inventing or running an undeclared
 command.
 
-### 4. Review assertions, fixtures, and doubles
+### 4. Review assertions, fixtures, doubles, and execution policy
 
 For every relevant test, identify the observable outcome or important side
 effect that would change under a real regression. Prefer direct behavioral
@@ -157,6 +157,32 @@ serialization, custom methods, or consumer-facing representations as
 dependency guarantees. Name the exact owned behavior a useful replacement
 test would protect.
 
+Apply the breaking-change probe to every added or changed test: name the
+smallest plausible repository-owned production change that would make it
+fail, such as removing a guard, flipping a branch, or returning a stub value.
+When no such change exists, report a `theatre` finding whose evidence explains
+why no owned change fails the test. The probe is reasoning only; do not run
+mutation tools or undeclared commands, and do not edit code.
+
+Report `tdd-residue` for tests left behind by red-green steps:
+
+- existence, import, callable, signature, or return-type tests; and
+- tests pinned to a stub or intermediate value.
+
+A test is residue when every owned change that fails it also fails a retained
+test. Recommend deleting it or folding its case into the behavioral test.
+Incremental tests that differ only in inputs are `parameterize-matrix`
+findings instead.
+
+Report `expectation-rewritten` when a changed test's expected value was edited
+to match new output and the change does not intend that behavior change.
+
+When the probe finds no failing owned change, report the test only as
+`theatre`, even when a mock or weak assertion is the cause. Use the specific
+theatre rule when one applies and `test-cannot-fail` otherwise. Tautological
+assertions and tests that execute code without asserting use
+`test-cannot-fail`.
+
 ### 6. Review consolidation and parameterization
 
 Consolidate near-duplicate tests when setup, exercised behavior, and asserted
@@ -171,9 +197,12 @@ fewest test functions at the expense of behavioral clarity.
 
 Distinguish:
 
-- duplicate implementation that should be consolidated;
-- repeated data that should be parameterized; and
-- distinct scenarios that should remain separate.
+- duplicate implementation that should be consolidated
+  (`consolidate-duplicate`);
+- repeated data that should be parameterized (`parameterize-matrix`), with
+  explicit case identifiers (`missing-case-ids` when absent); and
+- distinct scenarios that should remain separate (`over-consolidated` when a
+  merged or parameterized test hides them).
 
 ### 7. Review snapshots and generated output
 
@@ -210,11 +239,42 @@ coverage. Preserve limitations such as partial diff content, unavailable
 source, missing command evidence, nondeterministic opt-in tests, or an
 unreviewable generated artifact.
 
-Use tight repository-relative locations and concise evidence. Recommended
-categories include behavioral coverage, assertion, theatre, double,
-snapshot, duplication, parameterization, and test documentation. Use blocker
-only when the review boundary or evidence is untrustworthy, actionable for
-material corrections, and advisory for optional clarity or maintainability.
+Record every required check below in coverage whenever this specialist is
+applicable. A missing or non-completed required check makes the result
+`incomplete`. An evidence-backed `not_applicable` result requires no checks.
+Test command evidence follows the command rules instead.
+
+Each check name is also the finding category for the findings it produces:
+
+| Check and category | Workflow step | Covers |
+| --- | --- | --- |
+| `behavioral-coverage` | 2 and 3 | Changed behavior without a meaningful test, removed sole protection, defect fix without a reproducer |
+| `assertions` | 4 | Weak, existence-only, or status-only assertions; implementation-step assertions; exception-message contracts |
+| `fixtures-doubles` | 4 | Fixture ownership and visibility, shared mutable state, patch site, sync and async doubles, mocked subject, overbuilt fakes |
+| `execution-policy` | 4 | Default-suite determinism and speed, opt-in expensive checks, strict xfail, explainable skips, heavy optional imports, typed signatures, plain functions |
+| `theatre` | 5 | Tests that cannot fail for a meaningful owned regression |
+| `consolidation` | 6 | Near-duplicates, input matrices, case identifiers, over-merged scenarios |
+| `generated-output` | 7 | Snapshots and generated-output contracts |
+| `test-documentation` | 8 | Behavioral meaning of test names and docstrings |
+
+Every finding uses one rule from its category:
+
+| Category | Rules |
+| --- | --- |
+| `behavioral-coverage` | `coverage-gap`, `protection-removed`, `missing-reproducer` |
+| `assertions` | `weak-assertion`, `implementation-coupled`, `exception-contract` |
+| `fixtures-doubles` | `hidden-fixture`, `shared-mutable-state`, `wrong-patch-target`, `async-mismatch`, `mocked-subject`, `overbuilt-double` |
+| `execution-policy` | `nondeterministic-default`, `expensive-not-opt-in`, `non-strict-xfail`, `unexplained-skip`, `heavy-import`, `untyped-test`, `unneeded-test-class` |
+| `theatre` | `test-cannot-fail`, `tdd-residue`, `expectation-rewritten`, `mock-manufactured`, `framework-guarantee`, `configuration-reasserted`, `prose-pinned` |
+| `consolidation` | `consolidate-duplicate`, `parameterize-matrix`, `missing-case-ids`, `over-consolidated` |
+| `generated-output` | `unreviewed-snapshot`, `volatile-snapshot`, `oversized-snapshot`, `brittle-prose` |
+| `test-documentation` | `test-name-meaning`, `docstring-meaning` |
+
+When no rule fits, use `unlisted` and name the pattern in the evidence.
+
+Use tight repository-relative locations and concise evidence. Use blocker only
+when the review boundary or evidence is untrustworthy, actionable for material
+corrections, and advisory for optional clarity or maintainability.
 
 ### 10. Normalize the common result
 
@@ -256,6 +316,10 @@ aggregation.
 | --- | --- |
 | Green suite or high line coverage | Treat as execution evidence, then inspect behavioral value |
 | Pydantic field-population assertion | Theatre unless repository-owned behavior is also proved |
+| Added or changed test | Name the smallest owned change that fails it; none means theatre |
+| Stepping-stone test subsumed by a behavioral test | `tdd-residue`; delete or fold it |
+| Expected value edited to match new output | `expectation-rewritten` unless the change intends the behavior change |
+| Pattern outside the rule table | `unlisted`, with the pattern named in evidence |
 | Same behavior with different inputs | Parameterize with explicit case identifiers |
 | Same setup but different failure stories | Keep separate when the contracts differ |
 | Async path uses synchronous or excessive mocks | Report the double or disconnected-control-flow gap |
@@ -296,6 +360,11 @@ state.
   respect quality and standards ownership.
 - Returning an informal approval without scope identity, coverage, findings,
   and limitations.
+- Leaving red-green stepping-stone tests beside the behavioral tests that
+  subsume them. Report `tdd-residue`.
+- Reporting a test that cannot fail under assertions or doubles as well as
+  theatre. Theatre takes precedence.
+- Inventing check names or rules. Use the declared tables and `unlisted`.
 
 ## Related Skills
 
