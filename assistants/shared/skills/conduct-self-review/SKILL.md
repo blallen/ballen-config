@@ -10,12 +10,12 @@ description: >-
 ## Overview
 
 **Core principle:** A self-review is complete only when one immutable scope is
-reviewed by every specialist and the validated result is persisted in a safe
-ignored artifact.
+reviewed by every specialist and the validated result is persisted as a safe
+ignored artifact pair: authoritative JSON and its rendered Markdown.
 
 Compose existing reviewers; do not implement their checks again. The artifact
-is durable evidence for later human review or explicitly selected remediation,
-not authorization by itself.
+pair is durable evidence for later human review or explicitly selected
+remediation, not authorization by itself.
 
 Invoke these named dependencies:
 
@@ -36,7 +36,7 @@ checkpoint and needs:
 
 - all four specialist reviews against one fixed scope;
 - one aggregate verdict with preserved coverage limitations;
-- a durable, integrity-checked local review artifact; or
+- a durable, integrity-checked local review artifact pair; or
 - stable ignored input for a later explicit `address-self-review` invocation.
 
 Do not use it to edit findings, update snapshots, add suppressions, publish
@@ -62,8 +62,8 @@ recent commit.
 
 An explicit safe artifact directory overrides the default
 `.reviews/self-review/`. It changes only the directory; this skill still owns
-the generated timestamp and scope-prefix filename. Do not accept a complete
-caller-selected filename.
+the generated timestamp and scope-prefix stem. Do not accept a caller-selected
+filename or stem.
 
 ## Workflow
 
@@ -89,7 +89,7 @@ ignored directories. If preflight fails, ask for a different explicit
 repository-relative directory and repeat this step. Write nothing until one
 directory passes.
 
-Directory preflight precedes scope resolution. Final filename collision and
+Directory preflight precedes scope resolution. Final stem collision and
 exclusive-create checks happen after the scope identity exists.
 
 ### 2. Resolve change scope once
@@ -152,6 +152,12 @@ Require exactly one common v1 result from every specialist. Retain
 evidence-backed `not_applicable` results. Preserve unknown applicability,
 incomplete analysis, missing tools, skips, and blocked work without converting
 them into success.
+
+When `review-project-tests` is applicable, verify that its coverage lists every
+required check that skill declares; do not copy or extend its list here. For
+each missing check, add one aggregate diagnostic with code
+`reviewer_check_missing`, path `null`, a detail naming the reviewer and check,
+and contributor `conduct-self-review`. Do not edit the specialist result.
 
 Partial scope forces the aggregate verdict to at least `incomplete`, even when
 every reviewable entry has no finding. Empty complete scope can be clean only
@@ -217,7 +223,7 @@ Use:
 2. `unavailable` for unavailable required shared inputs, specialists, checks,
    or skips;
 3. `incomplete` for partial scope, unknown applicability, incomplete reviewer
-   work, or incomplete required skips;
+   work, incomplete required skips, or a `reviewer_check_missing` diagnostic;
 4. `blockers_found` for one or more blocker findings;
 5. `needs_attention` for one or more actionable findings;
 6. `advisories` for advisory findings only; and
@@ -246,38 +252,48 @@ Recursively reject raw patches, raw command output, absolute paths, remote
 URLs, credentials, authentication material, tokens, secrets, trust or session
 state, caches, histories, indexes, and generated plugin state.
 
-### 10. Select a non-existing filename
+### 10. Select a non-existing stem
 
 Under the preflighted directory, choose the shortest unique prefix of the full
 scope identity, with a minimum of 12 lowercase hexadecimal characters. Combine
-it with the filename-safe UTC timestamp defined by the artifact contract.
+it with the filename-safe UTC timestamp defined by the artifact contract to
+form the stem.
 
-Inspect only artifacts in the selected directory needed to establish prefix
-uniqueness. Never infer authority from their contents. If the final path
-exists, do not overwrite it; capture a later timestamp or fail safely.
+Inspect only filenames in the selected directory needed to establish prefix
+uniqueness. Never infer authority from their contents. The stem is usable only
+when neither `<stem>.json` nor `<stem>.md` exists; otherwise capture a later
+timestamp or fail safely. Never overwrite either file.
 
 ### 11. Persist and verify
 
-Write:
+Write, each with exclusive-create semantics:
 
-1. the exact first-line marker;
-2. the immediately following fenced JSON object; and
-3. a concise human Markdown summary after the fence.
+1. `<stem>.json` containing exactly the machine result; then
+2. `<stem>.md` rendered from that result with the Markdown template in the
+   artifact contract.
 
-Use exclusive-create semantics. After writing:
+Copy evidence, remediation, reasons, and details verbatim. The Markdown must
+not add, override, or reinterpret machine fields.
 
-- read the artifact back;
-- verify the marker and JSON placement;
-- recompute `result_id` and `result_digest`;
+After writing:
+
+- read both files back;
+- parse the JSON and recompute `result_id` and `result_digest`;
 - confirm reviewer identities, counts, and verdict;
-- confirm prohibited data and raw diffs are absent;
-- confirm the path remains ignored and untracked; and
-- confirm ordinary source-control status does not expose the artifact.
+- confirm the Markdown verdict, counts, and result-ID prefix match the JSON;
+- confirm every JSON finding appears exactly once under its severity section
+  with matching path, lines, category, and rule, and that no other finding
+  appears;
+- confirm every aggregate skip and diagnostic appears under Limitations;
+- confirm prohibited data and raw diffs are absent from both files;
+- confirm both paths remain ignored and untracked; and
+- confirm ordinary source-control status exposes neither file.
 
 Every attempt whose directory passed preflight must persist its outcome,
 including empty, partial, blocked, unavailable, or finding-bearing results.
-If persistence or verification fails, self-review did not complete and cannot
-claim the computed verdict or clean state.
+If either write or any verification step fails, self-review did not complete
+and cannot claim the computed verdict or clean state. Leave a partial pair in
+place; never overwrite it.
 
 ### 12. Return the concise result
 
@@ -287,17 +303,17 @@ Return:
 - blocker, actionable, and advisory counts;
 - important blocked, unavailable, or incomplete limitations;
 - concise blocker summaries when present; and
-- a clickable repository-relative artifact path.
+- a clickable repository-relative link to the Markdown file.
 
 Do not embed the full artifact or raw review evidence in the response.
 
 ## Output
 
-The durable output is one validated v1 artifact in the selected ignored
-directory. The inline output is a concise human summary and link to that exact
-file.
+The durable output is one validated artifact pair in the selected ignored
+directory: authoritative v1 JSON and its rendered Markdown. The inline output
+is a concise human summary and a link to that Markdown file.
 
-The artifact remains ignored and uncommitted. It is user-controlled evidence,
+Both files remain ignored and uncommitted. They are user-controlled evidence,
 not a signed result and not permission to edit findings.
 
 ## Quick Reference
@@ -312,15 +328,16 @@ not a signed result and not permission to edit findings.
 | Reviewer is not applicable | Retain its evidence-backed result |
 | Required reviewer or tool unavailable | Preserve it; overall verdict is unavailable |
 | Quality result contains Ponytail coverage | Preserve it inside quality; keep four reviewers |
+| Applicable test review omits a declared check | Add `reviewer_check_missing`; verdict is at least incomplete |
 | Duplicate finding evidence | Deduplicate exact semantic match and retain contributors |
 | Similar finding with different reasoning | Keep both findings |
-| Artifact path exists | Never overwrite; choose a later timestamp or fail |
+| Either file of the stem exists | Never overwrite; choose a later timestamp or fail |
 | Artifact write or verification fails | Review did not complete |
 
 ## Boundaries
 
-This skill may write only its verified ignored review artifact and temporary
-ignored persistence checks. It never edits tracked source, tests,
+This skill may write only its verified ignored review artifact pair and
+temporary ignored persistence checks. It never edits tracked source, tests,
 configuration, ignore rules, reviewer findings, snapshots, suppressions, forge
 state, commits, or bookmarks.
 
@@ -341,7 +358,10 @@ project paths, histories, caches, indexes, or generated plugin state.
 - Letting quality review and type review both execute the type checker.
 - Invoking Ponytail directly as a fifth reviewer or rerunning its quality
   sub-pass during aggregation.
-- Writing a prose-only report without the exact marker, JSON, and hashes.
+- Writing only one file of the pair, or Markdown that paraphrases evidence,
+  omits a finding, or restates a field differently from the JSON.
+- Accepting a test review whose coverage omits a check that
+  `review-project-tests` declares as required.
 - Overwriting the prior artifact or treating the latest file as implicit input.
 - Returning a computed clean verdict after persistence failed.
 - Offering to fix findings from this report-only orchestration boundary.
