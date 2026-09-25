@@ -10,8 +10,10 @@ and implementation plan before code or skill content changes begin.
 This roadmap follows the first reusable-skills release delivered through pull
 requests 6 through 9 and elaborates the review-related roadmap in the
 [Plato reusable skills detailed design](2026-07-28-plato-reusable-skills-design.md).
-The review-foundation train is refined by the approved
-[review foundation detailed design](2026-07-30-review-foundation-design.md).
+The review-foundation train is implemented by the shared review skills and
+their contract references. The
+[self-review artifact split design](2026-09-24-self-review-artifact-split-design.md)
+revises its artifact layout.
 
 ## Purpose
 
@@ -233,8 +235,9 @@ every consumer. It aggregates findings and coverage rather than implementing
 another checker. Skipped, unavailable, and inapplicable sections remain visible
 and cannot become a clean verdict.
 
-Every self-review attempt that passes artifact preflight writes a Markdown
-artifact, including blocked and incomplete results. The default directory is
+Every self-review attempt that passes artifact preflight writes a JSON and
+Markdown artifact pair, including blocked and incomplete results. The default
+directory is
 `.reviews/self-review/`; the caller may instead supply a repository-relative
 ignored directory. The destination must be repository-local, ignored,
 untracked, and writable. The inline result is a summary and artifact link. If
@@ -499,9 +502,9 @@ At train start:
 
 Stacked GitHub PRs merge bottom-up. Train-focused designs own the exact remote
 preflight, explicit retargeting, rewritten-ancestry recovery, branch deletion,
-and bookmark-retirement procedure. The
-[review foundation detailed design](2026-07-30-review-foundation-design.md)
-defines the first such procedure. No train relies on automatic retargeting or
+and bookmark-retirement procedure. The review-foundation design, now in version
+history, defined the first such procedure. No train relies on automatic
+retargeting or
 continues after an unverified base or diff change.
 
 At train completion:
