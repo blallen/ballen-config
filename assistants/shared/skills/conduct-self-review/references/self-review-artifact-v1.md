@@ -105,13 +105,15 @@ Rendering rules:
 - Order severity sections blocker, actionable, advisory, and omit empty ones.
   Keep JSON finding order within a section.
 - In Limitations, list reviewers whose outcome is not `completed`, then
-  aggregate skips, then aggregate diagnostics, each in JSON order. Append
-  `: <reason>` to a blocked-scope skip record, and render a diagnostic with a
-  path as `` `<code>` (diagnostic, `<path>`): <detail> ``. When nothing
-  qualifies, the section body is `None.`
+  aggregate skips, then aggregate diagnostics, each in JSON order. A
+  blocked-scope skip record renders as `` `<reviewer>` (skipped): <reason> ``,
+  and a diagnostic with a path as
+  `` `<code>` (diagnostic, `<path>`): <detail> ``. When nothing qualifies, the
+  section body is `None.`
 - In Coverage, give one row per reviewer in JSON order. A blocked-scope skip
   record renders `skipped` as its outcome and `-` for applicability and
-  checks. Join checks as `<check>: <completion>` with `, `.
+  checks. Join checks as `<check>: <completion>` with `, `, and render `-`
+  when a reviewer records no checks.
 
 The Markdown restates machine fields only through this template. It cannot
 add, override, or reinterpret them.

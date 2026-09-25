@@ -137,7 +137,8 @@ and contributors are excluded so normalization and later aggregation do not
 change the finding's semantic identity.
 
 Sort findings by normalized severity precedence (`blocker`, `actionable`,
-`advisory`), path, start line, rule, then finding ID.
+`advisory`), path, start line, rule, then finding ID. A null path, start line,
+or rule sorts after every non-null value.
 
 ## Skips
 

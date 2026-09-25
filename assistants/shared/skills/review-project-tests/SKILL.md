@@ -141,16 +141,22 @@ evidence.
 Report a theatre finding when a test cannot fail for a meaningful regression
 in repository-owned behavior. Theatre includes tests that:
 
-- execute code without a meaningful assertion;
+- execute code without a meaningful assertion (`test-cannot-fail`);
 - reproduce a framework or dependency guarantee, such as bare Pydantic
-  `BaseModel` population of declared attributes;
-- reassert configuration already covered by behavior tests;
-- use tautological, weak existence-only, or status-only assertions;
+  `BaseModel` population of declared attributes (`framework-guarantee`);
+- reassert configuration already covered by behavior tests
+  (`configuration-reasserted`);
+- use tautological assertions (`test-cannot-fail`);
 - over-mock inputs, control flow, and outcomes until production behavior is
-  disconnected;
-- approve a snapshot mechanically without a reviewed contract; or
+  disconnected (`mock-manufactured`); or
 - pin human-authored documentation, instructions, or prompt prose with
-  substrings or opaque digests that production does not consume.
+  substrings or opaque digests that production does not consume
+  (`prose-pinned`).
+
+Weak existence-only or status-only assertions are theatre only when no owned
+change fails the test; otherwise report `assertions`/`weak-assertion`. Report
+a snapshot approved mechanically without a reviewed contract as
+`generated-output`/`unreviewed-snapshot`.
 
 Do not misclassify repository-owned Pydantic validators, transformations,
 serialization, custom methods, or consumer-facing representations as
@@ -365,7 +371,9 @@ state.
   subsume them. Report `tdd-residue`.
 - Reporting a test that cannot fail under assertions or doubles as well as
   theatre. Theatre takes precedence.
-- Inventing check names or rules. Use the declared tables and `unlisted`.
+- Inventing coverage check names or finding rules. Use the declared tables and
+  `unlisted`. A skip names the operation it skipped, such as an opt-in suite,
+  and need not be a declared check.
 
 ## Related Skills
 

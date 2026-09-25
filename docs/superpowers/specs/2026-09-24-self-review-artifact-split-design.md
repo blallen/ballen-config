@@ -153,12 +153,14 @@ Rendering rules:
   Remediation line. Contributors are joined with `, ` in JSON order.
 - Limitations lists reviewers whose outcome is not completed, then every
   aggregate skip, then every aggregate diagnostic, in JSON order. A
-  blocked-scope skip record appends `: <reason>`; a diagnostic with a path
-  renders as `` `<code>` (diagnostic, `<path>`): <detail> ``. When nothing
-  qualifies, the section body is `None.`
+  blocked-scope skip record renders as `` `<reviewer>` (skipped): <reason> ``;
+  a diagnostic with a path renders as
+  `` `<code>` (diagnostic, `<path>`): <detail> ``. When nothing qualifies, the
+  section body is `None.`
 - Coverage has one row per reviewer or blocked-scope skip record, in reviewer
   order. A skip record renders `skipped` as its outcome and `-` for
-  applicability and checks.
+  applicability and checks. A reviewer that records no checks renders `-` for
+  checks.
 - Scope-identity and result-ID prefixes are 12 lowercase hexadecimal
   characters. Every finding prefix in one artifact has the same length: 12, or
   the shortest longer length that makes every prefix unique.
