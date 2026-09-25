@@ -115,6 +115,116 @@ def test_native_hook_commands_quote_a_hostile_home_path(
     assert json.loads(rendered) == cursor_registration(hostile_home)
 
 
+_UNOWNED_CURSOR_HOOK = {
+    "command": "/usr/local/bin/metrics-agent hook cursor --hook-input stdin",
+    "timeout": 10,
+}
+
+
+def test_cursor_renderer_replaces_stale_rtk_entry_in_place(
+    repo_root: Path,
+    temporary_home: Path,
+) -> None:
+    """Refresh an RTK entry from another home without moving unowned hooks."""
+    source = (repo_root / "assistants/cursor/hooks.json").read_bytes()
+    managed = cursor_registration(temporary_home)["hooks"]["preToolUse"][0]
+    stale = cursor_registration(Path("/Users/previous"))["hooks"]["preToolUse"][0]
+    unowned_write = {**_UNOWNED_CURSOR_HOOK, "matcher": "Write"}
+    current = {
+        "version": 1,
+        "hooks": {
+            "preToolUse": [stale, unowned_write],
+            "stop": [_UNOWNED_CURSOR_HOOK],
+        },
+    }
+
+    rendered = cursor_hook_renderer(temporary_home)(
+        source, json.dumps(current).encode()
+    )
+
+    assert json.loads(rendered) == {
+        "version": 1,
+        "hooks": {
+            "preToolUse": [managed, unowned_write],
+            "stop": [_UNOWNED_CURSOR_HOOK],
+        },
+    }
+
+
+def test_cursor_renderer_adds_rtk_entry_after_unowned_hooks(
+    repo_root: Path,
+    temporary_home: Path,
+) -> None:
+    """Register the RTK hook without dropping hooks another tool installed."""
+    source = (repo_root / "assistants/cursor/hooks.json").read_bytes()
+    managed = cursor_registration(temporary_home)["hooks"]["preToolUse"][0]
+    unowned_write = {**_UNOWNED_CURSOR_HOOK, "matcher": "Write"}
+    current = {
+        "version": 1,
+        "hooks": {
+            "preToolUse": [unowned_write],
+            "sessionStart": [_UNOWNED_CURSOR_HOOK],
+        },
+    }
+
+    rendered = cursor_hook_renderer(temporary_home)(
+        source, json.dumps(current).encode()
+    )
+
+    assert json.loads(rendered) == {
+        "version": 1,
+        "hooks": {
+            "preToolUse": [unowned_write, managed],
+            "sessionStart": [_UNOWNED_CURSOR_HOOK],
+        },
+    }
+
+
+def test_cursor_renderer_leaves_matching_hooks_byte_for_byte(
+    repo_root: Path,
+    temporary_home: Path,
+) -> None:
+    """Return an already-correct file unchanged so doctor reports no drift."""
+    source = (repo_root / "assistants/cursor/hooks.json").read_bytes()
+    managed = cursor_registration(temporary_home)["hooks"]["preToolUse"][0]
+    current = (
+        json.dumps(
+            {
+                "version": 1,
+                "hooks": {
+                    "preToolUse": [managed, _UNOWNED_CURSOR_HOOK],
+                    "stop": [_UNOWNED_CURSOR_HOOK],
+                },
+            },
+            indent=4,
+        )
+        + "\n"
+    ).encode()
+
+    assert cursor_hook_renderer(temporary_home)(source, current) == current
+
+
+@pytest.mark.parametrize(
+    "current",
+    [
+        pytest.param(b"{", id="malformed-json"),
+        pytest.param(b"[]", id="document-not-an-object"),
+        pytest.param(b'{"hooks": []}', id="hooks-not-an-object"),
+        pytest.param(b'{"hooks": {"preToolUse": {}}}', id="pre-tool-use-not-a-list"),
+    ],
+)
+def test_cursor_renderer_refuses_hooks_it_cannot_preserve(
+    repo_root: Path,
+    temporary_home: Path,
+    current: bytes,
+) -> None:
+    """Fail instead of overwriting a hooks file whose structure is unusable."""
+    source = (repo_root / "assistants/cursor/hooks.json").read_bytes()
+
+    with pytest.raises(ValueError, match="invalid Cursor hooks"):
+        cursor_hook_renderer(temporary_home)(source, current)
+
+
 @pytest.mark.parametrize("token_count", [0, 2])
 def test_cursor_renderer_rejects_wrong_reviewed_path_token_count(
     repo_root: Path,

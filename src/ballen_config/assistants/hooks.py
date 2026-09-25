@@ -160,6 +160,68 @@ def claude_hook_fragment(home: Path) -> ClaudeHookFragment:
     }
 
 
+def _is_rtk_cursor_hook(value: object) -> bool:
+    """Return whether a Cursor hook entry is an RTK registration for any home."""
+    if not isinstance(value, dict) or value.get("matcher") != "Shell":
+        return False
+    command = value.get("command")
+    if not isinstance(command, str):
+        return False
+    try:
+        arguments = shlex.split(command)
+    except ValueError:
+        return False
+    return (
+        len(arguments) == 2
+        and arguments[0].endswith(_REVIEWED_HOOK_PATH.removeprefix("~"))
+        and arguments[1] == "cursor"
+    )
+
+
+def _merge_cursor_hooks(current: bytes, managed: object) -> bytes:
+    """Assert the managed RTK entry while preserving every unowned hook.
+
+    Args:
+        current: Existing Cursor hooks document.
+        managed: Adapter-owned ``preToolUse`` entry for this home.
+
+    Returns:
+        The current bytes when they already match, otherwise the merged document.
+
+    Raises:
+        ValueError: If the current document cannot be preserved safely.
+    """
+    try:
+        existing = strict_json_loads(current)
+    except (UnicodeDecodeError, ValueError) as error:
+        raise ValueError("invalid Cursor hooks") from error
+    if not isinstance(existing, dict):
+        raise ValueError("invalid Cursor hooks")
+    hooks = existing.get("hooks", {})
+    if not isinstance(hooks, dict):
+        raise ValueError("invalid Cursor hooks")
+    pre_tool_use = hooks.get("preToolUse", [])
+    if not isinstance(pre_tool_use, list):
+        raise ValueError("invalid Cursor hooks")
+    # Keep the first RTK entry's position so hook execution order is stable.
+    merged: list[object] = []
+    for entry in pre_tool_use:
+        if not _is_rtk_cursor_hook(entry):
+            merged.append(entry)
+        elif managed not in merged:
+            merged.append(managed)
+    if managed not in merged:
+        merged.append(managed)
+    result = {
+        **existing,
+        "version": existing.get("version", 1),
+        "hooks": {**hooks, "preToolUse": merged},
+    }
+    if result == existing:
+        return current
+    return json.dumps(result, indent=2).encode() + b"\n"
+
+
 def cursor_hook_renderer(home: Path) -> Renderer:
     """Build a pure renderer for the reviewed Cursor registration source.
 
@@ -167,10 +229,13 @@ def cursor_hook_renderer(home: Path) -> Renderer:
         home: Injected absolute user home.
 
     Returns:
-        Renderer replacing exactly one reviewed command-path token.
+        Renderer that writes the reviewed registration for a new file and,
+        for an existing file, asserts the managed RTK entry while preserving
+        every hook another tool installed.
     """
+    managed = cursor_registration(home)["hooks"]["preToolUse"][0]
 
-    def render(source: bytes, _current: bytes | None) -> bytes:
+    def render(source: bytes, current: bytes | None) -> bytes:
         if source.count(_REVIEWED_HOOK_PATH_BYTES) != 1:
             raise ValueError("invalid Cursor hook source")
         try:
@@ -179,6 +244,8 @@ def cursor_hook_renderer(home: Path) -> Renderer:
             raise ValueError("invalid Cursor hook source") from error
         if payload != _STATIC_CURSOR_REGISTRATION:
             raise ValueError("invalid Cursor hook source")
+        if current is not None:
+            return _merge_cursor_hooks(current, managed)
         # Preserve the document while escaping the shell word for its JSON string.
         replacement = json.dumps(_quoted_hook_path(home))[1:-1].encode()
         return source.replace(
