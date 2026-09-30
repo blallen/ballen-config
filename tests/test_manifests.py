@@ -41,7 +41,9 @@ def test_fsp_profile_extends_default(manifest_repository: ManifestRepository) ->
         "libmagic",
         "awscli",
     } <= resolved
-    assert {"obsidian", "signal", "mactex", "glab", "wave"}.isdisjoint(resolved)
+    assert {"obsidian", "signal", "mactex", "glab", "wave", "graphite"}.isdisjoint(
+        resolved
+    )
 
 
 def test_default_profile_selects_cursor_agent_cli(
@@ -62,9 +64,9 @@ def test_default_profile_selects_cursor_agent_cli(
 def test_wsh_profile_extends_default_without_fsp_packages(
     manifest_repository: ManifestRepository,
 ) -> None:
-    """wsh inherits the baseline and does not install AWS, libmagic, or glab."""
+    """wsh inherits the baseline, adds Graphite, and skips AWS, libmagic, and glab."""
     resolved = ids(manifest_repository, ResolutionRequest(profile="wsh"))
-    assert {"uv", "gh", "jj"} <= resolved
+    assert {"uv", "gh", "jj", "graphite"} <= resolved
     assert {"awscli", "libmagic", "glab", "wave"}.isdisjoint(resolved)
 
 

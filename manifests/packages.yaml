@@ -24,6 +24,7 @@ components:
   - {id: ruff, manager: uv_tool, package: ruff, depends_on: [uv], profiles: [default]}
   - {id: libmagic, manager: brew_formula, package: libmagic, profiles: [fsp]}
   - {id: awscli, manager: brew_formula, package: awscli, profiles: [fsp]}
+  - {id: graphite, manager: brew_formula, package: withgraphite/tap/graphite, profiles: [wsh]}
   - id: oh-my-zsh
     manager: git
     package: https://github.com/ohmyzsh/ohmyzsh.git

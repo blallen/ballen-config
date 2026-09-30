@@ -33,8 +33,8 @@ exceptions without weakening the safety boundary.
 
 ## Profiles
 
-`default` is the baseline. `wsh` adds current-job extra env. `fsp` adds AWS CLI,
-`libmagic`, Bedrock overlay, and Atlassian MCP. Includes: Obsidian, Signal,
+`default` is the baseline. `wsh` adds current-job extra env and Graphite (`gt`).
+`fsp` adds AWS CLI, `libmagic`, Bedrock overlay, and Atlassian MCP. Includes: Obsidian, Signal,
 MacTeX, `glab`, T3 Code (`--include t3-code`). Skips: Cursor, Claude Code, Codex. Example:
 `./bootstrap --profile wsh --skip codex`.
 
