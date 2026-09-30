@@ -101,6 +101,12 @@ export PATH="$HOME/.local/bin:$PATH"
 # jj dynamic completions (richer than the omz plugin alone)
 source <(COMPLETE=zsh jj)
 
+# Watershed-managed config (gcloud, nvm, direnv, ghg completions), present only
+# where wshd is installed. wshd reads both lines from ~/.zshrc itself: `wshd dr`
+# needs the source line and `wshd welcome` re-appends WS_USER when it is missing.
+[ -f "$HOME/.wshd/zshrc" ] && source "$HOME/.wshd/zshrc"
+export WS_USER="brandon"
+
 # export MANPATH="/usr/local/man:$MANPATH"
 
 # You may need to manually set your language environment
