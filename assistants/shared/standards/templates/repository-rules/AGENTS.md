@@ -21,4 +21,7 @@ focused. Do not end responses with hollow follow on questions to try to prompt t
 
 When writing artifacts, omit process narration.
 
+Write Superpowers specs, plans, and notes under the repository's gitignored
+`.superpowers/` directory (`specs/`, `plans/`, `notes/`), not `docs/superpowers/`.
+
 If `docs/engineering-standards/` exists, read the applicable topic documents before relevant implementation or review work.

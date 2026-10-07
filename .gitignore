@@ -8,5 +8,5 @@ __pycache__/
 .coverage
 htmlcov/
 .reviews/
-.superpowers/sdd/
+.superpowers/
 *.age
