@@ -352,6 +352,118 @@ def test_existing_pinned_git_checkout_is_present_without_fetch(tmp_path: Path) -
     ]
 
 
+def _oh_my_zsh_tracking_master() -> Component:
+    return Component(
+        id="oh-my-zsh",
+        manager=Manager.GIT,
+        package="https://github.com/ohmyzsh/ohmyzsh.git",
+        destination=".oh-my-zsh",
+        branch="master",
+    )
+
+
+def test_git_install_checks_out_tracking_branch(tmp_path: Path) -> None:
+    """A branch-tracking checkout gets a local branch its own updater can pull."""
+    destination = tmp_path / ".oh-my-zsh"
+    stage = destination.with_name(f".{destination.name}.bootstrap-stage")
+    runner = StagingGitRunner([result(), result(), result(), result()])
+    component = _oh_my_zsh_tracking_master()
+
+    assert Installer(runner, tmp_path).install(component).state == "installed"
+
+    assert runner.commands == [
+        ("git", "init", str(stage)),
+        ("git", "-C", str(stage), "remote", "add", "origin", component.package),
+        (
+            "git",
+            "-C",
+            str(stage),
+            "fetch",
+            "--depth=1",
+            "--no-tags",
+            "origin",
+            "master",
+        ),
+        (
+            "git",
+            "-C",
+            str(stage),
+            "checkout",
+            "-B",
+            "master",
+            "--track",
+            "origin/master",
+        ),
+    ]
+    assert destination.is_dir()
+    assert not stage.exists()
+
+
+def test_existing_checkout_on_tracked_branch_is_left_to_self_update(
+    tmp_path: Path,
+) -> None:
+    """Bootstrap never rewinds a checkout that is on its tracked branch."""
+    destination = tmp_path / ".oh-my-zsh"
+    (destination / ".git").mkdir(parents=True)
+    runner = FakeRunner(
+        [
+            result(stdout="https://github.com/ohmyzsh/ohmyzsh.git\n"),
+            result(),
+            result(stdout="master\n"),
+        ]
+    )
+
+    outcome = Installer(runner, tmp_path).install(_oh_my_zsh_tracking_master())
+
+    assert outcome.state == "present"
+    assert runner.commands == [
+        ("git", "-C", str(destination), "remote", "get-url", "origin"),
+        ("git", "-C", str(destination), "status", "--porcelain"),
+        ("git", "-C", str(destination), "symbolic-ref", "--quiet", "--short", "HEAD"),
+    ]
+
+
+def test_existing_detached_checkout_moves_onto_tracked_branch(tmp_path: Path) -> None:
+    """A previously pinned, detached checkout converts to the tracked branch."""
+    destination = tmp_path / ".oh-my-zsh"
+    (destination / ".git").mkdir(parents=True)
+    runner = FakeRunner(
+        [
+            result(stdout="https://github.com/ohmyzsh/ohmyzsh.git\n"),
+            result(),
+            result(1),
+            result(),
+            result(),
+        ]
+    )
+
+    outcome = Installer(runner, tmp_path).install(_oh_my_zsh_tracking_master())
+
+    assert outcome.state == "installed"
+    assert runner.commands[-2:] == [
+        (
+            "git",
+            "-C",
+            str(destination),
+            "fetch",
+            "--depth=1",
+            "--no-tags",
+            "origin",
+            "master",
+        ),
+        (
+            "git",
+            "-C",
+            str(destination),
+            "checkout",
+            "-B",
+            "master",
+            "--track",
+            "origin/master",
+        ),
+    ]
+
+
 @pytest.mark.parametrize(
     ("origin", "status", "expected_commands"),
     [

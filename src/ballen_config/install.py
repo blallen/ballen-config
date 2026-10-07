@@ -385,8 +385,26 @@ class Installer:
         return InstallOutcome(component_id=component.id, state="optional-failure")
 
     def _git(self, component: Component) -> InstallOutcome:
-        """Install and verify a pinned Git revision in a sibling stage directory."""
-        if component.destination is None or component.revision is None:
+        """Install a pinned revision or tracked branch in a sibling stage directory.
+
+        A pinned revision is verified and restored on every run. A tracked branch
+        is only checked out; afterwards the checkout's own updater owns it.
+        """
+        if component.destination is None:
+            raise InstallError(f"git component metadata is incomplete: {component.id}")
+        if component.branch is not None:
+            ref = component.branch
+            checkout: tuple[str, ...] = (
+                "checkout",
+                "-B",
+                ref,
+                "--track",
+                f"origin/{ref}",
+            )
+        elif component.revision is not None:
+            ref = component.revision
+            checkout = ("checkout", "--detach", "FETCH_HEAD")
+        else:
             raise InstallError(f"git component metadata is incomplete: {component.id}")
         destination = assert_contained(self.home / component.destination, self.home)
         assert_no_symlink_components(destination, stop=self.home)
@@ -406,13 +424,35 @@ class Installer:
                 )
                 if status["returncode"] != 0 or status["stdout"]:
                     raise InstallError("git worktree is not clean")
-                current = self.runner.run(
-                    ("git", "-C", str(destination), "rev-parse", "HEAD")
-                )
-                if current["returncode"] != 0:
-                    raise InstallError("git revision inspection failed")
-                if current["stdout"].strip() == component.revision:
-                    return InstallOutcome(component_id=component.id, state="present")
+                if component.branch is not None:
+                    current = self.runner.run(
+                        (
+                            "git",
+                            "-C",
+                            str(destination),
+                            "symbolic-ref",
+                            "--quiet",
+                            "--short",
+                            "HEAD",
+                        )
+                    )
+                    if (
+                        current["returncode"] == 0
+                        and current["stdout"].strip() == component.branch
+                    ):
+                        return InstallOutcome(
+                            component_id=component.id, state="present"
+                        )
+                else:
+                    current = self.runner.run(
+                        ("git", "-C", str(destination), "rev-parse", "HEAD")
+                    )
+                    if current["returncode"] != 0:
+                        raise InstallError("git revision inspection failed")
+                    if current["stdout"].strip() == component.revision:
+                        return InstallOutcome(
+                            component_id=component.id, state="present"
+                        )
                 update_commands = (
                     (
                         "git",
@@ -422,28 +462,22 @@ class Installer:
                         "--depth=1",
                         "--no-tags",
                         "origin",
-                        component.revision,
+                        ref,
                     ),
-                    (
-                        "git",
-                        "-C",
-                        str(destination),
-                        "checkout",
-                        "--detach",
-                        "FETCH_HEAD",
-                    ),
+                    ("git", "-C", str(destination), *checkout),
                 )
                 for command in update_commands:
                     if self.runner.run(command)["returncode"] != 0:
                         raise InstallError("git pin update failed")
-                verified = self.runner.run(
-                    ("git", "-C", str(destination), "rev-parse", "HEAD")
-                )
-                if (
-                    verified["returncode"] != 0
-                    or verified["stdout"].strip() != component.revision
-                ):
-                    raise InstallError("git revision verification failed")
+                if component.revision is not None:
+                    verified = self.runner.run(
+                        ("git", "-C", str(destination), "rev-parse", "HEAD")
+                    )
+                    if (
+                        verified["returncode"] != 0
+                        or verified["stdout"].strip() != component.revision
+                    ):
+                        raise InstallError("git revision verification failed")
             except InstallError as error:
                 if component.required:
                     raise InstallError(
@@ -470,20 +504,25 @@ class Installer:
                 "--depth=1",
                 "--no-tags",
                 "origin",
-                component.revision,
+                ref,
             ),
-            ("git", "-C", str(stage), "checkout", "--detach", "FETCH_HEAD"),
+            ("git", "-C", str(stage), *checkout),
         )
         try:
             for stage_command in stage_commands:
                 if self.runner.run(stage_command)["returncode"] != 0:
                     raise InstallError(f"git install failed: {component.id}")
-            verified = self.runner.run(("git", "-C", str(stage), "rev-parse", "HEAD"))
-            if (
-                verified["returncode"] != 0
-                or verified["stdout"].strip() != component.revision
-            ):
-                raise InstallError(f"git revision verification failed: {component.id}")
+            if component.revision is not None:
+                verified = self.runner.run(
+                    ("git", "-C", str(stage), "rev-parse", "HEAD")
+                )
+                if (
+                    verified["returncode"] != 0
+                    or verified["stdout"].strip() != component.revision
+                ):
+                    raise InstallError(
+                        f"git revision verification failed: {component.id}"
+                    )
             os.replace(stage, destination)
             return InstallOutcome(component_id=component.id, state="installed")
         except (InstallError, OSError) as error:
