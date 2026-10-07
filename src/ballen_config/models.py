@@ -25,6 +25,11 @@ class Component(BaseModel):
     profiles: tuple[str, ...] = ("default",)
     destination: str | None = None
     revision: str | None = Field(default=None, pattern=r"^[0-9a-f]{40}$")
+    branch: str | None = Field(
+        default=None,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._/-]*$",
+        description="Upstream branch for checkouts that update themselves.",
+    )
     depends_on: tuple[str, ...] = ()
     application_paths: tuple[str, ...] = ()
     home_executable: str | None = Field(
@@ -48,10 +53,14 @@ class Component(BaseModel):
             raise ValueError("optional components require include_key")
         if self.manager is Manager.GIT and self.destination is None:
             raise ValueError("git components require destination")
-        if self.manager is Manager.GIT and self.revision is None:
-            raise ValueError("git components require revision")
-        if self.manager is not Manager.GIT and self.revision is not None:
-            raise ValueError("only git components may declare revision")
+        if self.manager is Manager.GIT and (self.revision is None) == (
+            self.branch is None
+        ):
+            raise ValueError("git components require exactly one revision or branch")
+        if self.manager is not Manager.GIT and (
+            self.revision is not None or self.branch is not None
+        ):
+            raise ValueError("only git components may declare revision or branch")
         if self.destination is not None:
             destination = Path(self.destination)
             if destination.is_absolute() or ".." in destination.parts:

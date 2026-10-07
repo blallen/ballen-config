@@ -152,7 +152,9 @@ rejected before mutation.
 Executable bootstrap inputs are immutable at the repository boundary. The
 stage-zero Homebrew installer is pinned to a reviewed revision and verified by
 SHA-256 before Bash runs it. Git-managed shell components likewise declare an
-exact commit. Existing checkouts are reused or advanced only when they have the
+exact commit, except oh-my-zsh: it deliberately tracks its upstream `master`
+branch and advances through its own updater, so it runs unreviewed upstream
+code. Existing checkouts are reused or advanced only when they have the
 expected HTTPS origin and a clean worktree; a dirty checkout or unexpected
 origin is left untouched for manual review.
 

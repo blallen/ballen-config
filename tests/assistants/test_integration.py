@@ -88,11 +88,11 @@ def run_with_assistants(
     for component in resolved.components:
         if component.manager is Manager.GIT:
             assert component.destination is not None
-            assert component.revision is not None
             runner.add_git_checkout(
                 home / component.destination,
                 origin=component.package,
                 revision=component.revision,
+                branch=component.branch,
             )
         elif component.manager is Manager.UV_TOOL:
             runner.add_uv_tool(component.package)

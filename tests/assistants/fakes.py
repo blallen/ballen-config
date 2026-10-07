@@ -96,8 +96,15 @@ class StatefulAssistantFake:
         """
         self.uv_tools.add(package)
 
-    def add_git_checkout(self, path: Path, *, origin: str, revision: str) -> None:
-        """Model one clean checkout already converged to its reviewed revision."""
+    def add_git_checkout(
+        self,
+        path: Path,
+        *,
+        origin: str,
+        revision: str | None = None,
+        branch: str | None = None,
+    ) -> None:
+        """Model one clean checkout already converged to its revision or branch."""
         (path / ".git").mkdir(parents=True, exist_ok=True)
         prefix = ("git", "-C", str(path))
         self.add(
@@ -106,11 +113,18 @@ class StatefulAssistantFake:
             stdout=f"{origin}\n",
         )
         self.add((*prefix, "status", "--porcelain"), returncode=0)
-        self.add(
-            (*prefix, "rev-parse", "HEAD"),
-            returncode=0,
-            stdout=f"{revision}\n",
-        )
+        if branch is not None:
+            self.add(
+                (*prefix, "symbolic-ref", "--quiet", "--short", "HEAD"),
+                returncode=0,
+                stdout=f"{branch}\n",
+            )
+        else:
+            self.add(
+                (*prefix, "rev-parse", "HEAD"),
+                returncode=0,
+                stdout=f"{revision}\n",
+            )
 
     def download(
         self,

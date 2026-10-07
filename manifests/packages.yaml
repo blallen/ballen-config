@@ -29,7 +29,8 @@ components:
     manager: git
     package: https://github.com/ohmyzsh/ohmyzsh.git
     destination: .oh-my-zsh
-    revision: b37dd49ca5bfe0d99b35607637152cb8cc8b29d7 # pragma: allowlist secret
+    # Tracks upstream; oh-my-zsh's own updater advances it after install.
+    branch: master
     profiles: [default]
   - id: powerlevel10k
     manager: git

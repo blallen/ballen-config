@@ -277,11 +277,11 @@ def test_core_invokes_each_supplier_once_with_resolved_skip(
     for component in resolved.components:
         if component.manager is Manager.GIT:
             assert component.destination is not None
-            assert component.revision is not None
             fake_runner.add_git_checkout(
                 home / component.destination,
                 origin=component.package,
                 revision=component.revision,
+                branch=component.branch,
             )
         elif component.manager is Manager.UV_TOOL:
             fake_runner.add_uv_tool(component.package)
