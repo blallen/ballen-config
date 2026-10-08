@@ -22,7 +22,8 @@ the user explicitly authorizes a GitLab publication boundary.
 Preview first:
 
 ```text
-publish-gitlab-review preview --plan REVIEW_PLAN.json --output PREVIEW.json
+~/.local/share/ballen-config/review-tools/bin/publish-gitlab-review preview \
+  --plan REVIEW_PLAN.json --output PREVIEW.json
 ```
 
 Inspect the exact MR identity, `base_sha`, `start_sha`, `head_sha`, selected
@@ -30,9 +31,9 @@ items, native payloads, duplicates, blocked positions, and remote-state digest.
 Execute only after a separate approval:
 
 ```text
-publish-gitlab-review execute --plan REVIEW_PLAN.json \
-  --approved-plan-digest PLAN_SHA256 --expected-head HEAD_SHA \
-  --receipt RECEIPT.json
+~/.local/share/ballen-config/review-tools/bin/publish-gitlab-review execute \
+  --plan REVIEW_PLAN.json --approved-plan-digest PLAN_SHA256 \
+  --expected-head HEAD_SHA --receipt RECEIPT.json
 ```
 
 ## Boundaries
