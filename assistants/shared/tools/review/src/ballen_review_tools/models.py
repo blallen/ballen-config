@@ -32,6 +32,38 @@ ResponseClassification = Literal[
 ResponseAction = Literal["skip", "propose-change", "propose-response"]
 
 
+def _repository_relative_path(value: object) -> PurePosixPath | None:
+    """Require a repository-relative POSIX path when one is present.
+
+    Args:
+        value: Raw path input from a model field.
+
+    Returns:
+        The validated path, or `None` when no path was supplied.
+
+    Raises:
+        ValueError: If the value is not a string or POSIX path, or is not
+            repository-relative.
+    """
+    if value is None:
+        return None
+    if isinstance(value, str):
+        raw = value
+    elif isinstance(value, PurePosixPath):
+        raw = value.as_posix()
+    else:
+        raise ValueError("path must be a string or POSIX path")
+    if (
+        not raw
+        or raw == "."
+        or raw.startswith("/")
+        or "\\" in raw
+        or any(part in {".", ".."} for part in raw.split("/"))
+    ):
+        raise ValueError("path must be repository-relative")
+    return PurePosixPath(raw)
+
+
 class ReviewIdentity(BaseModel):
     """Canonical provider and change identity."""
 
@@ -85,23 +117,7 @@ class ReviewAction(BaseModel):
     @classmethod
     def _validate_path(cls, value: object) -> PurePosixPath | None:
         """Require repository-relative POSIX paths when present."""
-        if value is None:
-            return None
-        if isinstance(value, str):
-            raw = value
-        elif isinstance(value, PurePosixPath):
-            raw = value.as_posix()
-        else:
-            raise ValueError("path must be a string or POSIX path")
-        if (
-            not raw
-            or raw == "."
-            or raw.startswith("/")
-            or "\\" in raw
-            or any(part in {".", ".."} for part in raw.split("/"))
-        ):
-            raise ValueError("path must be repository-relative")
-        return PurePosixPath(raw)
+        return _repository_relative_path(value)
 
     @model_validator(mode="after")
     def _validate_kind(self) -> "ReviewAction":
@@ -209,22 +225,9 @@ class NormalizedThread(BaseModel):
 
     @field_validator("path", mode="before")
     @classmethod
-    def _validate_thread_path(
-        cls, value: str | PurePosixPath | None
-    ) -> PurePosixPath | None:
+    def _validate_thread_path(cls, value: object) -> PurePosixPath | None:
         """Require repository-relative POSIX paths when present."""
-        if value is None:
-            return None
-        raw = value if isinstance(value, str) else value.as_posix()
-        if (
-            not raw
-            or raw == "."
-            or raw.startswith("/")
-            or "\\" in raw
-            or any(part in {".", ".."} for part in raw.split("/"))
-        ):
-            raise ValueError("path must be repository-relative")
-        return PurePosixPath(raw)
+        return _repository_relative_path(value)
 
     @model_validator(mode="after")
     def _validate_thread(self) -> "NormalizedThread":
@@ -238,6 +241,11 @@ class NormalizedThread(BaseModel):
             raise ValueError("thread location requires line and side")
         if (self.start_line is None) != (self.start_side is None):
             raise ValueError("thread range requires both start fields")
+        if self.start_line is not None and (
+            self.line is None
+            or (self.start_side == self.side and self.start_line > self.line)
+        ):
+            raise ValueError("start_line must not exceed line")
         if any(len(limitation) > 2000 for limitation in self.limitations):
             raise ValueError("limitations are too long")
         return self

@@ -205,11 +205,15 @@ def _compile_response(args: argparse.Namespace) -> int:
     """Compile a non-mutating response plan after workspace preflight."""
     threads = NormalizedReviewThreads.model_validate(_read_json(args.threads))
     draft_text = args.draft.read_text(encoding="utf-8")
+    probe = GitWorkspaceProbe(args.repo_root)
+    identity_safe, identity_reason = probe.identity_matches(threads.identity)
+    if not identity_safe:
+        raise ValueError(identity_reason)
     check = validate_workspace(
         repo_root=args.repo_root,
         destination=args.output.parent,
         proposed_file=args.output,
-        probe=GitWorkspaceProbe(args.repo_root),
+        probe=probe,
     )
     if not check.safe:
         raise ValueError(check.reason)

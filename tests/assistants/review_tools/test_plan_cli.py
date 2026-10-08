@@ -4,6 +4,7 @@ import json
 import subprocess
 from pathlib import Path
 
+import pytest
 from ballen_review_tools.canonical import source_digest_bytes
 from ballen_review_tools.models import ReviewIdentity
 from ballen_review_tools.plan_cli import GitWorkspaceProbe, main
@@ -189,3 +190,82 @@ def test_compile_response_writes_only_a_validated_plan(tmp_path: Path) -> None:
 
     assert artifact["contract_version"] == "review-response-plan/v1"
     assert artifact["items"][0]["selected_action"] == "propose-change"
+
+
+@pytest.mark.parametrize(
+    ("repository", "head_override", "reason"),
+    [
+        ("ballen-config", "f" * 40, "head does not match"),
+        ("other-repository", None, "origin does not match"),
+    ],
+)
+def test_compile_response_rejects_a_mismatched_identity(
+    tmp_path: Path,
+    repository: str,
+    head_override: str | None,
+    reason: str,
+) -> None:
+    """Refuse to compile a response plan for a different checkout."""
+    repo = tmp_path / "repo"
+    head = _git_repository(repo)
+    workspace = repo / ".reviews"
+    workspace.mkdir()
+    observed = head_override or head
+    threads = repo / "threads.json"
+    threads.write_text(
+        json.dumps(
+            {
+                "contract_version": "normalized-review-threads/v1",
+                "identity": {
+                    "provider": "github",
+                    "host": "github.com",
+                    "repository": repository,
+                    "change_number": 17,
+                    "base_revision": "a" * 40,
+                    "head_revision": observed,
+                },
+                "observed_head": observed,
+                "limitations": [],
+                "threads": [
+                    {
+                        "thread_id": "T001",
+                        "comment_ids": ["C001"],
+                        "state": "open",
+                        "author": "reviewer",
+                        "body": "Guard the empty case.",
+                        "chronology": ["C001"],
+                    }
+                ],
+            }
+        )
+    )
+    draft = repo / "response.md"
+    draft.write_text(
+        """### T001: Guard the empty case
+
+**Classification:** actionable
+**Selected action:** propose-change
+**Evaluation:** The feedback is valid.
+**Evidence:** The empty result is dereferenced.
+**Proposed changes:** Add a guard.
+**Proposed response:** I will add the guard.
+**Verification:** focused test
+"""
+    )
+    output = workspace / "response-plan.json"
+
+    with pytest.raises(ValueError, match=reason):
+        main(
+            [
+                "compile-response",
+                "--threads",
+                str(threads),
+                "--draft",
+                str(draft),
+                "--output",
+                str(output),
+                "--repo-root",
+                str(repo),
+            ]
+        )
+    assert not output.exists()
