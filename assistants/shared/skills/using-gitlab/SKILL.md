@@ -48,7 +48,8 @@ Read-only MR review skills may hand a captured GitLab response to the shared
 refs:
 
 ```text
-review-plan normalize-threads --provider gitlab --identity IDENTITY.json \
+~/.local/share/ballen-config/review-tools/bin/review-plan normalize-threads \
+  --provider gitlab --identity IDENTITY.json \
   --input gitlab-discussions.json --output .reviews/threads.json \
   --repo-root REPOSITORY
 ```
