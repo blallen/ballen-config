@@ -67,9 +67,9 @@ def _read_responses(head: str = HEAD_SHA) -> list[CompletedCommand]:
     """Return GitHub read responses for one remote head."""
     return [
         CompletedCommand(0, json.dumps({"number": 17, "head": {"sha": head}}), ""),
-        CompletedCommand(0, "[]", ""),
-        CompletedCommand(0, "[]", ""),
-        CompletedCommand(0, "[]", ""),
+        CompletedCommand(0, "[[]]", ""),
+        CompletedCommand(0, "[[]]", ""),
+        CompletedCommand(0, "[[]]", ""),
     ]
 
 
@@ -142,10 +142,12 @@ def test_preview_blocks_inline_location_missing_from_current_diff() -> None:
         0,
         json.dumps(
             [
-                {
-                    "filename": "src/example.py",
-                    "patch": "@@ -1,1 +1,1 @@\n-old\n+new\n",
-                }
+                [
+                    {
+                        "filename": "src/example.py",
+                        "patch": "@@ -1,1 +1,1 @@\n-old\n+new\n",
+                    }
+                ]
             ]
         ),
         "",
@@ -182,7 +184,7 @@ def test_execute_marks_exact_remote_general_comment_duplicate() -> None:
     responses = _read_responses()
     responses[2] = CompletedCommand(
         0,
-        json.dumps([{"id": 12, "body": "Please keep this context."}]),
+        json.dumps([[{"id": 12, "body": "Please keep this context."}]]),
         "",
     )
     runner = RecordingRunner(responses)
@@ -256,7 +258,7 @@ def test_partial_retry_skips_successful_general_comment() -> None:
     retry_responses = _read_responses()
     retry_responses[2] = CompletedCommand(
         0,
-        json.dumps([{"id": 12, "body": "Please keep this context."}]),
+        json.dumps([[{"id": 12, "body": "Please keep this context."}]]),
         "",
     )
     retry_runner = RecordingRunner(
