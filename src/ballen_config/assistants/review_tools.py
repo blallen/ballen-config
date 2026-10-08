@@ -11,6 +11,9 @@ from ballen_config.configure import (
 
 _SUPPORTED_AGENTS: Final[frozenset[str]] = frozenset({"cursor", "claude-code", "codex"})
 _SOURCE: Final[Path] = Path("assistants/shared/tools/review")
+_GENERATED_ENTRIES: Final[frozenset[str]] = frozenset(
+    {"__pycache__", ".venv", ".mypy_cache", ".pytest_cache", ".ruff_cache"}
+)
 
 
 def review_tools_contribution(
@@ -38,7 +41,8 @@ def review_tools_contribution(
                 source=source,
                 destination=Path(".local/share/ballen-config/review-tools"),
                 component="shared",
-                expected_source_digest=digest_tree(source),
+                expected_source_digest=digest_tree(source, exclude=_GENERATED_ENTRIES),
+                exclude=_GENERATED_ENTRIES,
             ),
         )
     )

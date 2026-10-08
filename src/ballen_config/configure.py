@@ -85,6 +85,13 @@ class ManagedTreeSpec(BaseModel):
             "and apply-time validation reject source changes before replacement."
         ),
     )
+    exclude: frozenset[str] = Field(
+        default=frozenset(),
+        description=(
+            "Entry names skipped, with their descendants, at any depth when "
+            "hashing and copying the tree."
+        ),
+    )
 
 
 type ManagedSpec = ManagedFileSpec | ManagedTreeSpec
@@ -163,7 +170,29 @@ def _digest_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def digest_tree(path: Path) -> str:
+def _tree_entries(root: Path, exclude: frozenset[str]) -> list[Path]:
+    """List a tree's entries in digest order, pruning excluded names.
+
+    Args:
+        root: Directory whose descendants are listed.
+        exclude: Entry names skipped, with their descendants, at any depth.
+
+    Returns:
+        Descendant paths sorted by POSIX path. Symlinks are listed, never
+        followed.
+    """
+    entries: list[Path] = []
+    for directory, dirnames, filenames in os.walk(root):
+        dirnames[:] = [name for name in dirnames if name not in exclude]
+        entries.extend(
+            Path(directory) / name
+            for name in (*dirnames, *filenames)
+            if name not in exclude
+        )
+    return sorted(entries, key=lambda candidate: candidate.as_posix())
+
+
+def digest_tree(path: Path, *, exclude: frozenset[str] = frozenset()) -> str:
     """Hash one managed tree using the stable persisted-state algorithm.
 
     The digest covers sorted relative paths, directory entries, regular-file
@@ -172,6 +201,7 @@ def digest_tree(path: Path) -> str:
 
     Args:
         path: Root directory to hash.
+        exclude: Entry names skipped, with their descendants, at any depth.
 
     Returns:
         Lowercase SHA-256 digest compatible with existing managed-tree state.
@@ -190,7 +220,7 @@ def digest_tree(path: Path) -> str:
         raise ValueError(f"tree root is not a directory: {path}")
 
     digest = hashlib.sha256()
-    for child in sorted(path.rglob("*"), key=lambda candidate: candidate.as_posix()):
+    for child in _tree_entries(path, exclude):
         metadata = os.lstat(child)
         relative = child.relative_to(path).as_posix().encode()
         if stat.S_ISLNK(metadata.st_mode):
@@ -292,7 +322,7 @@ class ConfigurationEngine:
         else:
             if not stat.S_ISDIR(metadata.st_mode):
                 raise ValueError(f"source is not a directory: {source}")
-            source_digest = digest_tree(source)
+            source_digest = digest_tree(source, exclude=spec.exclude)
             if (
                 spec.expected_source_digest is not None
                 and source_digest != spec.expected_source_digest
@@ -342,8 +372,8 @@ class ConfigurationEngine:
                 )
         else:
             same = stat.S_ISDIR(metadata.st_mode) and digest_tree(
-                destination
-            ) == digest_tree(spec.source)
+                destination, exclude=spec.exclude
+            ) == digest_tree(spec.source, exclude=spec.exclude)
         return ConfigAction(
             id=spec.id,
             destination=relative,
@@ -515,13 +545,13 @@ class ConfigurationEngine:
         source_digest = (
             _digest_file(spec.source)
             if isinstance(spec, ManagedFileSpec)
-            else digest_tree(spec.source)
+            else digest_tree(spec.source, exclude=spec.exclude)
         )
         destination_digest = (
             _digest_file(destination)
             if isinstance(spec, ManagedFileSpec) and not destination.is_symlink()
             else (
-                digest_tree(destination)
+                digest_tree(destination, exclude=spec.exclude)
                 if isinstance(spec, ManagedTreeSpec)
                 else source_digest
             )
@@ -570,8 +600,8 @@ class ConfigurationEngine:
         self._record(spec, destination)
         return action
 
-    def _copy_tree(self, source: Path, stage: Path) -> None:
-        for child in source.rglob("*"):
+    def _copy_tree(self, source: Path, stage: Path, exclude: frozenset[str]) -> None:
+        for child in _tree_entries(source, exclude):
             relative = child.relative_to(source)
             target = stage / relative
             metadata = os.lstat(child)
@@ -600,7 +630,7 @@ class ConfigurationEngine:
         )
         stage.chmod(0o700)
         try:
-            self._copy_tree(spec.source, stage)
+            self._copy_tree(spec.source, stage, spec.exclude)
             backup = self.backup_managed_destination(destination)
             published = False
             try:

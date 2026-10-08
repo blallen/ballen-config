@@ -8,6 +8,7 @@ from multiprocessing import Process, Queue
 from multiprocessing.queues import Queue as MultiprocessingQueue
 from pathlib import Path
 from queue import Queue as ThreadQueue
+from typing import Final
 
 import pytest
 from pydantic import ValidationError
@@ -436,6 +437,71 @@ def test_public_tree_digest_preserves_stored_digest_compatibility(
     (source / "empty").mkdir()
     expected_digest = "70c689a06872d5833d4cccb6703cfaafa158e1fd02a848ffe67de049f494f865"  # pragma: allowlist secret
     assert digest_tree(source) == expected_digest
+
+
+GENERATED_NAMES: Final[frozenset[str]] = frozenset({"__pycache__", ".venv"})
+
+
+def _tree_with_generated_entries(root: Path) -> Path:
+    """Build a source tree polluted by generated Python artifacts."""
+    (root / "pkg" / "__pycache__").mkdir(parents=True)
+    (root / "pkg" / "module.py").write_text("VALUE = 1\n")
+    (root / "pkg" / "__pycache__" / "module.cpython-312.pyc").write_bytes(b"\x00")
+    (root / ".venv" / "bin").mkdir(parents=True)
+    (root / ".venv" / "bin" / "python").symlink_to("missing-interpreter")
+    return root
+
+
+def test_tree_digest_skips_excluded_names_at_any_depth(tmp_path: Path) -> None:
+    """Hash only managed content when generated entries are excluded."""
+    polluted = _tree_with_generated_entries(tmp_path / "polluted")
+    clean = tmp_path / "clean"
+    (clean / "pkg").mkdir(parents=True)
+    (clean / "pkg" / "module.py").write_text("VALUE = 1\n")
+
+    assert digest_tree(polluted, exclude=GENERATED_NAMES) == digest_tree(clean)
+    with pytest.raises(ValueError, match="tree contains symlink"):
+        digest_tree(polluted)
+
+
+def test_tree_exclusion_keeps_rejecting_other_symlinks(tmp_path: Path) -> None:
+    """Excluding generated names never admits symlinks elsewhere in the tree."""
+    source = _tree_with_generated_entries(tmp_path / "tree")
+    (source / "pkg" / "link").symlink_to("module.py")
+
+    with pytest.raises(ValueError, match="tree contains symlink"):
+        digest_tree(source, exclude=GENERATED_NAMES)
+
+
+def test_excluded_tree_entries_are_not_installed_or_reported_as_drift(
+    config_paths: RuntimePaths,
+) -> None:
+    """Generated files on either side never block or dirty a managed tree."""
+    source = _tree_with_generated_entries(config_paths.repo_root / "tree")
+    spec = ManagedTreeSpec(
+        id="tree",
+        source=source,
+        destination=Path(".tree"),
+        component="x",
+        expected_source_digest=digest_tree(source, exclude=GENERATED_NAMES),
+        exclude=GENERATED_NAMES,
+    )
+
+    assert engine(config_paths, timestamp="one").apply(spec).outcome == "created"
+    destination = config_paths.home / ".tree"
+    assert (destination / "pkg" / "module.py").read_text() == "VALUE = 1\n"
+    assert not (destination / ".venv").exists()
+    assert not (destination / "pkg" / "__pycache__").exists()
+
+    (destination / "pkg" / "__pycache__").mkdir()
+    (destination / "pkg" / "__pycache__" / "module.cpython-312.pyc").write_bytes(
+        b"\x01"
+    )
+    (destination / ".venv").mkdir()
+    (destination / ".venv" / "python").symlink_to("missing-interpreter")
+
+    actions = engine(config_paths, timestamp="two").plan((spec,))
+    assert [action.outcome for action in actions] == ["unchanged"]
 
 
 def test_replace_failure_leaves_existing_file_in_place(
