@@ -4,9 +4,10 @@ import json
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
+import pytest
 from ballen_review_tools.models import ReviewAction, ReviewCommentPlan, ReviewIdentity
 from ballen_review_tools.providers.base import CompletedCommand
-from ballen_review_tools.providers.github import GitHubProvider
+from ballen_review_tools.providers.github import GitHubProvider, GitHubProviderError
 
 HEAD_SHA = "b" * 40
 
@@ -98,9 +99,9 @@ def test_github_read_vectors_use_gh_api_without_shell() -> None:
                 json.dumps({"number": 17, "head": {"sha": HEAD_SHA}}),
                 "",
             ),
-            CompletedCommand(0, "[]", ""),
-            CompletedCommand(0, "[]", ""),
-            CompletedCommand(0, "[]", ""),
+            CompletedCommand(0, "[[]]", ""),
+            CompletedCommand(0, "[[]]", ""),
+            CompletedCommand(0, "[[]]", ""),
         ]
     )
     provider = GitHubProvider(identity=_identity(), runner=runner)
@@ -123,6 +124,7 @@ def test_github_read_vectors_use_gh_api_without_shell() -> None:
             "api",
             "repos/acme/ballen-config/pulls/17/comments",
             "--paginate",
+            "--slurp",
             "--header",
             "Accept: application/vnd.github+json",
             "--header",
@@ -133,6 +135,7 @@ def test_github_read_vectors_use_gh_api_without_shell() -> None:
             "api",
             "repos/acme/ballen-config/issues/17/comments",
             "--paginate",
+            "--slurp",
             "--header",
             "Accept: application/vnd.github+json",
             "--header",
@@ -143,9 +146,52 @@ def test_github_read_vectors_use_gh_api_without_shell() -> None:
             "api",
             "repos/acme/ballen-config/pulls/17/files",
             "--paginate",
+            "--slurp",
             "--header",
             "Accept: application/vnd.github+json",
             "--header",
             "X-GitHub-Api-Version: 2026-03-10",
         ),
     ]
+
+
+def test_paginated_reads_combine_slurped_pages() -> None:
+    """Combine every page that gh returns for a paginated endpoint."""
+    runner = RecordingRunner(
+        responses=[
+            CompletedCommand(
+                0, json.dumps({"number": 17, "head": {"sha": HEAD_SHA}}), ""
+            ),
+            CompletedCommand(
+                0,
+                json.dumps(
+                    [
+                        [{"id": 1, "body": "first page"}],
+                        [{"id": 2, "body": "second page"}],
+                    ]
+                ),
+                "",
+            ),
+            CompletedCommand(0, "[[]]", ""),
+            CompletedCommand(0, "[[]]", ""),
+        ]
+    )
+
+    state = GitHubProvider(identity=_identity(), runner=runner).fetch_remote_state()
+
+    assert [comment.comment_id for comment in state.review_comments] == [1, 2]
+
+
+def test_paginated_reads_reject_non_array_pages() -> None:
+    """Report a page that is not a JSON array as a malformed response."""
+    runner = RecordingRunner(
+        responses=[
+            CompletedCommand(
+                0, json.dumps({"number": 17, "head": {"sha": HEAD_SHA}}), ""
+            ),
+            CompletedCommand(0, json.dumps([{"message": "Not Found"}]), ""),
+        ]
+    )
+
+    with pytest.raises(GitHubProviderError, match="malformed pages"):
+        GitHubProvider(identity=_identity(), runner=runner).fetch_remote_state()

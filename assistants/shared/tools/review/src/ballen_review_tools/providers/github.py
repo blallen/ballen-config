@@ -114,10 +114,25 @@ class GitHubProvider:
         raise GitHubProviderError("GitHub identity must include owner/repository")
 
     def _read(self, endpoint: str, *, paginate: bool = False) -> object:
-        """Issue one bounded read request through `gh api`."""
+        """Issue one bounded read request through `gh api`.
+
+        Paginated reads pass `--slurp`, which wraps every page in one outer
+        JSON array, and return the concatenated page items.
+
+        Args:
+            endpoint: GitHub REST endpoint relative to the API root.
+            paginate: Whether to fetch and combine every page.
+
+        Returns:
+            The decoded response, or one flat list of items for paginated reads.
+
+        Raises:
+            GitHubProviderError: If the request fails or the response is not
+                the expected JSON shape.
+        """
         arguments = ["gh", "api", endpoint]
         if paginate:
-            arguments.append("--paginate")
+            arguments.extend(["--paginate", "--slurp"])
         arguments.extend(
             ["--header", _ACCEPT, "--header", f"X-GitHub-Api-Version: {API_VERSION}"]
         )
@@ -125,9 +140,16 @@ class GitHubProvider:
         if result.returncode != 0:
             raise GitHubProviderError("GitHub read request failed")
         try:
-            return json.loads(result.stdout)
+            payload: object = json.loads(result.stdout)
         except json.JSONDecodeError as error:
             raise GitHubProviderError("GitHub returned invalid JSON") from error
+        if not paginate:
+            return payload
+        if not isinstance(payload, list) or not all(
+            isinstance(page, list) for page in payload
+        ):
+            raise GitHubProviderError("GitHub returned malformed pages")
+        return [item for page in payload for item in page]
 
     @staticmethod
     def _int(value: object) -> int | None:
