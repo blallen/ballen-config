@@ -30,7 +30,10 @@ def test_review_tools_use_one_shared_managed_tree(repo_root: Path) -> None:
     assert isinstance(spec, ManagedTreeSpec)
     assert spec.id == "shared-review-tools"
     assert spec.destination == Path(".local/share/ballen-config/review-tools")
-    assert spec.expected_source_digest == digest_tree(source)
+    assert spec.exclude == frozenset(
+        {"__pycache__", ".venv", ".mypy_cache", ".pytest_cache", ".ruff_cache"}
+    )
+    assert spec.expected_source_digest == digest_tree(source, exclude=spec.exclude)
 
 
 def test_review_plan_launcher_is_executable(
