@@ -77,6 +77,7 @@ class GitHubRemoteComment:
     author: str = "unknown"
     path: str | None = None
     line: int | None = None
+    original_line: int | None = None
     side: str | None = None
     start_line: int | None = None
     start_side: str | None = None
@@ -185,6 +186,7 @@ class GitHubProvider:
             ),
             path=value.get("path") if isinstance(value.get("path"), str) else None,
             line=cls._int(value.get("line")),
+            original_line=cls._int(value.get("original_line")),
             side=value.get("side") if isinstance(value.get("side"), str) else None,
             start_line=cls._int(value.get("start_line")),
             start_side=(
@@ -351,7 +353,26 @@ def normalize_github_comments(
     head_sha: str,
     comments: list[object],
 ) -> NormalizedReviewThreads:
-    """Normalize GitHub review comments without claiming hidden thread state."""
+    """Normalize GitHub review comments without claiming hidden thread state.
+
+    A line comment that had an original line but has no current line is
+    outdated: GitHub keeps it on the pull request, but it no longer maps to the
+    current diff. File-level comments have neither line and stay open.
+
+    Args:
+        identity: GitHub review identity the comments belong to.
+        head_sha: Pull request head observed when the comments were captured.
+        comments: Raw GitHub REST review comments.
+
+    Returns:
+        Provider-neutral threads keyed by root comment.
+
+    Raises:
+        GitHubProviderError: If the identity is not a GitHub identity or a
+            comment is malformed.
+    """
+    if identity.provider != "github":
+        raise GitHubProviderError("GitHub normalization requires a GitHub identity")
     normalized = [GitHubProvider._review_comment(item) for item in comments]
     roots = [comment for comment in normalized if comment.in_reply_to is None]
     replies_by_root: dict[int, list[GitHubRemoteComment]] = {}
@@ -362,23 +383,36 @@ def normalize_github_comments(
     for root in roots:
         replies = replies_by_root.get(root.comment_id, [])
         chronology = (root, *replies)
+        positioned = root.line is not None
+        outdated = (
+            root.path is not None and not positioned and root.original_line is not None
+        )
         threads.append(
             NormalizedThread(
                 thread_id=str(root.comment_id),
                 comment_ids=tuple(str(comment.comment_id) for comment in chronology),
-                state="open",
+                state="outdated" if outdated else "open",
                 path=PurePosixPath(root.path) if root.path is not None else None,
                 line=root.line,
-                side=(cast(ReviewSide, root.side) if root.side is not None else None),
-                start_line=root.start_line,
+                side=(
+                    cast(ReviewSide, root.side)
+                    if root.side is not None and positioned
+                    else None
+                ),
+                start_line=root.start_line if positioned else None,
                 start_side=(
                     cast(ReviewSide, root.start_side)
-                    if root.start_side is not None
+                    if root.start_side is not None and positioned
                     else None
                 ),
                 author=root.author,
                 body=root.body,
                 chronology=tuple(str(comment.comment_id) for comment in chronology),
+                limitations=(
+                    ("Comment no longer maps to a line in the current diff",)
+                    if outdated
+                    else ()
+                ),
             )
         )
     return NormalizedReviewThreads(
@@ -386,7 +420,7 @@ def normalize_github_comments(
         identity=identity,
         observed_head=head_sha,
         limitations=(
-            "REST input does not expose GraphQL resolution or outdated state",
+            "REST input does not expose GraphQL resolution state",
             "Nested replies are retained only when directly attached to a root comment",
         ),
         threads=tuple(threads),
