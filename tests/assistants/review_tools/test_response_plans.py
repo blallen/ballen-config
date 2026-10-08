@@ -130,3 +130,73 @@ def test_response_plan_binds_identity_and_head_to_normalized_source() -> None:
             observed_head="d" * 40,
             items=tuple(response),
         )
+
+
+def test_normalized_thread_rejects_non_string_path() -> None:
+    """Report malformed provider paths as validation errors, not crashes."""
+    with pytest.raises(ValidationError, match="string or POSIX path"):
+        NormalizedThread.model_validate(
+            {
+                "thread_id": "T004",
+                "comment_ids": ["C004"],
+                "state": "open",
+                "path": 42,
+                "line": 1,
+                "side": "RIGHT",
+                "author": "reviewer",
+                "body": "Malformed path.",
+                "chronology": ["C004"],
+            }
+        )
+
+
+@pytest.mark.parametrize(
+    ("line", "side"),
+    [(None, None), (2, "RIGHT")],
+)
+def test_normalized_thread_rejects_incoherent_ranges(
+    line: int | None, side: str | None
+) -> None:
+    """Apply the review-action range rule to normalized threads."""
+    with pytest.raises(ValidationError, match="start_line must not exceed line"):
+        NormalizedThread.model_validate(
+            {
+                "thread_id": "T005",
+                "comment_ids": ["C005"],
+                "state": "open",
+                "path": "src/example.py",
+                "line": line,
+                "side": side,
+                "start_line": 3,
+                "start_side": "RIGHT",
+                "author": "reviewer",
+                "body": "Range check.",
+                "chronology": ["C005"],
+            }
+        )
+
+
+def test_normalized_thread_accepts_cross_side_ranges() -> None:
+    """Allow GitHub ranges that start on a deleted line and end on an added one."""
+    thread = NormalizedThread.model_validate(
+        {
+            "thread_id": "T006",
+            "comment_ids": ["C006"],
+            "state": "open",
+            "path": "src/example.py",
+            "line": 10,
+            "side": "RIGHT",
+            "start_line": 11,
+            "start_side": "LEFT",
+            "author": "reviewer",
+            "body": "Cross-side range.",
+            "chronology": ["C006"],
+        }
+    )
+
+    assert (thread.start_line, thread.start_side, thread.line, thread.side) == (
+        11,
+        "LEFT",
+        10,
+        "RIGHT",
+    )
