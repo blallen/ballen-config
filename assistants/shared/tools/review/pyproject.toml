@@ -20,7 +20,3 @@ dev = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ballen_review_tools"]
-
-[tool.mypy]
-python_version = "3.12"
-strict = true
