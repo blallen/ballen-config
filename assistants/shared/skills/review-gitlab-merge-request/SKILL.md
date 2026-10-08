@@ -27,13 +27,15 @@ current MR identity cannot be verified.
 4. Normalize the capture with:
 
    ```text
-   review-plan normalize-threads --provider gitlab --identity IDENTITY.json \
+   ~/.local/share/ballen-config/review-tools/bin/review-plan normalize-threads \
+     --provider gitlab --identity IDENTITY.json \
      --input gitlab-discussions.json --output .reviews/threads.json \
      --repo-root REPOSITORY
    ```
 
 5. Validate the normalized artifact, then compile the human-edited Markdown
-   review with `review-plan compile-review`.
+   review with
+   `~/.local/share/ballen-config/review-tools/bin/review-plan compile-review`.
 
 ## Boundaries
 
