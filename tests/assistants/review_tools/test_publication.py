@@ -4,9 +4,10 @@ import json
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
+import pytest
 from ballen_review_tools.models import ReviewAction, ReviewCommentPlan, ReviewIdentity
 from ballen_review_tools.providers.base import CompletedCommand
-from ballen_review_tools.providers.github import GitHubProvider
+from ballen_review_tools.providers.github import GitHubProvider, GitHubProviderError
 from ballen_review_tools.publication import (
     execute_github_publication,
     plan_digest,
@@ -120,6 +121,21 @@ def _inline_plan() -> ReviewCommentPlan:
         source_draft_digest="c" * 64,
         actions=(action,),
     )
+
+
+def _plan_with(*actions: ReviewAction) -> ReviewCommentPlan:
+    """Return one plan for the shared identity holding the given actions."""
+    return ReviewCommentPlan(
+        contract_version="review-comment-plan/v1",
+        identity=_plan().identity,
+        source_draft_digest="c" * 64,
+        actions=actions,
+    )
+
+
+def _reply(thread_id: str) -> ReviewAction:
+    """Return the native reply action aimed at one draft-supplied target."""
+    return _two_action_plan().actions[1].model_copy(update={"thread_id": thread_id})
 
 
 def test_preview_contains_current_plan_and_remote_digests() -> None:
@@ -274,3 +290,44 @@ def test_partial_retry_skips_successful_general_comment() -> None:
     assert retry.receipt is not None
     assert [item.outcome for item in retry.receipt.items] == ["duplicate", "posted"]
     assert retry_runner.calls[-1][0][4].endswith("/pulls/comments/10/replies")
+
+
+@pytest.mark.parametrize(
+    "thread_id",
+    [
+        pytest.param("0012", id="leading-zero"),
+        pytest.param("+12", id="sign"),
+        pytest.param(" 12", id="leading-space"),
+        pytest.param("12 ", id="trailing-space"),
+        pytest.param("\u0661\u0662", id="arabic-indic-digits"),
+        pytest.param("12/../pulls", id="path-segments"),
+    ],
+)
+def test_reply_target_must_be_a_positive_github_comment_id(thread_id: str) -> None:
+    """Block a non-canonical reply target in preview and before any request."""
+    plan = _plan_with(_reply(thread_id))
+    runner = RecordingRunner(_read_responses())
+    provider = GitHubProvider(identity=plan.identity, runner=runner)
+
+    preview = preview_github_publication(plan, provider)
+
+    assert preview.items[0].state == "blocked"
+    assert preview.items[0].reason == "reply target is not a GitHub comment ID"
+    with pytest.raises(GitHubProviderError, match="positive GitHub comment ID"):
+        provider.reply_payload(plan.actions[0])
+    with pytest.raises(GitHubProviderError, match="positive GitHub comment ID"):
+        provider.post_reply(plan.actions[0])
+    assert all("--method" not in call[0] for call in runner.calls)
+
+
+def test_reply_target_accepts_a_positive_github_comment_id() -> None:
+    """Keep a canonical comment ID eligible with its exact reply payload."""
+    plan = _plan_with(_reply("12"))
+    runner = RecordingRunner(_read_responses())
+
+    preview = preview_github_publication(
+        plan, GitHubProvider(identity=plan.identity, runner=runner)
+    )
+
+    assert preview.items[0].state == "eligible"
+    assert preview.items[0].payload == {"body": "Thanks, I will address this."}

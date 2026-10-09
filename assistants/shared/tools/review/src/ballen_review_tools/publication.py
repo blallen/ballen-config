@@ -17,6 +17,7 @@ from ballen_review_tools.providers.github import (
     GitHubProvider,
     GitHubProviderError,
     GitHubRemoteState,
+    is_github_comment_id,
 )
 
 
@@ -159,6 +160,16 @@ def preview_github_publication(
                     deduplication_key=action.deduplication_key,
                     state="blocked",
                     reason="inline location is not present in the current diff",
+                )
+            )
+            continue
+        if action.kind == "reply" and not is_github_comment_id(action.thread_id):
+            items.append(
+                PublicationItemPreview(
+                    action_id=action.action_id,
+                    deduplication_key=action.deduplication_key,
+                    state="blocked",
+                    reason="reply target is not a GitHub comment ID",
                 )
             )
             continue

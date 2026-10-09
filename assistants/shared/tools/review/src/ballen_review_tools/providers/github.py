@@ -41,6 +41,21 @@ def _diff_locations(path: str, patch: str) -> set[tuple[str, int, str]]:
     return locations
 
 
+def is_github_comment_id(value: str | None) -> bool:
+    """Return whether a reply target is a positive GitHub comment ID.
+
+    The target comes from draft text and becomes an endpoint path segment, so
+    only ASCII digits without a sign, padding, or leading zero qualify.
+
+    Args:
+        value: Draft-supplied reply target.
+
+    Returns:
+        True when the target is a canonical positive decimal comment ID.
+    """
+    return value is not None and re.fullmatch(r"[1-9][0-9]*", value) is not None
+
+
 class GitHubReviewCommentPayload(TypedDict):
     """Exact GitHub pull-request review comment payload."""
 
@@ -275,8 +290,8 @@ class GitHubProvider:
 
     def reply_payload(self, action: ReviewAction) -> dict[str, str]:
         """Build a native review-comment reply payload."""
-        if action.kind != "reply" or not action.thread_id:
-            raise GitHubProviderError("reply requires a native thread target")
+        if action.kind != "reply" or not is_github_comment_id(action.thread_id):
+            raise GitHubProviderError("reply requires a positive GitHub comment ID")
         return {"body": action.body}
 
     def _post(self, endpoint: str, payload: Mapping[str, object]) -> object:
