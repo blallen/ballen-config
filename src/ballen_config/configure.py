@@ -415,7 +415,7 @@ class ConfigurationEngine:
         if stat.S_ISREG(metadata.st_mode):
             digest = hashlib.sha256(destination.read_bytes()).hexdigest()
         elif stat.S_ISDIR(metadata.st_mode):
-            digest = digest_tree(destination)
+            digest = digest_tree(destination, exclude=record.exclude)
         else:
             raise ValueError(f"unsupported destination type: {destination}")
         if digest != record.destination_digest:
@@ -562,6 +562,9 @@ class ConfigurationEngine:
                 source_digest=source_digest,
                 destination_digest=destination_digest,
                 destination=str(destination.relative_to(self.paths.home)),
+                exclude=(
+                    spec.exclude if isinstance(spec, ManagedTreeSpec) else frozenset()
+                ),
             )
         )
 

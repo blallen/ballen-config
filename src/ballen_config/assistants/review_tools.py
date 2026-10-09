@@ -12,7 +12,7 @@ from ballen_config.configure import (
 _SUPPORTED_AGENTS: Final[frozenset[str]] = frozenset({"cursor", "claude-code", "codex"})
 _SOURCE: Final[Path] = Path("assistants/shared/tools/review")
 _GENERATED_ENTRIES: Final[frozenset[str]] = frozenset(
-    {"__pycache__", ".venv", ".mypy_cache", ".pytest_cache", ".ruff_cache"}
+    {".DS_Store", "__pycache__", ".venv", ".mypy_cache", ".pytest_cache", ".ruff_cache"}
 )
 
 

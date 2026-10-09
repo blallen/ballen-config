@@ -1,5 +1,6 @@
 """Tests for safe, idempotent configuration management."""
 
+import json
 import os
 import stat
 import threading
@@ -502,6 +503,42 @@ def test_excluded_tree_entries_are_not_installed_or_reported_as_drift(
 
     actions = engine(config_paths, timestamp="two").plan((spec,))
     assert [action.outcome for action in actions] == ["unchanged"]
+
+
+def test_tree_record_without_exclusions_loads_and_prunes(
+    config_paths: RuntimePaths,
+) -> None:
+    """State written before records stored exclusions still prunes its tree."""
+    destination = config_paths.home / ".tree"
+    (destination / "pkg").mkdir(parents=True)
+    (destination / "pkg" / "module.py").write_text("VALUE = 1\n")
+    digest = digest_tree(destination)
+    store = StateStore(config_paths)
+    config_paths.state_root.mkdir(parents=True)
+    store.path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "managed": {
+                    "tree": {
+                        "resource_id": "tree",
+                        "source_digest": digest,
+                        "destination_digest": digest,
+                        "destination": ".tree",
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert store.load().managed["tree"].exclude == frozenset()
+    report = run_configure(engine(config_paths, timestamp="prune"), ())
+
+    assert [(action.id, action.outcome) for action in report.actions] == [
+        ("tree", "removed")
+    ]
+    assert not destination.exists()
 
 
 def test_replace_failure_leaves_existing_file_in_place(
