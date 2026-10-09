@@ -190,7 +190,8 @@ def _compile_review(args: argparse.Namespace) -> int:
 
 def _compile_response(args: argparse.Namespace) -> int:
     """Compile a non-mutating response plan after workspace preflight."""
-    threads = NormalizedReviewThreads.model_validate(_read_json(args.threads))
+    threads_payload = _read_json(args.threads)
+    threads = NormalizedReviewThreads.model_validate(threads_payload)
     draft_text = args.draft.read_text(encoding="utf-8")
     probe = GitWorkspaceProbe(args.repo_root)
     identity_safe, identity_reason = probe.identity_matches(threads.identity)
@@ -208,7 +209,7 @@ def _compile_response(args: argparse.Namespace) -> int:
     plan = ReviewResponsePlan(
         contract_version="review-response-plan/v1",
         identity=threads.identity,
-        source_threads_digest=canonical_digest(threads.model_dump(mode="json")),
+        source_threads_digest=canonical_digest(threads_payload),
         observed_head=threads.observed_head,
         items=response,
     )

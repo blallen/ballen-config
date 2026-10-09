@@ -9,5 +9,8 @@ verification, and selected or skipped action.
 A `propose-response` item requires `proposed_response`, and a `propose-change`
 item requires at least one entry in `proposed_changes`.
 
+`source_threads_digest` is the canonical digest of the normalized-threads file
+as written, the value `review-plan digest --artifact` prints for that file.
+
 The plan does not authorize local edits, commits, pushes, replies, or thread
 resolution.

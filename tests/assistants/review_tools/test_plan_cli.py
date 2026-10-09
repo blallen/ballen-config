@@ -164,7 +164,9 @@ def test_compile_review_binds_one_draft_byte_snapshot(tmp_path: Path) -> None:
     assert artifact["diagnostics"] == []
 
 
-def test_compile_response_writes_only_a_validated_plan(tmp_path: Path) -> None:
+def test_compile_response_writes_only_a_validated_plan(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """Compile normalized feedback without constructing mutation tooling."""
     repo = tmp_path / "repo"
     head = _git_repository(repo)
@@ -233,6 +235,8 @@ def test_compile_response_writes_only_a_validated_plan(tmp_path: Path) -> None:
 
     assert artifact["contract_version"] == "review-response-plan/v1"
     assert artifact["items"][0]["selected_action"] == "propose-change"
+    assert main(["digest", "--artifact", str(threads)]) == 0
+    assert artifact["source_threads_digest"] == capsys.readouterr().out.strip()
 
 
 @pytest.mark.parametrize(
