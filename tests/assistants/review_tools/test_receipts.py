@@ -1,10 +1,12 @@
 """Tests for minimal publication preview and receipt contracts."""
 
+import pytest
 from ballen_review_tools.models import (
     PublicationPreview,
     PublicationReceipt,
     ReviewIdentity,
 )
+from pydantic import ValidationError
 
 
 def _identity() -> ReviewIdentity:
@@ -20,7 +22,7 @@ def _identity() -> ReviewIdentity:
 
 
 def test_preview_and_receipt_forbid_raw_provider_material() -> None:
-    """Keep persisted publication artifacts minimal and redacted."""
+    """Reject raw provider material in persisted publication artifacts."""
     preview = PublicationPreview(
         contract_version="publication-preview/v1",
         plan_digest="c" * 64,
@@ -41,5 +43,7 @@ def test_preview_and_receipt_forbid_raw_provider_material() -> None:
         items=(),
     )
 
-    assert "headers" not in preview.model_dump()
-    assert "response" not in receipt.model_dump()
+    with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+        PublicationPreview.model_validate({**preview.model_dump(), "headers": {}})
+    with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+        PublicationReceipt.model_validate({**receipt.model_dump(), "response": {}})

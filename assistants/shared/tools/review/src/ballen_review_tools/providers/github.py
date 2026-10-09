@@ -4,14 +4,14 @@ import json
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Literal, NotRequired, TypedDict
+from typing import Final, Literal, NotRequired, TypedDict
 
 from ballen_review_tools.models import ReviewAction, ReviewCommentPlan, ReviewIdentity
 from ballen_review_tools.providers.base import CommandRunner
 
-API_VERSION = "2026-03-10"
-_ACCEPT = "Accept: application/vnd.github+json"
-_HUNK = re.compile(r"^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@")
+API_VERSION: Final[str] = "2026-03-10"
+_ACCEPT: Final[str] = "Accept: application/vnd.github+json"
+_HUNK: Final[re.Pattern[str]] = re.compile(r"^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@")
 
 
 def _diff_locations(path: str, patch: str) -> set[tuple[str, int, str]]:
@@ -117,15 +117,12 @@ class GitHubProvider:
 
     identity: ReviewIdentity
     runner: CommandRunner
-    owner: str | None = None
 
     def _repository_path(self) -> str:
         """Return owner/repository for GitHub endpoint paths."""
         parts = self.identity.repository.strip("/").split("/")
         if len(parts) == 2 and all(parts):
             return "/".join(parts)
-        if self.owner and parts == [self.identity.repository]:
-            return f"{self.owner}/{self.identity.repository}"
         raise GitHubProviderError("GitHub identity must include owner/repository")
 
     def _read(self, endpoint: str, *, paginate: bool = False) -> object:
@@ -337,8 +334,6 @@ class GitHubProvider:
 
     def post_reply(self, action: ReviewAction) -> object:
         """Post one reply to a top-level review comment."""
-        if action.thread_id is None:
-            raise GitHubProviderError("reply requires thread_id")
         return self._post(
             f"repos/{self._repository_path()}/pulls/comments/{action.thread_id}/replies",
             self.reply_payload(action),

@@ -218,7 +218,28 @@ def execute_github_publication(
     expected_head: str,
     provider: GitHubProvider,
 ) -> PublicationExecutionResult:
-    """Revalidate state and publish only an exactly approved current plan."""
+    """Revalidate state and publish only an exactly approved current plan.
+
+    Nothing is posted unless the approved digest and expected head match the
+    current plan and a fresh preview observes the same head and is ready.
+    Eligible inline actions then post as one commit-pinned review, followed by
+    general comments and replies one request at a time. The first failed
+    request halts publication, and every later eligible action is recorded as
+    `not-attempted`.
+
+    Args:
+        plan: Current validated logical plan.
+        approved_plan_digest: Plan digest the user approved from a preview.
+        expected_head: Head revision the user approved.
+        provider: GitHub transport for the re-fetch and the mutations.
+
+    Returns:
+        A `blocked` result with a reason and no receipt when a gate fails
+        before any mutation request. Otherwise a receipt whose status is
+        `posted` when every attempted request succeeded, `failed` when a
+        request failed before any posted, `partial` when a request failed after
+        another posted, or `blocked` when no action was eligible.
+    """
     current_digest = plan_digest(plan)
     if approved_plan_digest != current_digest:
         return PublicationExecutionResult(
@@ -248,7 +269,6 @@ def execute_github_publication(
     receipt_items: list[PublicationReceiptItem] = []
     posted_any = False
     failed = False
-    halted = False
 
     inline_actions = [
         action
@@ -275,7 +295,6 @@ def execute_github_publication(
             posted_any = True
         except GitHubProviderError:
             failed = True
-            halted = True
             for action in inline_actions:
                 receipt_items.append(
                     PublicationReceiptItem(
@@ -288,7 +307,7 @@ def execute_github_publication(
 
     for action in sorted(plan.actions, key=lambda item: item.action_id):
         if (
-            halted
+            failed
             or action.kind == "inline"
             or preview_by_id[action.action_id].state != "eligible"
         ):
@@ -310,7 +329,6 @@ def execute_github_publication(
             posted_any = True
         except GitHubProviderError:
             failed = True
-            halted = True
             receipt_items.append(
                 PublicationReceiptItem(
                     action_id=action.action_id,

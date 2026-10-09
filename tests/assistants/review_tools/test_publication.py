@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import pytest
+from ballen_review_tools.canonical import canonical_digest
 from ballen_review_tools.github_cli import main as publish_github_review
 from ballen_review_tools.models import (
     PublicationPreview,
@@ -202,15 +203,25 @@ def _use_runner(monkeypatch: pytest.MonkeyPatch, runner: RecordingRunner) -> Non
 
 def test_preview_contains_current_plan_and_remote_digests() -> None:
     """Bind preview output to the current plan and observations."""
+    plan = _plan()
     runner = RecordingRunner(_read_responses())
-    provider = GitHubProvider(identity=_plan().identity, runner=runner)
+    provider = GitHubProvider(identity=plan.identity, runner=runner)
 
-    preview = preview_github_publication(_plan(), provider)
+    preview = preview_github_publication(plan, provider)
 
     assert preview.status == "ready"
     assert preview.observed_head == HEAD_SHA
+    assert preview.plan_digest == plan_digest(plan)
+    assert preview.remote_state_digest == canonical_digest(
+        {
+            "head_sha": HEAD_SHA,
+            "review_comments": [],
+            "issue_comments": [],
+            "valid_locations": [],
+        }
+    )
     assert preview.items[0].state == "eligible"
-    assert preview.items[0].payload is not None
+    assert preview.items[0].payload == {"body": "Please keep this context."}
 
 
 def test_preview_blocks_inline_location_missing_from_current_diff() -> None:
