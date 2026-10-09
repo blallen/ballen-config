@@ -1,5 +1,6 @@
 """Tests for the read-only review-plan command."""
 
+import hashlib
 import json
 import subprocess
 from pathlib import Path
@@ -49,14 +50,15 @@ def _git_repository(repo: Path) -> str:
 
 def test_digest_command_prints_canonical_artifact_digest(
     tmp_path: Path,
-    capsys: object,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Expose one stable digest without a provider call."""
+    """Print the digest of the canonical JSON, not of the file bytes."""
     artifact = tmp_path / "plan.json"
     artifact.write_text('{"b": 2, "a": 1}\n')
+    canonical = b'{"a":1,"b":2}\n'
 
     assert main(["digest", "--artifact", str(artifact)]) == 0
-    assert len(capsys.readouterr().out.strip()) == 64  # type: ignore[attr-defined]
+    assert capsys.readouterr().out == f"{hashlib.sha256(canonical).hexdigest()}\n"
 
 
 def test_identity_binds_origin_and_current_head(tmp_path: Path) -> None:

@@ -3,11 +3,7 @@
 import json
 from pathlib import Path
 
-from ballen_review_tools.canonical import (
-    canonical_digest,
-    deduplication_key,
-    source_digest,
-)
+from ballen_review_tools.canonical import canonical_digest, deduplication_key
 
 
 def test_canonical_digest_ignores_mapping_insertion_order() -> None:
@@ -17,17 +13,6 @@ def test_canonical_digest_ignores_mapping_insertion_order() -> None:
 
     assert first == second
     assert len(first) == 64
-
-
-def test_source_digest_changes_when_draft_bytes_change(tmp_path: Path) -> None:
-    """Bind the plan to the exact current Markdown bytes."""
-    draft = tmp_path / "review.md"
-    draft.write_bytes(b"draft\n")
-    first = source_digest(draft)
-
-    draft.write_bytes(b"draft changed\n")
-
-    assert source_digest(draft) != first
 
 
 def test_deduplication_key_binds_provider_target_and_location() -> None:
@@ -64,9 +49,7 @@ def test_checked_in_canonical_vectors_are_stable() -> None:
     )
     vectors = json.loads(vector_path.read_text(encoding="utf-8"))["vectors"]
 
-    concrete = [vector for vector in vectors if "payload" in vector]
-
-    assert concrete
-    for vector in concrete:
+    assert vectors
+    for vector in vectors:
         expected = bytes(vector["sha256_bytes"]).hex()
         assert canonical_digest(vector["payload"]) == expected

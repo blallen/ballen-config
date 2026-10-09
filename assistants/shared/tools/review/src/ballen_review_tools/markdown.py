@@ -194,8 +194,7 @@ def parse_review_markdown(
             selected_value = _required(metadata, "POST").strip().lower()
             if selected_value not in {"yes", "no"}:
                 raise ValueError("POST must be YES or NO")
-            path_text = metadata.get("File")
-            path = None if path_text is None else path_text
+            path = metadata.get("File")
             line = _line(metadata, "Line")
             start_line = _line(metadata, "Start line")
             side = metadata.get("Side")

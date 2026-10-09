@@ -99,22 +99,10 @@ class GitWorkspaceProbe:
 
     def is_conflicted(self, relative: Path) -> bool:
         """Return whether a path has unmerged index entries."""
-        result = subprocess.run(
-            [
-                "git",
-                "-C",
-                str(self._repo_root),
-                "ls-files",
-                "--unmerged",
-                "--",
-                relative.as_posix(),
-            ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            check=False,
-            text=True,
+        return (
+            self._capture("ls-files", "--unmerged", "--", relative.as_posix())
+            is not None
         )
-        return bool(result.stdout)
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -144,7 +132,6 @@ def _read_json(path: Path) -> object:
 
 def _write_json(path: Path, payload: object) -> None:
     """Atomically write one UTF-8 JSON artifact."""
-    path.parent.mkdir(parents=False, exist_ok=True)
     with tempfile.NamedTemporaryFile(
         mode="w",
         encoding="utf-8",

@@ -4,7 +4,6 @@ import hashlib
 import json
 import unicodedata
 from collections.abc import Mapping, Sequence
-from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel
@@ -40,11 +39,6 @@ def canonical_bytes(value: Any) -> bytes:
 def canonical_digest(value: Any) -> str:
     """Return the SHA-256 digest of canonical JSON bytes."""
     return hashlib.sha256(canonical_bytes(value)).hexdigest()
-
-
-def source_digest(path: Path) -> str:
-    """Return the SHA-256 digest of one exact source file."""
-    return source_digest_bytes(path.read_bytes())
 
 
 def source_digest_bytes(value: bytes) -> str:

@@ -1,7 +1,7 @@
 """Strict provider-neutral models for review artifacts."""
 
 from pathlib import PurePosixPath
-from typing import Literal
+from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -93,7 +93,7 @@ class ReviewAction(BaseModel):
         return PurePosixPath(raw)
 
     @model_validator(mode="after")
-    def _validate_kind(self) -> "ReviewAction":
+    def _validate_kind(self) -> Self:
         """Require location and thread fields appropriate to the action kind."""
         expected_intended = {
             "inline": "create-inline",
@@ -168,7 +168,7 @@ class ReviewCommentPlan(BaseModel):
     diagnostics: tuple[ReviewDiagnostic, ...] = ()
 
     @model_validator(mode="after")
-    def _validate_actions(self) -> "ReviewCommentPlan":
+    def _validate_actions(self) -> Self:
         """Require retained actions or bounded parse diagnostics."""
         action_ids = [action.action_id for action in self.actions]
         if len(action_ids) != len(set(action_ids)):

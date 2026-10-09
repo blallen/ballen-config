@@ -9,7 +9,6 @@ from ballen_config.configure import (
     digest_tree,
 )
 
-_SUPPORTED_AGENTS: Final[frozenset[str]] = frozenset({"cursor", "claude-code", "codex"})
 _SOURCE: Final[Path] = Path("assistants/shared/tools/review")
 _GENERATED_ENTRIES: Final[frozenset[str]] = frozenset(
     {".DS_Store", "__pycache__", ".venv", ".mypy_cache", ".pytest_cache", ".ruff_cache"}
@@ -21,7 +20,7 @@ def review_tools_contribution(
     repo_root: Path,
     enabled: frozenset[str],
 ) -> ConfigurationContribution:
-    """Install the shared review tool tree for any supported agent.
+    """Install the shared review tool tree for any enabled agent.
 
     Args:
         repo_root: Approved checkout root.
@@ -29,9 +28,9 @@ def review_tools_contribution(
 
     Returns:
         A digest-bound managed tree contribution, or an empty contribution
-        when all supported agents are disabled.
+        when no agent is enabled.
     """
-    if not enabled.intersection(_SUPPORTED_AGENTS):
+    if not enabled:
         return ConfigurationContribution()
     source = repo_root / _SOURCE
     return ConfigurationContribution(

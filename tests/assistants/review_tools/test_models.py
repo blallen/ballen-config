@@ -51,15 +51,11 @@ def test_inline_action_accepts_a_relative_range() -> None:
     assert action.start_line == 18
 
 
-def test_inline_action_rejects_an_absolute_path() -> None:
-    """Prevent machine-specific paths from entering canonical artifacts."""
-    with pytest.raises(ValidationError, match="relative"):
-        _inline_action(path="/tmp/example.py")
-
-
-@pytest.mark.parametrize("path", [".", "src/../example.py", "src\\example.py"])
-def test_inline_action_rejects_unsafe_relative_path(path: str) -> None:
-    """Reject ambiguous and platform-specific repository paths."""
+@pytest.mark.parametrize(
+    "path", ["/tmp/example.py", ".", "src/../example.py", "src\\example.py"]
+)
+def test_inline_action_rejects_unsafe_path(path: str) -> None:
+    """Reject absolute, ambiguous, and platform-specific repository paths."""
     with pytest.raises(ValidationError, match="relative"):
         _inline_action(path=path)
 
@@ -155,3 +151,20 @@ def test_selected_action_has_no_authorization_field() -> None:
     assert action.selected is True
     assert "approved" not in type(action).model_fields
     assert "authorized" not in type(action).model_fields
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("host", "/srv/git/github.com"),
+        ("repository", "ballen\\ballen-config"),
+        ("base_revision", "a" * 39 + " "),
+        ("head_revision", "/tmp/head"),
+    ],
+)
+def test_identity_rejects_machine_path_values(field: str, value: str) -> None:
+    """Keep absolute, backslash, and whitespace values out of identities."""
+    values = _identity().model_dump() | {field: value}
+
+    with pytest.raises(ValidationError, match="machine path"):
+        ReviewIdentity.model_validate(values)

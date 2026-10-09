@@ -2,10 +2,6 @@
   "contract_version": "review-comment-plan/v1",
   "vectors": [
     {
-      "name": "selection-is-not-authority",
-      "assertions": ["selected is candidate state", "no approval field"]
-    },
-    {
       "name": "canonical-nfc-and-key-order",
       "payload": {
         "z": [2, 1],
