@@ -1,0 +1,50 @@
+{
+  "contract_version": "review-comment-plan/v1",
+  "vectors": [
+    {
+      "name": "selection-is-not-authority",
+      "assertions": ["selected is candidate state", "no approval field"]
+    },
+    {
+      "name": "canonical-nfc-and-key-order",
+      "payload": {
+        "z": [2, 1],
+        "a": "é"
+      },
+      "sha256_bytes": [
+        115,
+        133,
+        179,
+        127,
+        173,
+        17,
+        60,
+        241,
+        102,
+        109,
+        76,
+        181,
+        17,
+        34,
+        146,
+        255,
+        71,
+        113,
+        49,
+        56,
+        232,
+        34,
+        140,
+        148,
+        6,
+        159,
+        106,
+        12,
+        139,
+        59,
+        126,
+        87
+      ]
+    }
+  ]
+}
