@@ -46,6 +46,7 @@ _CONTENT_PLAN_SKILL_NAMES: Final[frozenset[str]] = frozenset(
         "prepare-review-response",
         "respond-to-github-review",
         "review-gitlab-merge-request",
+        "publish-gitlab-review",
         "using-uv",
         "writing-executive-communications",
         "using-gitlab",
@@ -102,6 +103,10 @@ _REVIEW_FOUNDATION_DEPENDENCIES: Final[dict[str, tuple[str, ...]]] = {
     "review-gitlab-merge-request": (
         "using-gitlab",
         "discover-project-standards",
+    ),
+    "publish-gitlab-review": (
+        "using-gitlab",
+        "review-gitlab-merge-request",
     ),
 }
 
