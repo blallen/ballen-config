@@ -1,5 +1,6 @@
 """Tests for the deterministic review Markdown grammar."""
 
+import pytest
 from ballen_review_tools.markdown import parse_review_markdown
 from ballen_review_tools.models import ReviewIdentity
 
@@ -186,3 +187,31 @@ Real body.
 
     assert [action.action_id for action in parsed.actions] == ["section-1"]
     assert [diagnostic.action_id for diagnostic in parsed.diagnostics] == ["line 1"]
+
+
+@pytest.mark.parametrize(
+    ("metadata", "reason"),
+    [
+        pytest.param(
+            "**Side:** MIDDLE",
+            "side: Input should be 'LEFT' or 'RIGHT'",
+            id="field-error",
+        ),
+        pytest.param(
+            "**Side:** RIGHT\n**Start line:** 30\n**Start side:** RIGHT",
+            "Value error, start_line must not exceed line",
+            id="model-error",
+        ),
+    ],
+)
+def test_parser_diagnostics_omit_input_values_and_urls(
+    metadata: str, reason: str
+) -> None:
+    """Describe a model validation failure by location and message only."""
+    draft = REVIEW.replace("**Side:** RIGHT", metadata)
+
+    parsed = parse_review_markdown(draft, identity=IDENTITY)
+
+    assert [
+        (diagnostic.action_id, diagnostic.reason) for diagnostic in parsed.diagnostics
+    ] == [("R001", reason)]

@@ -5,6 +5,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Final
 
+from pydantic import ValidationError
+
 from ballen_review_tools.canonical import deduplication_key
 from ballen_review_tools.models import ReviewAction, ReviewDiagnostic, ReviewIdentity
 
@@ -137,6 +139,16 @@ def _line(metadata: dict[str, str], key: str) -> int | None:
     return line
 
 
+def _validation_reason(error: ValidationError) -> str:
+    """Describe a model validation failure without echoing its input."""
+    return "; ".join(
+        f"{'.'.join(str(part) for part in detail['loc'])}: {detail['msg']}"
+        if detail["loc"]
+        else detail["msg"]
+        for detail in error.errors(include_url=False, include_input=False)
+    )
+
+
 def parse_review_markdown(
     text: str,
     *,
@@ -231,6 +243,11 @@ def parse_review_markdown(
                     "outcome": "pending",
                 }
             )
+        except ValidationError as error:
+            diagnostics.append(
+                ReviewDiagnostic(action_id=action_id, reason=_validation_reason(error))
+            )
+            continue
         except (TypeError, ValueError) as error:
             diagnostics.append(ReviewDiagnostic(action_id=action_id, reason=str(error)))
             continue
