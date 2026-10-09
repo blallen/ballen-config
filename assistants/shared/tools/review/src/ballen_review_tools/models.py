@@ -289,6 +289,15 @@ class ReviewResponseItem(BaseModel):
     verification: tuple[str, ...] = ()
     selected_action: ResponseAction
 
+    @model_validator(mode="after")
+    def _validate_selected_content(self) -> Self:
+        """Require the content that the selected action proposes."""
+        if self.selected_action == "propose-response" and not self.proposed_response:
+            raise ValueError("propose-response requires proposed_response")
+        if self.selected_action == "propose-change" and not self.proposed_changes:
+            raise ValueError("propose-change requires proposed_changes")
+        return self
+
 
 class ReviewResponsePlan(BaseModel):
     """Non-mutating response plan bound to normalized thread observations."""

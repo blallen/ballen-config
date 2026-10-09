@@ -111,7 +111,11 @@ def _sections(lines: list[str]) -> Iterable[tuple[str, list[str], str | None]]:
 
 
 def _metadata_and_body(lines: list[str]) -> tuple[dict[str, str], str]:
-    """Split leading bold metadata from the Markdown body."""
+    """Split the leading block of bold metadata fields from the Markdown body.
+
+    The field block ends at the first blank or non-field line after a field, so
+    body text that starts with bold text stays in the body.
+    """
     metadata: dict[str, str] = {}
     body_lines: list[str] = []
     metadata_mode = True
@@ -125,7 +129,7 @@ def _metadata_and_body(lines: list[str]) -> tuple[dict[str, str], str]:
                 raise ValueError(f"duplicate metadata field: {key}")
             metadata[key] = value.strip().strip("`").strip()
             continue
-        if metadata_mode and not line.strip():
+        if metadata_mode and not metadata and not line.strip():
             continue
         metadata_mode = False
         body_lines.append(line)
@@ -302,7 +306,11 @@ def parse_response_markdown(
             raise ValueError(f"{thread_id}: {heading_error}")
         if thread_id not in thread_by_id:
             raise ValueError(f"response references unknown thread: {thread_id}")
-        metadata, _body = _metadata_and_body(lines)
+        metadata, body = _metadata_and_body(lines)
+        if body and "Proposed response" in metadata:
+            raise ValueError(
+                f"{thread_id}: Proposed response field and section text are ambiguous"
+            )
         classification = _required(metadata, "Classification").strip().lower()
         if classification not in {
             "actionable",
@@ -323,7 +331,7 @@ def parse_response_markdown(
             evaluation=_required(metadata, "Evaluation"),
             evidence=_required(metadata, "Evidence"),
             proposed_changes=_list_field(metadata, "Proposed changes"),
-            proposed_response=_optional_text(metadata, "Proposed response"),
+            proposed_response=body or _optional_text(metadata, "Proposed response"),
             verification=_list_field(metadata, "Verification"),
             selected_action=cast(ResponseAction, selected_action),
         )

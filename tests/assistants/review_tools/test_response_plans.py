@@ -8,6 +8,7 @@ from ballen_review_tools.models import (
     NormalizedReviewThreads,
     NormalizedThread,
     ReviewIdentity,
+    ReviewResponseItem,
     ReviewResponsePlan,
 )
 from pydantic import ValidationError
@@ -200,3 +201,76 @@ def test_normalized_thread_accepts_cross_side_ranges() -> None:
         10,
         "RIGHT",
     )
+
+
+SECTION_TEXT_DRAFT = """### T001: Address the empty case
+
+**Classification:** question
+**Selected action:** propose-response
+**Evaluation:** The reviewer asks whether the empty case is handled.
+**Evidence:** `load_items` returns early when the result is empty.
+**Verification:** none
+
+**Note:** the guard already exists.
+
+It returns before the loop, so the empty case never reaches iteration.
+
+### T002: Resolved context
+
+**Classification:** resolved
+**Selected action:** skip
+**Evaluation:** This thread is already resolved.
+**Evidence:** The normalized state is resolved.
+"""
+
+
+def test_section_text_becomes_the_proposed_response() -> None:
+    """Keep every paragraph below the fields, including bold-led lines."""
+    response = parse_response_markdown(SECTION_TEXT_DRAFT, threads=_threads())
+
+    assert response[0].proposed_response == (
+        "**Note:** the guard already exists.\n\n"
+        "It returns before the loop, so the empty case never reaches iteration."
+    )
+
+
+def test_section_text_and_proposed_response_field_are_ambiguous() -> None:
+    """Reject a section that gives the proposed response twice."""
+    draft = SECTION_TEXT_DRAFT.replace(
+        "**Verification:** none\n",
+        "**Verification:** none\n**Proposed response:** The guard exists.\n",
+    )
+
+    with pytest.raises(ValueError, match="T001: Proposed response field and"):
+        parse_response_markdown(draft, threads=_threads())
+
+
+@pytest.mark.parametrize(
+    ("selected_action", "reason"),
+    [
+        pytest.param(
+            "propose-response",
+            "propose-response requires proposed_response",
+            id="response-without-text",
+        ),
+        pytest.param(
+            "propose-change",
+            "propose-change requires proposed_changes",
+            id="change-without-changes",
+        ),
+    ],
+)
+def test_selected_action_requires_its_content(
+    selected_action: str, reason: str
+) -> None:
+    """Reject a proposal that carries nothing to propose."""
+    with pytest.raises(ValidationError, match=reason):
+        ReviewResponseItem.model_validate(
+            {
+                "thread_id": "T001",
+                "classification": "actionable",
+                "evaluation": "The feedback is valid.",
+                "evidence": "The empty result is dereferenced.",
+                "selected_action": selected_action,
+            }
+        )
