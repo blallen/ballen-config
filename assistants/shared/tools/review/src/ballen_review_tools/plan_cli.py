@@ -188,7 +188,18 @@ def _compile_review(args: argparse.Namespace) -> int:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Run one read-only planning or validation command."""
+    """Dispatch one ``review-plan`` subcommand.
+
+    ``digest``, ``validate``, and ``workspace-check`` only read their inputs.
+    Each other subcommand, such as ``compile-review``, writes one JSON artifact
+    to its ``--output`` path after workspace preflight.
+
+    Args:
+        argv: Arguments after the program name, or ``None`` for ``sys.argv``.
+
+    Returns:
+        The process exit status.
+    """
     args = _parser().parse_args(argv)
     if args.command == "digest":
         print(canonical_digest(_read_json(args.artifact)))

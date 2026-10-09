@@ -25,9 +25,19 @@ local and auditable before any publication decision.
    not guess a branch or reuse an old head.
 3. Ask for a repository-local destination that is already ignored and
    untracked when no safe workspace is obvious. Prove it before writing.
-4. Run the managed tool at
-   `~/.local/share/ballen-config/review-tools/bin/review-plan` to compile and
-   validate the current Markdown draft and logical plan.
+4. Write the identity JSON and the Markdown draft into that workspace. From
+   the repository root, compile and then validate the plan:
+
+   ```text
+   ~/.local/share/ballen-config/review-tools/bin/review-plan compile-review \
+     --draft WORKSPACE/review.md --identity WORKSPACE/identity.json \
+     --output WORKSPACE/review-plan.json --repo-root .
+   ~/.local/share/ballen-config/review-tools/bin/review-plan validate \
+     --artifact WORKSPACE/review-plan.json
+   ```
+
+   `~/.local/share/ballen-config/review-tools/README.md` defines the identity
+   JSON shape and the draft grammar.
 5. Retain selected and skipped items, missing local coverage, validation
    failures, and provider limitations in the artifact.
 
