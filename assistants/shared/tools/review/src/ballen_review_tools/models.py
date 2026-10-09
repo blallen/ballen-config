@@ -19,6 +19,8 @@ ActionOutcome = Literal[
     "not-attempted",
 ]
 IntendedAction = Literal["create-inline", "create-general", "reply"]
+PublicationItemState = Literal["eligible", "duplicate", "blocked", "skipped"]
+PublicationStatus = Literal["ready", "blocked", "posted", "partial", "failed"]
 
 
 class ReviewIdentity(BaseModel):
@@ -176,3 +178,57 @@ class ReviewCommentPlan(BaseModel):
         if not self.actions and not self.diagnostics:
             raise ValueError("plan must contain actions or diagnostics")
         return self
+
+
+class PublicationItemPreview(BaseModel):
+    """One current publication decision and ephemeral request payload."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    action_id: str = Field(min_length=1)
+    deduplication_key: str = Field(pattern=r"^[0-9a-f]{64}$")
+    state: PublicationItemState
+    reason: str | None = None
+    payload: dict[str, object] | None = None
+
+
+class PublicationPreview(BaseModel):
+    """Approval-bound GitHub publication preview."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    contract_version: Literal["publication-preview/v1"]
+    plan_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    identity: ReviewIdentity
+    expected_head: str = Field(min_length=1)
+    observed_head: str = Field(min_length=1)
+    remote_state_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    status: Literal["ready", "blocked"]
+    items: tuple[PublicationItemPreview, ...] = ()
+
+
+class PublicationReceiptItem(BaseModel):
+    """One minimal publication outcome."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    action_id: str = Field(min_length=1)
+    deduplication_key: str = Field(pattern=r"^[0-9a-f]{64}$")
+    outcome: ActionOutcome
+    reason: str | None = None
+    remote_id: int | None = Field(default=None, gt=0)
+    remote_url: str | None = None
+
+
+class PublicationReceipt(BaseModel):
+    """Minimal persisted publication outcomes."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    contract_version: Literal["publication-receipt/v1"]
+    plan_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    identity: ReviewIdentity
+    expected_head: str = Field(min_length=1)
+    observed_head: str = Field(min_length=1)
+    status: PublicationStatus
+    items: tuple[PublicationReceiptItem, ...] = ()
