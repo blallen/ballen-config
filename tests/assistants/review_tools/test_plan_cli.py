@@ -4,6 +4,7 @@ import json
 import subprocess
 from pathlib import Path
 
+import pytest
 from ballen_review_tools.canonical import source_digest_bytes
 from ballen_review_tools.models import ReviewIdentity
 from ballen_review_tools.plan_cli import GitWorkspaceProbe, main
@@ -72,6 +73,47 @@ def test_identity_binds_origin_and_current_head(tmp_path: Path) -> None:
     )
 
     assert GitWorkspaceProbe(repo).identity_matches(identity) == (True, "")
+
+
+def test_compile_review_rejects_an_origin_host_mismatch(tmp_path: Path) -> None:
+    """Refuse to compile a plan for the same repository on another forge host."""
+    repo = tmp_path / "repo"
+    head = _git_repository(repo)
+    (repo / ".reviews").mkdir()
+    draft = repo / "review.md"
+    draft.write_text(
+        "### R001: General note\n\n**Type:** general\n**POST:** NO\n\nContext.\n"
+    )
+    identity_path = repo / "identity.json"
+    identity_path.write_text(
+        json.dumps(
+            {
+                "provider": "github",
+                "host": "github.example.com",
+                "repository": "ballen/ballen-config",
+                "change_number": 17,
+                "base_revision": "a" * 40,
+                "head_revision": head,
+            }
+        )
+    )
+    output = repo / ".reviews" / "review-plan.json"
+
+    with pytest.raises(ValueError, match="origin does not match"):
+        main(
+            [
+                "compile-review",
+                "--draft",
+                str(draft),
+                "--identity",
+                str(identity_path),
+                "--output",
+                str(output),
+                "--repo-root",
+                str(repo),
+            ]
+        )
+    assert not output.exists()
 
 
 def test_compile_review_binds_one_draft_byte_snapshot(tmp_path: Path) -> None:

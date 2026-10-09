@@ -467,6 +467,26 @@ def test_aggregate_callbacks_omit_every_cursor_surface_when_skipped(
     assert ("cursor", "--list-extensions") not in fake_runner.commands
 
 
+@pytest.mark.parametrize("agent", ["cursor", "claude-code", "codex"])
+def test_any_enabled_agent_installs_the_shared_review_tools(
+    repo_root: Path, temporary_home: Path, agent: str
+) -> None:
+    """One enabled agent is enough to install the shared review-tool tree."""
+    skips = tuple(
+        other for other in ("cursor", "claude-code", "codex") if other != agent
+    )
+    setup = ManifestRepository.load(repo_root / "manifests").resolve(
+        ResolutionRequest(skips=skips)
+    )
+    paths = RuntimePaths.from_roots(repo_root=repo_root, home=temporary_home)
+    assistants = AssistantOrchestrator(paths)
+    assistants.preflight(setup, paths)
+
+    contribution = assistants.configuration(setup, paths)
+
+    assert "shared-review-tools" in {spec.id for spec in contribution.specs}
+
+
 def test_main_registers_exported_callbacks_and_runs_real_aggregate_plan(
     repo_root: Path,
     temporary_home: Path,
