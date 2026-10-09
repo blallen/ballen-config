@@ -44,6 +44,7 @@ _CONTENT_PLAN_SKILL_NAMES: Final[frozenset[str]] = frozenset(
         "review-github-pull-request",
         "publish-github-review",
         "prepare-review-response",
+        "respond-to-github-review",
         "using-uv",
         "writing-executive-communications",
         "using-gitlab",
@@ -91,6 +92,12 @@ _REVIEW_FOUNDATION_DEPENDENCIES: Final[dict[str, tuple[str, ...]]] = {
         "review-github-pull-request",
     ),
     "prepare-review-response": ("discover-project-standards",),
+    "respond-to-github-review": (
+        "prepare-review-response",
+        "publish-github-review",
+        "resolve-change-scope",
+        "discover-project-standards",
+    ),
 }
 
 _REQUIRED_SKILL_NAVIGATION_HEADINGS: Final[tuple[str, ...]] = (
