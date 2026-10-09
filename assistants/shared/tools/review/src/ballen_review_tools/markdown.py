@@ -37,14 +37,18 @@ class ParsedReview:
 
 
 def _sections(lines: list[str]) -> Iterable[tuple[str, list[str], str | None]]:
-    """Yield action IDs and bodies from level-three headings outside fences."""
+    """Yield action IDs and bodies from level-three headings outside fences.
+
+    A heading without a stable ID is yielded as ``line N``, with a heading
+    error. The space keeps that label outside the heading ID grammar, so it
+    never collides with a real action ID.
+    """
     current_id: str | None = None
     current_lines: list[str] = []
     heading_error: str | None = None
     fence_character: str | None = None
     fence_length = 0
-    section_number = 0
-    for line in lines:
+    for line_number, line in enumerate(lines, start=1):
         fence = _FENCE.match(line)
         if fence is not None:
             marker = fence.group(1)
@@ -69,8 +73,7 @@ def _sections(lines: list[str]) -> Iterable[tuple[str, list[str], str | None]]:
             if line.startswith("### "):
                 if current_id is not None:
                     yield current_id, current_lines, heading_error
-                section_number += 1
-                current_id = f"section-{section_number}"
+                current_id = f"line {line_number}"
                 current_lines = []
                 heading_error = "action heading must contain a stable ID"
                 continue

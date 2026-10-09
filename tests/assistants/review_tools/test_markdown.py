@@ -139,3 +139,50 @@ Reply.
 
     assert parsed.actions == ()
     assert "ambiguous" in parsed.diagnostics[0].reason
+
+
+def test_parser_reports_a_duplicate_action_id() -> None:
+    """Keep the first action and report a later reuse of its ID."""
+    draft = REVIEW.replace("### R002:", "### R001:")
+
+    parsed = parse_review_markdown(draft, identity=IDENTITY)
+
+    assert [action.action_id for action in parsed.actions] == ["R001"]
+    assert [
+        (diagnostic.action_id, diagnostic.reason) for diagnostic in parsed.diagnostics
+    ] == [("R001", "duplicate action ID: R001")]
+
+
+def test_parser_locates_a_heading_without_an_id_by_line() -> None:
+    """Report an ID-less heading by its line instead of inventing an ID."""
+    draft = REVIEW.replace("### R002: Explain the tradeoff", "### Explain the tradeoff")
+
+    parsed = parse_review_markdown(draft, identity=IDENTITY)
+
+    assert [action.action_id for action in parsed.actions] == ["R001"]
+    assert [
+        (diagnostic.action_id, diagnostic.reason) for diagnostic in parsed.diagnostics
+    ] == [("line 11", "action heading must contain a stable ID")]
+
+
+def test_heading_without_an_id_does_not_claim_a_real_action_id() -> None:
+    """Keep a later real action whose ID looks like a generated label."""
+    draft = """### Missing an ID
+
+**Type:** general
+**POST:** YES
+
+Body.
+
+### section-1: Real action
+
+**Type:** general
+**POST:** YES
+
+Real body.
+"""
+
+    parsed = parse_review_markdown(draft, identity=IDENTITY)
+
+    assert [action.action_id for action in parsed.actions] == ["section-1"]
+    assert [diagnostic.action_id for diagnostic in parsed.diagnostics] == ["line 1"]
