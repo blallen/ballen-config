@@ -3,9 +3,15 @@
 import json
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from typing import Final
 
 import pytest
-from ballen_review_tools.models import ReviewAction, ReviewCommentPlan, ReviewIdentity
+from ballen_review_tools.models import (
+    ReviewAction,
+    ReviewCommentPlan,
+    ReviewIdentity,
+    ReviewSide,
+)
 from ballen_review_tools.providers.base import CompletedCommand
 from ballen_review_tools.providers.gitlab import (
     DiffLineKey,
@@ -15,9 +21,9 @@ from ballen_review_tools.providers.gitlab import (
     GitLabRemoteState,
 )
 
-BASE_SHA = "a" * 40
-START_SHA = "b" * 40
-HEAD_SHA = "c" * 40
+BASE_SHA: Final[str] = "a" * 40
+START_SHA: Final[str] = "b" * 40
+HEAD_SHA: Final[str] = "c" * 40
 
 
 @dataclass
@@ -90,7 +96,7 @@ def _merge_request() -> CompletedCommand:
 
 
 def _inline_plan(
-    *, side: str = "RIGHT", path: str = "src/example.py"
+    *, side: ReviewSide = "RIGHT", path: str = "src/example.py"
 ) -> ReviewCommentPlan:
     """Return one selected single-line GitLab action."""
     action = ReviewAction(
@@ -100,7 +106,7 @@ def _inline_plan(
         body="Guard the empty case.",
         path=path,
         line=42,
-        side=side,  # type: ignore[arg-type]
+        side=side,
         deduplication_key="d" * 64,
         validation_state="valid",
         intended_action="create-inline",

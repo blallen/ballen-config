@@ -17,6 +17,7 @@ from ballen_review_tools.providers.gitlab import (
     GitLabProvider,
     GitLabProviderError,
     GitLabRemoteState,
+    _current_position,
 )
 
 
@@ -60,7 +61,7 @@ def _remote_duplicate(action: ReviewAction, state: GitLabRemoteState) -> bool:
                 if (
                     not note.system
                     and note.body == action.body
-                    and _note_location(note, state) == expected
+                    and _current_position(note.position, state.diff_refs) == expected
                 ):
                     return True
         return False
@@ -78,33 +79,11 @@ def _remote_duplicate(action: ReviewAction, state: GitLabRemoteState) -> bool:
     )
 
 
-def _note_location(
-    note: object,
-    state: GitLabRemoteState,
-) -> tuple[str, int, str] | None:
-    """Return one current normalized location from a native note."""
-    position = getattr(note, "position", None)
-    if position is None:
-        return None
-    if (
-        position.position_type != "text"
-        or position.base_sha != state.diff_refs.base_sha
-        or position.start_sha != state.diff_refs.start_sha
-        or position.head_sha != state.diff_refs.head_sha
-    ):
-        return None
-    if position.new_line is not None and position.new_path is not None:
-        return position.new_path, position.new_line, "RIGHT"
-    if position.old_line is not None and position.old_path is not None:
-        return position.old_path, position.old_line, "LEFT"
-    return None
-
-
 def _preview_payload(
     provider: GitLabProvider,
     action: ReviewAction,
     state: GitLabRemoteState,
-) -> dict[str, object] | None:
+) -> dict[str, object]:
     """Build one exact ephemeral GitLab payload."""
     if action.kind == "inline":
         return dict(provider.discussion_payload(action, state))
@@ -232,7 +211,29 @@ def execute_gitlab_publication(
     expected_head: str,
     provider: GitLabProvider,
 ) -> GitLabPublicationExecutionResult:
-    """Revalidate state and publish only an exactly approved current plan."""
+    """Revalidate state and publish only an exactly approved current plan.
+
+    This writes to GitLab: each eligible action is posted in action-ID order as
+    a new MR discussion, a top-level MR note, or a reply to an existing
+    discussion. It never resolves or reopens a discussion. The first failed
+    post halts execution, and the remaining eligible actions are recorded as
+    `not-attempted`. Gate failures are returned as `blocked` results rather
+    than raised.
+
+    Args:
+        plan: Validated logical review plan to publish.
+        approved_plan_digest: Plan digest the user approved from the preview.
+        expected_head: MR head revision the user approved.
+        provider: GitLab transport used to re-fetch state and post.
+
+    Returns:
+        A `blocked` result with a reason and no receipt when the approved
+        digest, the expected head, or the re-fetched preview does not match,
+        or when the re-fetch fails. Otherwise a result with a receipt whose
+        status is `posted` when every attempted post succeeded, `partial` when
+        a post failed after at least one succeeded, `failed` when the first
+        attempted post failed, or `blocked` when no action was eligible.
+    """
     current_digest = plan_digest(plan)
     if approved_plan_digest != current_digest:
         return GitLabPublicationExecutionResult(
@@ -263,10 +264,9 @@ def execute_gitlab_publication(
     receipt_items: list[PublicationReceiptItem] = []
     posted_any = False
     failed = False
-    halted = False
     for action in sorted(plan.actions, key=lambda item: item.action_id):
         item = preview_by_id[action.action_id]
-        if item.state != "eligible" or halted:
+        if item.state != "eligible" or failed:
             continue
         try:
             if action.kind == "inline":
@@ -286,7 +286,6 @@ def execute_gitlab_publication(
             posted_any = True
         except GitLabProviderError:
             failed = True
-            halted = True
             receipt_items.append(
                 PublicationReceiptItem(
                     action_id=action.action_id,

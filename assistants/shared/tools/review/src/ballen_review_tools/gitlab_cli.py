@@ -8,7 +8,6 @@ from pathlib import Path
 
 from ballen_review_tools.gitlab_publication import (
     execute_gitlab_publication,
-    plan_digest,
     preview_gitlab_publication,
 )
 from ballen_review_tools.models import ReviewCommentPlan
@@ -74,8 +73,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise ValueError("execute requires approved plan digest and expected head")
         if args.receipt is None:
             raise ValueError("execute requires --receipt")
-        if args.approved_plan_digest != plan_digest(plan):
-            raise ValueError("approved plan digest does not match current plan")
         result = execute_gitlab_publication(
             plan=plan,
             approved_plan_digest=args.approved_plan_digest,

@@ -73,8 +73,6 @@ class GitLabRemoteDiscussion:
     """Minimal native discussion observation used for preview gates."""
 
     discussion_id: str
-    individual_note: bool
-    resolved: bool
     notes: tuple[_GitLabNote, ...]
 
 
@@ -215,8 +213,6 @@ def _discussion(value: object) -> GitLabRemoteDiscussion:
     )
     return GitLabRemoteDiscussion(
         discussion_id=str(discussion_id),
-        individual_note=value.get("individual_note") is True,
-        resolved=resolved,
         notes=notes,
     )
 

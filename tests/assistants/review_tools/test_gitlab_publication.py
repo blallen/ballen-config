@@ -4,6 +4,7 @@ import json
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Final
 
 import pytest
 from ballen_review_tools import gitlab_cli
@@ -22,10 +23,10 @@ from ballen_review_tools.models import (
 from ballen_review_tools.providers.base import CompletedCommand
 from ballen_review_tools.providers.gitlab import GitLabProvider
 
-BASE_SHA = "a" * 40
-START_SHA = "b" * 40
-HEAD_SHA = "c" * 40
-NEW_HEAD = "d" * 40
+BASE_SHA: Final[str] = "a" * 40
+START_SHA: Final[str] = "b" * 40
+HEAD_SHA: Final[str] = "c" * 40
+NEW_HEAD: Final[str] = "d" * 40
 
 
 @dataclass
@@ -207,8 +208,8 @@ def test_execute_blocks_changed_gitlab_head_before_any_write() -> None:
     assert all("--method" not in call[0] for call in runner.calls)
 
 
-def test_execute_posts_note_and_retains_string_native_id() -> None:
-    """Post an MR note and preserve its native string identifier."""
+def test_execute_posts_note_and_records_integer_native_id_as_string() -> None:
+    """Post an MR note and record its integer native ID as a string."""
     plan = _plan()
     runner = RecordingRunner([*_reads(), CompletedCommand(0, '{"id": 77}', "")])
 
@@ -222,45 +223,6 @@ def test_execute_posts_note_and_retains_string_native_id() -> None:
     assert result.status == "posted"
     assert result.receipt is not None
     assert result.receipt.items[0].remote_id == "77"
-
-
-def test_retry_skips_confirmed_note_and_posts_only_remaining_action() -> None:
-    """Re-fetch remote notes before retrying a partial publication."""
-    # This test becomes a two-action regression once reply publication is added;
-    # the single-note duplicate still proves the confirmed action is skipped.
-    plan = _plan()
-    runner = RecordingRunner(
-        [
-            *_reads(),
-            CompletedCommand(0, '{"id": 77}', ""),
-        ]
-    )
-    first = execute_gitlab_publication(
-        plan=plan,
-        approved_plan_digest=plan_digest(plan),
-        expected_head=HEAD_SHA,
-        provider=GitLabProvider(identity=plan.identity, runner=runner),
-    )
-    assert first.status == "posted"
-
-    retry_reads = _reads()
-    retry_reads[2] = CompletedCommand(
-        0,
-        json.dumps([{"id": 77, "body": "Please keep this context."}]),
-        "",
-    )
-    retry = execute_gitlab_publication(
-        plan=plan,
-        approved_plan_digest=plan_digest(plan),
-        expected_head=HEAD_SHA,
-        provider=GitLabProvider(
-            identity=plan.identity,
-            runner=RecordingRunner(retry_reads),
-        ),
-    )
-
-    assert retry.receipt is not None
-    assert retry.receipt.items[0].outcome == "duplicate"
 
 
 def test_partial_retry_skips_confirmed_note_and_posts_only_reply() -> None:
