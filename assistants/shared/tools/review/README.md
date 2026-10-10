@@ -145,3 +145,55 @@ Then validate the threads file and compile the plan from the repository root:
   --output .reviews/response-plan.json \
   --repo-root .
 ```
+
+## `review-plan normalize-threads`
+
+`normalize-threads` turns one captured provider response into a
+`normalized-review-threads/v1` snapshot. It reads local files only and never
+calls GitHub or GitLab. The output must sit in an ignored, untracked workspace
+directory such as `.reviews/`.
+
+### GitHub
+
+Use `using-github` to read the pull request's current head SHA and every page
+of its review comments (`GET /repos/{owner}/{repo}/pulls/{number}/comments`).
+Save them as one JSON object, keeping each comment as GitHub returns it:
+
+```json
+{
+  "head_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "review_comments": [
+    {
+      "id": 10,
+      "user": {"login": "reviewer"},
+      "body": "Guard the empty case.",
+      "path": "src/example.py",
+      "line": 20,
+      "side": "RIGHT"
+    },
+    {"id": 11, "in_reply_to_id": 10, "user": {"login": "author"}, "body": "Done."}
+  ]
+}
+```
+
+`head_sha` must equal `head_revision` in the same identity file that
+`compile-review` reads. From the repository root:
+
+```bash
+~/.local/share/ballen-config/review-tools/bin/review-plan normalize-threads \
+  --provider github \
+  --identity .reviews/identity.json \
+  --input .reviews/github-comments.json \
+  --output .reviews/threads.json \
+  --repo-root .
+```
+
+Each root comment becomes one thread that lists the root and its replies in
+order. A comment side other than `LEFT` or `RIGHT` stops normalization with an
+error. The snapshot records what the REST capture cannot show instead of
+guessing:
+
+- REST comments carry no resolution state, so threads are `open` or `outdated`.
+- A body over 10,000 characters is truncated, and its thread records that.
+- Replies not attached to a captured root comment, such as a reply to a reply,
+  are listed by ID in one snapshot limitation.

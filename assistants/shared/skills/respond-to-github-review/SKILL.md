@@ -22,7 +22,20 @@ selected local changes, verification, commits, pushes, or remote replies.
 2. Run and inspect focused verification.
 3. Authorize the exact change description and commit.
 4. Authorize push to the reviewed remote and branch.
-5. Preview and authorize exact remote replies or status comments.
+5. Preview and authorize exact remote replies or status comments:
+   1. Capture the current head and review comments with `using-github`, then
+      refresh the threads with
+      `~/.local/share/ballen-config/review-tools/bin/review-plan normalize-threads --provider github`.
+   2. Recompile the response plan against the refreshed threads with
+      `~/.local/share/ballen-config/review-tools/bin/review-plan compile-response`.
+   3. Write a review draft in the ignored workspace with one `reply` item for
+      each selected response item, using its thread ID and proposed response.
+   4. Compile that draft with
+      `~/.local/share/ballen-config/review-tools/bin/review-plan compile-review`.
+   5. Preview, approve, and publish the replies with `publish-github-review`.
+
+Arguments, input shapes, and the draft grammar are in
+`~/.local/share/ballen-config/review-tools/README.md`.
 
 ## Boundaries
 
