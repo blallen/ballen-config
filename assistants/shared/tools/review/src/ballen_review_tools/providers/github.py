@@ -17,37 +17,21 @@ from ballen_review_tools.models import (
     truncate_thread_body,
 )
 from ballen_review_tools.providers.base import CommandRunner
+from ballen_review_tools.providers.diff import hunk_lines
 
 API_VERSION: Final[str] = "2026-03-10"
 _ACCEPT: Final[str] = "Accept: application/vnd.github+json"
 _UNATTACHED_ID_LIMIT: Final = 20
-_HUNK: Final[re.Pattern[str]] = re.compile(r"^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@")
 
 
 def _diff_locations(path: str, patch: str) -> set[tuple[str, int, str]]:
     """Extract current diff line locations without persisting the patch."""
     locations: set[tuple[str, int, str]] = set()
-    old_line: int | None = None
-    new_line: int | None = None
-    for line in patch.splitlines():
-        hunk = _HUNK.match(line)
-        if hunk is not None:
-            old_line = int(hunk.group(1))
-            new_line = int(hunk.group(2))
-            continue
-        if old_line is None or new_line is None or line.startswith("\\"):
-            continue
-        if line.startswith("+"):
-            locations.add((path, new_line, "RIGHT"))
-            new_line += 1
-        elif line.startswith("-"):
-            locations.add((path, old_line, "LEFT"))
-            old_line += 1
-        elif line.startswith(" "):
-            locations.add((path, old_line, "LEFT"))
-            locations.add((path, new_line, "RIGHT"))
-            old_line += 1
-            new_line += 1
+    for line in hunk_lines(patch):
+        if line.old_line is not None:
+            locations.add((path, line.old_line, "LEFT"))
+        if line.new_line is not None:
+            locations.add((path, line.new_line, "RIGHT"))
     return locations
 
 
