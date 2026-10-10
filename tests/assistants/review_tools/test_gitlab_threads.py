@@ -1,5 +1,8 @@
 """Tests for read-only GitLab merge-request discussion normalization."""
 
+from pathlib import PurePosixPath
+from typing import Final
+
 import pytest
 from ballen_review_tools.models import ReviewIdentity
 from ballen_review_tools.providers.gitlab import (
@@ -8,10 +11,10 @@ from ballen_review_tools.providers.gitlab import (
     normalize_gitlab_threads,
 )
 
-BASE_SHA = "a" * 40
-START_SHA = "b" * 40
-HEAD_SHA = "c" * 40
-IDENTITY = ReviewIdentity(
+BASE_SHA: Final[str] = "a" * 40
+START_SHA: Final[str] = "b" * 40
+HEAD_SHA: Final[str] = "c" * 40
+IDENTITY: Final[ReviewIdentity] = ReviewIdentity(
     provider="gitlab",
     host="gitlab.example.com",
     repository="acme/ballen-config",
@@ -19,7 +22,7 @@ IDENTITY = ReviewIdentity(
     base_revision=BASE_SHA,
     head_revision=HEAD_SHA,
 )
-DIFF_REFS = GitLabDiffRefs(
+DIFF_REFS: Final[GitLabDiffRefs] = GitLabDiffRefs(
     base_sha=BASE_SHA,
     start_sha=START_SHA,
     head_sha=HEAD_SHA,
@@ -129,7 +132,7 @@ def test_gitlab_normalization_preserves_discussion_identity_and_position() -> No
     ]
     assert threads.threads[0].state == "open"
     assert threads.threads[0].comment_ids == ("987", "988")
-    assert threads.threads[0].path.as_posix() == "src/example.py"  # type: ignore[union-attr]
+    assert threads.threads[0].path == PurePosixPath("src/example.py")
     assert threads.threads[0].line == 42
     assert threads.threads[0].side == "RIGHT"
     assert threads.threads[1].state == "resolved"
@@ -226,7 +229,7 @@ def test_gitlab_normalization_maps_removed_lines_to_old_side() -> None:
         revisions=DIFF_REFS,
     )
 
-    assert threads.threads[0].path.as_posix() == "src/removed.py"  # type: ignore[union-attr]
+    assert threads.threads[0].path == PurePosixPath("src/removed.py")
     assert threads.threads[0].line == 9
     assert threads.threads[0].side == "LEFT"
     assert threads.threads[1].path is None

@@ -147,7 +147,28 @@ def normalize_gitlab_threads(
     identity: ReviewIdentity,
     revisions: GitLabDiffRefs,
 ) -> NormalizedReviewThreads:
-    """Emit provider-neutral threads from captured GitLab discussions."""
+    """Normalize captured GitLab discussions into provider-neutral threads.
+
+    System notes are excluded, so a discussion with only system notes yields no
+    thread. The earliest remaining note is the root. A position made against
+    other diff refs makes the thread `outdated`, which outranks `resolved`;
+    otherwise any resolved note makes it `resolved`, and it is `open` if none
+    is. An image or file position on the current diff refs keeps that state
+    without a line. A root body over the thread limit is truncated.
+
+    Args:
+        raw_discussions: Every captured GitLab discussion, all pages combined.
+        identity: GitLab review identity the discussions belong to.
+        revisions: Current merge-request diff refs.
+
+    Returns:
+        Provider-neutral threads keyed by discussion ID.
+
+    Raises:
+        GitLabProviderError: If the identity is not a GitLab identity, its base
+            or head differs from the diff refs, a discussion or note is
+            malformed, or two discussions share an ID.
+    """
     if identity.provider != "gitlab":
         raise GitLabProviderError("GitLab normalization requires a GitLab identity")
     if (
@@ -163,7 +184,7 @@ def normalize_gitlab_threads(
     ]
     threads: list[NormalizedThread] = []
     seen_ids: set[str] = set()
-    for _discussion_index, raw_discussion in enumerate(raw_discussions):
+    for raw_discussion in raw_discussions:
         if not isinstance(raw_discussion, Mapping):
             raise GitLabProviderError("GitLab discussion was malformed")
         discussion_id = raw_discussion.get("id")
@@ -178,10 +199,6 @@ def normalize_gitlab_threads(
             for note_index, note in enumerate(raw_notes)
         ]
         active_notes = [note for note in notes if not note.system]
-        if len(active_notes) != len(notes):
-            continue_system_note_only = not active_notes
-            if continue_system_note_only:
-                continue
         if not active_notes:
             continue
         active_notes.sort(key=lambda note: (note.created_at or "", note.source_index))
@@ -195,7 +212,7 @@ def normalize_gitlab_threads(
         )
         if position_outdated:
             state: GitLabThreadState = "outdated"
-        elif root.resolved or any(note.resolved for note in active_notes):
+        elif any(note.resolved for note in active_notes):
             state = "resolved"
         else:
             state = "open"
