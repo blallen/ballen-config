@@ -19,7 +19,8 @@ replies or local changes that the user explicitly wants to execute.
 
 ## Quick Reference
 
-1. Authorize selected local edits only.
+1. Revalidate repository standards with `discover-project-standards`, then
+   authorize selected local edits only.
 2. Run and inspect focused verification.
 3. Authorize the exact change description and commit.
 4. Authorize push to the reviewed remote and branch.
@@ -62,4 +63,5 @@ and receipt boundary separately.
 - `prepare-review-response`
 - `publish-gitlab-review`
 - `resolve-change-scope`
+- `discover-project-standards`
 - `using-gitlab`
