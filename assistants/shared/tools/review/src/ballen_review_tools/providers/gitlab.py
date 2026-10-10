@@ -9,6 +9,7 @@ from ballen_review_tools.models import (
     NormalizedReviewThreads,
     NormalizedThread,
     ReviewIdentity,
+    truncate_thread_body,
 )
 
 GitLabThreadState = Literal["open", "resolved", "outdated"]
@@ -211,6 +212,7 @@ def normalize_gitlab_threads(
             raise GitLabProviderError("GitLab discussion IDs must be unique")
         seen_ids.add(thread_id)
         path = PurePosixPath(location[0]) if location is not None else None
+        body, body_limitations = truncate_thread_body(root.body)
         threads.append(
             NormalizedThread(
                 thread_id=thread_id,
@@ -220,9 +222,9 @@ def normalize_gitlab_threads(
                 line=location[1] if location is not None else None,
                 side=location[2] if location is not None else None,
                 author=root.author,
-                body=root.body,
+                body=body,
                 chronology=tuple(note.note_id for note in active_notes),
-                limitations=tuple(thread_limitations),
+                limitations=(*thread_limitations, *body_limitations),
             )
         )
     return NormalizedReviewThreads(

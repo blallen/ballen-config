@@ -198,3 +198,34 @@ def test_gitlab_normalization_maps_removed_lines_to_old_side() -> None:
     assert threads.threads[0].line == 9
     assert threads.threads[0].side == "LEFT"
     assert threads.threads[1].path is None
+
+
+def test_gitlab_normalization_truncates_long_note_bodies() -> None:
+    """Truncate an oversized root note instead of aborting the snapshot."""
+    long_discussion = {
+        "id": "discussion-long",
+        "individual_note": True,
+        "notes": [
+            {
+                "id": 994,
+                "body": "x" * 10_001,
+                "author": {"username": "reviewer"},
+                "system": False,
+            }
+        ],
+    }
+
+    threads = normalize_gitlab_threads(
+        raw_discussions=[*DISCUSSIONS, long_discussion],
+        identity=IDENTITY,
+        revisions=DIFF_REFS,
+    )
+
+    assert [thread.thread_id for thread in threads.threads] == [
+        "discussion-012345",
+        "discussion-resolved",
+        "discussion-outdated",
+        "discussion-long",
+    ]
+    assert threads.threads[3].body == "x" * 10_000
+    assert threads.threads[3].limitations == ("Body truncated to 10000 characters",)
