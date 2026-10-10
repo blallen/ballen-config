@@ -85,9 +85,6 @@ Git must ignore it and track nothing in it:
 
 The second command prints `valid`.
 
-`review-plan validate-threads --threads PATH` validates a
-`normalized-review-threads/v1` snapshot.
-
 ## `compile-response`
 
 `review-plan compile-response` turns a Markdown response draft into a

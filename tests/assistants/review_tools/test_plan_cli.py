@@ -164,10 +164,10 @@ def test_compile_review_binds_one_draft_byte_snapshot(tmp_path: Path) -> None:
     assert artifact["diagnostics"] == []
 
 
-def test_compile_response_writes_only_a_validated_plan(
+def test_compile_response_writes_a_plan_bound_to_the_threads_file(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Compile normalized feedback without constructing mutation tooling."""
+    """Write the parsed plan with the digest `digest` prints for the threads."""
     repo = tmp_path / "repo"
     head = _git_repository(repo)
     workspace = repo / ".reviews"

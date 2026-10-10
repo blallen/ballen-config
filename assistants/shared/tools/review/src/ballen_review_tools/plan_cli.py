@@ -120,8 +120,6 @@ def _parser() -> argparse.ArgumentParser:
     digest.add_argument("--artifact", type=Path, required=True)
     validate = commands.add_parser("validate")
     validate.add_argument("--artifact", type=Path, required=True)
-    validate_threads = commands.add_parser("validate-threads")
-    validate_threads.add_argument("--threads", type=Path, required=True)
     workspace = commands.add_parser("workspace-check")
     workspace.add_argument("--repo-root", type=Path, required=True)
     workspace.add_argument("--destination", type=Path, required=True)
@@ -251,10 +249,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             PublicationReceipt.model_validate(payload)
         else:
             raise ValueError("unsupported artifact contract")
-        print("valid")
-        return 0
-    if args.command == "validate-threads":
-        NormalizedReviewThreads.model_validate(_read_json(args.threads))
         print("valid")
         return 0
     if args.command == "workspace-check":

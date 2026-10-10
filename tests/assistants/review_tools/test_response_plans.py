@@ -99,17 +99,35 @@ def test_normalized_thread_rejects_absolute_path() -> None:
         )
 
 
-def test_normalized_thread_requires_native_ids_and_bounded_text() -> None:
-    """Reject missing provider IDs and unbounded diagnostics."""
-    with pytest.raises(ValidationError):
-        NormalizedThread(
-            thread_id="",
-            comment_ids=(),
-            state="open",
-            author="reviewer",
-            body="Feedback.",
-            chronology=(),
-        )
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        pytest.param("thread_id", "", id="empty-thread-id"),
+        pytest.param("comment_ids", [], id="no-comment-ids"),
+        pytest.param("chronology", [], id="no-chronology"),
+        pytest.param("limitations", ["x" * 2001], id="long-limitation"),
+    ],
+)
+def test_normalized_thread_rejects_each_out_of_contract_field(
+    field: str, value: object
+) -> None:
+    """Reject a missing provider ID or an unbounded limitation on its own."""
+    payload = {
+        "thread_id": "T003",
+        "comment_ids": ["C003"],
+        "state": "open",
+        "author": "reviewer",
+        "body": "Feedback.",
+        "chronology": ["C003"],
+        field: value,
+    }
+
+    with pytest.raises(ValidationError, match=field):
+        NormalizedThread.model_validate(payload)
+
+
+def test_normalized_threads_reject_an_unbounded_limitation() -> None:
+    """Bound snapshot-level limitations like thread-level ones."""
     with pytest.raises(ValidationError, match="limitations"):
         NormalizedReviewThreads(
             contract_version="normalized-review-threads/v1",
@@ -120,8 +138,8 @@ def test_normalized_thread_requires_native_ids_and_bounded_text() -> None:
         )
 
 
-def test_response_plan_binds_identity_and_head_to_normalized_source() -> None:
-    """Prevent response plans from changing their normalized target."""
+def test_response_plan_head_must_match_identity_head() -> None:
+    """Reject a plan whose observed head differs from its identity head."""
     response = parse_response_markdown(RESPONSE_DRAFT, threads=_threads())
     with pytest.raises(ValidationError, match="head"):
         ReviewResponsePlan(

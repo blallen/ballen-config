@@ -298,7 +298,24 @@ def parse_response_markdown(
     *,
     threads: NormalizedReviewThreads,
 ) -> tuple[ReviewResponseItem, ...]:
-    """Parse response decisions while retaining every normalized thread."""
+    """Parse a response draft into one item per normalized thread.
+
+    Args:
+        text: Human-editable response Markdown with one `### <thread-id>:`
+            section per answered thread.
+        threads: Validated normalized threads that the draft answers.
+
+    Returns:
+        One response item per normalized thread, in thread order. A resolved
+        thread without a section becomes a `skip` item classified `resolved`.
+
+    Raises:
+        ValueError: If a heading has no thread ID, a section names an unknown
+            or repeated thread, a field is unknown, repeated, or missing, a
+            classification or action is unsupported, a section gives the
+            proposed response both as a field and as text, an item fails model
+            validation, or a thread that is not resolved has no section.
+    """
     thread_by_id = {thread.thread_id: thread for thread in threads.threads}
     items: dict[str, ReviewResponseItem] = {}
     for thread_id, lines, heading_error in _sections(text.splitlines()):

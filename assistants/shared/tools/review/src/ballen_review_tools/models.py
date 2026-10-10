@@ -1,7 +1,7 @@
 """Strict provider-neutral models for review artifacts."""
 
 from pathlib import PurePosixPath
-from typing import Literal, Self
+from typing import Annotated, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -221,7 +221,7 @@ class NormalizedThread(BaseModel):
     author: str = Field(min_length=1, max_length=256)
     body: str = Field(min_length=1, max_length=10000)
     chronology: tuple[str, ...] = Field(min_length=1)
-    limitations: tuple[str, ...] = ()
+    limitations: tuple[Annotated[str, Field(max_length=2000)], ...] = ()
 
     @field_validator("path", mode="before")
     @classmethod
@@ -230,8 +230,8 @@ class NormalizedThread(BaseModel):
         return _repository_relative_path(value)
 
     @model_validator(mode="after")
-    def _validate_thread(self) -> "NormalizedThread":
-        """Keep location pairs and bounded normalization evidence coherent."""
+    def _validate_thread(self) -> Self:
+        """Keep location pairs and ranges coherent."""
         if self.path is None and any(
             value is not None
             for value in (self.line, self.side, self.start_line, self.start_side)
@@ -246,8 +246,6 @@ class NormalizedThread(BaseModel):
             or (self.start_side == self.side and self.start_line > self.line)
         ):
             raise ValueError("start_line must not exceed line")
-        if any(len(limitation) > 2000 for limitation in self.limitations):
-            raise ValueError("limitations are too long")
         return self
 
 
@@ -259,16 +257,14 @@ class NormalizedReviewThreads(BaseModel):
     contract_version: Literal["normalized-review-threads/v1"]
     identity: ReviewIdentity
     observed_head: str = Field(min_length=1)
-    limitations: tuple[str, ...] = ()
+    limitations: tuple[Annotated[str, Field(max_length=2000)], ...] = ()
     threads: tuple[NormalizedThread, ...] = ()
 
     @model_validator(mode="after")
-    def _validate_source(self) -> "NormalizedReviewThreads":
+    def _validate_source(self) -> Self:
         """Bind the normalized source to its provider/change head."""
         if self.observed_head != self.identity.head_revision:
             raise ValueError("normalized thread head does not match identity head")
-        if any(len(limitation) > 2000 for limitation in self.limitations):
-            raise ValueError("limitations are too long")
         thread_ids = [thread.thread_id for thread in self.threads]
         if len(thread_ids) != len(set(thread_ids)):
             raise ValueError("thread IDs must be unique")
@@ -311,7 +307,7 @@ class ReviewResponsePlan(BaseModel):
     items: tuple[ReviewResponseItem, ...] = ()
 
     @model_validator(mode="after")
-    def _validate_response_source(self) -> "ReviewResponsePlan":
+    def _validate_response_source(self) -> Self:
         """Keep the response target and observed head immutable."""
         if self.observed_head != self.identity.head_revision:
             raise ValueError("response plan head does not match identity head")
