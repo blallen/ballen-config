@@ -17,7 +17,6 @@ from ballen_review_tools.providers.gitlab import (
     GitLabProvider,
     GitLabProviderError,
     GitLabRemoteState,
-    _current_position,
 )
 
 
@@ -53,15 +52,27 @@ def _remote_id(value: object) -> str | None:
 def _remote_duplicate(action: ReviewAction, state: GitLabRemoteState) -> bool:
     """Return whether the exact logical action is already remote."""
     if action.kind == "inline":
-        if action.path is None or action.line is None or action.side is None:
+        line = GitLabProvider.diff_line(action, state)
+        if line is None:
             return False
-        expected = (action.path.as_posix(), action.line, action.side)
+        refs = state.diff_refs
         for discussion in state.discussions:
             for note in discussion.notes[:1]:
+                position = note.position
                 if (
                     not note.system
                     and note.body == action.body
-                    and _current_position(note.position, state.diff_refs) == expected
+                    and position is not None
+                    and position.position_type == "text"
+                    and (position.base_sha, position.start_sha, position.head_sha)
+                    == (refs.base_sha, refs.start_sha, refs.head_sha)
+                    and (
+                        position.old_path,
+                        position.new_path,
+                        position.old_line,
+                        position.new_line,
+                    )
+                    == line
                 ):
                     return True
         return False
@@ -137,10 +148,7 @@ def _preview_gitlab_publication_with_state(
                 )
             )
             continue
-        if (
-            action.kind == "inline"
-            and provider.diff_line_numbers(action, state) is None
-        ):
+        if action.kind == "inline" and provider.diff_line(action, state) is None:
             items.append(
                 PublicationItemPreview(
                     action_id=action.action_id,

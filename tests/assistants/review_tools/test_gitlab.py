@@ -14,6 +14,7 @@ from ballen_review_tools.models import (
 )
 from ballen_review_tools.providers.base import CompletedCommand
 from ballen_review_tools.providers.gitlab import (
+    DiffLine,
     DiffLineKey,
     GitLabDiffRefs,
     GitLabProvider,
@@ -66,14 +67,17 @@ def _refs() -> GitLabDiffRefs:
 
 
 def _state(
-    diff_lines: dict[DiffLineKey, tuple[int | None, int | None]],
+    line_numbers: dict[DiffLineKey, tuple[int | None, int | None]],
 ) -> GitLabRemoteState:
     """Return current GitLab state whose MR diff holds only the given lines."""
     return GitLabRemoteState(
         diff_refs=_refs(),
         discussions=(),
         notes=(),
-        diff_lines=diff_lines,
+        diff_lines={
+            key: DiffLine(key[0], key[0], *numbers)
+            for key, numbers in line_numbers.items()
+        },
     )
 
 
@@ -298,15 +302,42 @@ def test_gitlab_diff_lines_map_renamed_file_and_skip_missing_diff_text() -> None
 
     state = GitLabProvider(identity=_identity(), runner=runner).fetch_remote_state()
 
+    paths = ("src/old_name.py", "src/new_name.py")
     assert state.diff_lines == {
-        ("src/new_name.py", 2, "RIGHT"): (2, 2),
-        ("src/old_name.py", 2, "LEFT"): (2, 2),
-        ("src/old_name.py", 3, "LEFT"): (3, None),
-        ("src/new_name.py", 3, "RIGHT"): (None, 3),
-        ("src/new_name.py", 4, "RIGHT"): (None, 4),
-        ("src/new_name.py", 10, "RIGHT"): (9, 10),
-        ("src/old_name.py", 9, "LEFT"): (9, 10),
-        ("src/old_name.py", 10, "LEFT"): (10, None),
-        ("src/new_name.py", 11, "RIGHT"): (None, 11),
-        ("src/new_name.py", 12, "RIGHT"): (None, 12),
+        ("src/new_name.py", 2, "RIGHT"): (*paths, 2, 2),
+        ("src/old_name.py", 2, "LEFT"): (*paths, 2, 2),
+        ("src/old_name.py", 3, "LEFT"): (*paths, 3, None),
+        ("src/new_name.py", 3, "RIGHT"): (*paths, None, 3),
+        ("src/new_name.py", 4, "RIGHT"): (*paths, None, 4),
+        ("src/new_name.py", 10, "RIGHT"): (*paths, 9, 10),
+        ("src/old_name.py", 9, "LEFT"): (*paths, 9, 10),
+        ("src/old_name.py", 10, "LEFT"): (*paths, 10, None),
+        ("src/new_name.py", 11, "RIGHT"): (*paths, None, 11),
+        ("src/new_name.py", 12, "RIGHT"): (*paths, None, 12),
     }
+
+
+def test_gitlab_discussion_payload_sends_both_paths_for_renamed_file() -> None:
+    """Send a renamed file's old and new path, as GitLab requires."""
+    provider = GitLabProvider(identity=_identity(), runner=RecordingRunner())
+    state = GitLabRemoteState(
+        diff_refs=_refs(),
+        discussions=(),
+        notes=(),
+        diff_lines={
+            ("src/new_name.py", 42, "RIGHT"): DiffLine(
+                "src/old_name.py", "src/new_name.py", 40, 42
+            )
+        },
+    )
+
+    payload = provider.discussion_payload(
+        _inline_plan(path="src/new_name.py").actions[0], state
+    )
+
+    position = payload["position"]
+    assert (position["old_path"], position["new_path"]) == (
+        "src/old_name.py",
+        "src/new_name.py",
+    )
+    assert (position["old_line"], position["new_line"]) == (40, 42)

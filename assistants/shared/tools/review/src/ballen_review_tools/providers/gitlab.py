@@ -5,7 +5,7 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import PurePosixPath
-from typing import Final, Literal, NotRequired, TypedDict
+from typing import Final, Literal, NamedTuple, NotRequired, TypedDict
 from urllib.parse import quote
 
 from ballen_review_tools.models import (
@@ -21,6 +21,15 @@ from ballen_review_tools.providers.base import CommandRunner
 GitLabThreadState = Literal["open", "resolved", "outdated"]
 DiffLineKey = tuple[str, int, ReviewSide]
 _HUNK: Final[re.Pattern[str]] = re.compile(r"^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@")
+
+
+class DiffLine(NamedTuple):
+    """GitLab position fields for one commentable line of the current MR diff."""
+
+    old_path: str
+    new_path: str
+    old_line: int | None
+    new_line: int | None
 
 
 @dataclass(frozen=True)
@@ -82,14 +91,14 @@ class GitLabRemoteState:
 
     Attributes:
         diff_lines: Every commentable `(path, line, side)` in the current MR
-            diff, mapped to the GitLab `(old_line, new_line)` pair that a
+            diff, mapped to the GitLab paths and line numbers that a
             discussion position on that line must send.
     """
 
     diff_refs: GitLabDiffRefs
     discussions: tuple[GitLabRemoteDiscussion, ...]
     notes: tuple[_GitLabNote, ...]
-    diff_lines: Mapping[DiffLineKey, tuple[int | None, int | None]]
+    diff_lines: Mapping[DiffLineKey, DiffLine]
 
 
 class GitLabPositionPayload(TypedDict):
@@ -221,8 +230,8 @@ def _diff_line_map(
     old_path: str,
     new_path: str,
     diff: str,
-) -> dict[DiffLineKey, tuple[int | None, int | None]]:
-    """Map each commentable line of one file diff to its GitLab line pair.
+) -> dict[DiffLineKey, DiffLine]:
+    """Map each commentable line of one file diff to its GitLab position.
 
     Args:
         old_path: File path before the change.
@@ -230,13 +239,13 @@ def _diff_line_map(
         diff: Unified diff hunks for the file, empty when GitLab omits them.
 
     Returns:
-        A map from `(path, line, side)` to GitLab `(old_line, new_line)`. An
-        added line maps on the right only, a removed line on the left only, and
-        an unchanged context line on both sides with both numbers. Text before
-        the first hunk and `\\ No newline at end of file` markers advance
-        neither line counter.
+        A map from `(path, line, side)` to the file's old and new paths and the
+        GitLab `old_line` and `new_line`. An added line maps on the right only,
+        a removed line on the left only, and an unchanged context line on both
+        sides with both numbers. Text before the first hunk and
+        `\\ No newline at end of file` markers advance neither line counter.
     """
-    lines: dict[DiffLineKey, tuple[int | None, int | None]] = {}
+    lines: dict[DiffLineKey, DiffLine] = {}
     old_line: int | None = None
     new_line: int | None = None
     for text in diff.split("\n"):
@@ -246,20 +255,25 @@ def _diff_line_map(
         elif old_line is None or new_line is None:
             continue
         elif text.startswith("+"):
-            lines[(new_path, new_line, "RIGHT")] = (None, new_line)
+            lines[(new_path, new_line, "RIGHT")] = DiffLine(
+                old_path, new_path, None, new_line
+            )
             new_line += 1
         elif text.startswith("-"):
-            lines[(old_path, old_line, "LEFT")] = (old_line, None)
+            lines[(old_path, old_line, "LEFT")] = DiffLine(
+                old_path, new_path, old_line, None
+            )
             old_line += 1
         elif text.startswith(" "):
-            lines[(new_path, new_line, "RIGHT")] = (old_line, new_line)
-            lines[(old_path, old_line, "LEFT")] = (old_line, new_line)
+            context = DiffLine(old_path, new_path, old_line, new_line)
+            lines[(new_path, new_line, "RIGHT")] = context
+            lines[(old_path, old_line, "LEFT")] = context
             old_line += 1
             new_line += 1
     return lines
 
 
-def _diff_lines(value: object) -> dict[DiffLineKey, tuple[int | None, int | None]]:
+def _diff_lines(value: object) -> dict[DiffLineKey, DiffLine]:
     """Combine the diff line maps of every file in a GitLab MR diffs response.
 
     Args:
@@ -274,7 +288,7 @@ def _diff_lines(value: object) -> dict[DiffLineKey, tuple[int | None, int | None
     """
     if not isinstance(value, list):
         raise GitLabProviderError("GitLab diff response was malformed")
-    lines: dict[DiffLineKey, tuple[int | None, int | None]] = {}
+    lines: dict[DiffLineKey, DiffLine] = {}
     for item in value:
         if not isinstance(item, Mapping):
             raise GitLabProviderError("GitLab diff response was malformed")
@@ -386,10 +400,10 @@ class GitLabProvider:
         )
 
     @staticmethod
-    def diff_line_numbers(
+    def diff_line(
         action: ReviewAction,
         state: GitLabRemoteState,
-    ) -> tuple[int | None, int | None] | None:
+    ) -> DiffLine | None:
         """Look up an inline action's line in the current MR diff.
 
         Args:
@@ -397,8 +411,8 @@ class GitLabProvider:
             state: Current GitLab state with its diff line map.
 
         Returns:
-            The GitLab `(old_line, new_line)` pair for the action's path, line,
-            and side, or `None` when the current MR diff does not contain it.
+            The GitLab paths and line numbers for the action's path, line, and
+            side, or `None` when the current MR diff does not contain it.
         """
         if action.path is None or action.line is None or action.side is None:
             return None
@@ -429,25 +443,23 @@ class GitLabProvider:
             raise GitLabProviderError("inline action has no complete GitLab position")
         if action.start_line is not None:
             raise GitLabProviderError("GitLab line ranges require native line codes")
-        line_numbers = self.diff_line_numbers(action, state)
-        if line_numbers is None:
+        line = self.diff_line(action, state)
+        if line is None:
             raise GitLabProviderError(
                 "inline location is not present in the current GitLab diff"
             )
-        old_line, new_line = line_numbers
-        path = action.path.as_posix()
         position: GitLabPositionPayload = {
             "position_type": "text",
             "base_sha": state.diff_refs.base_sha,
             "head_sha": state.diff_refs.head_sha,
             "start_sha": state.diff_refs.start_sha,
-            "old_path": path,
-            "new_path": path,
+            "old_path": line.old_path,
+            "new_path": line.new_path,
         }
-        if old_line is not None:
-            position["old_line"] = old_line
-        if new_line is not None:
-            position["new_line"] = new_line
+        if line.old_line is not None:
+            position["old_line"] = line.old_line
+        if line.new_line is not None:
+            position["new_line"] = line.new_line
         return {"body": action.body, "position": position}
 
     @staticmethod

@@ -319,14 +319,21 @@ def test_preview_blocks_inline_action_outside_current_diff(
 
 
 @pytest.mark.parametrize(
-    ("note_head", "outcome"),
+    ("position_overrides", "outcome"),
     [
-        pytest.param(HEAD_SHA, "duplicate", id="current-position"),
-        pytest.param("9" * 40, "posted", id="stale-position"),
+        pytest.param({}, "duplicate", id="current-position"),
+        pytest.param({"head_sha": "9" * 40}, "posted", id="stale-position"),
+        pytest.param({"new_line": 43}, "posted", id="other-line"),
+        pytest.param(
+            {"old_path": "src/other.py", "new_path": "src/other.py"},
+            "posted",
+            id="other-path",
+        ),
+        pytest.param({"position_type": "image"}, "posted", id="non-text-position"),
     ],
 )
 def test_execute_skips_inline_discussion_only_at_current_position(
-    note_head: str, outcome: str
+    position_overrides: dict[str, object], outcome: str
 ) -> None:
     """Treat a remote inline note as a duplicate only at its current position."""
     plan = _inline_plan(line=42)
@@ -345,10 +352,11 @@ def test_execute_skips_inline_discussion_only_at_current_position(
                                 "position_type": "text",
                                 "base_sha": BASE_SHA,
                                 "start_sha": START_SHA,
-                                "head_sha": note_head,
+                                "head_sha": HEAD_SHA,
                                 "old_path": "src/example.py",
                                 "new_path": "src/example.py",
                                 "new_line": 42,
+                                **position_overrides,
                             },
                         }
                     ],
@@ -516,3 +524,49 @@ def test_cli_execute_writes_posted_receipt(
     assert [(item.outcome, item.remote_id) for item in receipt.items] == [
         ("posted", "77")
     ]
+
+
+def test_execute_skips_left_side_context_duplicate() -> None:
+    """Recognize a retried left-side comment on an unchanged line."""
+    plan = _inline_plan(line=40, side="LEFT")
+    reads = _reads()
+    reads[1] = CompletedCommand(
+        0,
+        json.dumps(
+            [
+                {
+                    "id": "discussion-001",
+                    "notes": [
+                        {
+                            "id": 5,
+                            "body": "Guard the empty case.",
+                            "position": {
+                                "position_type": "text",
+                                "base_sha": BASE_SHA,
+                                "start_sha": START_SHA,
+                                "head_sha": HEAD_SHA,
+                                "old_path": "src/example.py",
+                                "new_path": "src/example.py",
+                                "old_line": 40,
+                                "new_line": 41,
+                            },
+                        }
+                    ],
+                }
+            ]
+        ),
+        "",
+    )
+    runner = RecordingRunner(
+        [*reads, CompletedCommand(0, '{"id": "discussion-002"}', "")]
+    )
+
+    result = execute_gitlab_publication(
+        plan=plan,
+        approved_plan_digest=plan_digest(plan),
+        expected_head=HEAD_SHA,
+        provider=GitLabProvider(identity=plan.identity, runner=runner),
+    )
+
+    assert result.receipt is not None
+    assert [item.outcome for item in result.receipt.items] == ["duplicate"]
