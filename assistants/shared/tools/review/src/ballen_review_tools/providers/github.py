@@ -5,7 +5,7 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import PurePosixPath
-from typing import Final, Literal, NotRequired, TypedDict, cast
+from typing import Final, Literal, NotRequired, TypedDict
 
 from ballen_review_tools.models import (
     NormalizedReviewThreads,
@@ -14,6 +14,7 @@ from ballen_review_tools.models import (
     ReviewCommentPlan,
     ReviewIdentity,
     ReviewSide,
+    truncate_thread_body,
 )
 from ballen_review_tools.providers.base import CommandRunner
 
@@ -93,9 +94,9 @@ class GitHubRemoteComment:
     path: str | None = None
     line: int | None = None
     original_line: int | None = None
-    side: str | None = None
+    side: ReviewSide | None = None
     start_line: int | None = None
-    start_side: str | None = None
+    start_side: ReviewSide | None = None
     in_reply_to: int | None = None
 
 
@@ -178,6 +179,13 @@ class GitHubProvider:
         """Return one positive integer field or None."""
         return value if isinstance(value, int) and value > 0 else None
 
+    @staticmethod
+    def _side(value: object) -> ReviewSide | None:
+        """Return one diff side or None, rejecting values outside the contract."""
+        if value is not None and value not in ("LEFT", "RIGHT"):
+            raise GitHubProviderError("GitHub comment side must be LEFT or RIGHT")
+        return value
+
     @classmethod
     def _review_comment(cls, value: object) -> GitHubRemoteComment:
         """Normalize only the fields needed for safe deduplication."""
@@ -199,13 +207,9 @@ class GitHubProvider:
             path=value.get("path") if isinstance(value.get("path"), str) else None,
             line=cls._int(value.get("line")),
             original_line=cls._int(value.get("original_line")),
-            side=value.get("side") if isinstance(value.get("side"), str) else None,
+            side=cls._side(value.get("side")),
             start_line=cls._int(value.get("start_line")),
-            start_side=(
-                value.get("start_side")
-                if isinstance(value.get("start_side"), str)
-                else None
-            ),
+            start_side=cls._side(value.get("start_side")),
             in_reply_to=cls._int(value.get("in_reply_to_id")),
         )
 
@@ -367,7 +371,9 @@ def normalize_github_comments(
 
     A line comment that had an original line but has no current line is
     outdated: GitHub keeps it on the pull request, but it no longer maps to the
-    current diff. File-level comments have neither line and stay open.
+    current diff. File-level comments have neither line and stay open. A root
+    body longer than `THREAD_BODY_LIMIT` is truncated, and its thread records
+    the limitation.
 
     Args:
         identity: GitHub review identity the comments belong to.
@@ -379,7 +385,7 @@ def normalize_github_comments(
 
     Raises:
         GitHubProviderError: If the identity is not a GitHub identity or a
-            comment is malformed.
+            comment is malformed or has a side other than LEFT or RIGHT.
     """
     if identity.provider != "github":
         raise GitHubProviderError("GitHub normalization requires a GitHub identity")
@@ -397,6 +403,12 @@ def normalize_github_comments(
         outdated = (
             root.path is not None and not positioned and root.original_line is not None
         )
+        body, limitations = truncate_thread_body(root.body)
+        if outdated:
+            limitations = (
+                "Comment no longer maps to a line in the current diff",
+                *limitations,
+            )
         threads.append(
             NormalizedThread(
                 thread_id=str(root.comment_id),
@@ -404,25 +416,13 @@ def normalize_github_comments(
                 state="outdated" if outdated else "open",
                 path=PurePosixPath(root.path) if root.path is not None else None,
                 line=root.line,
-                side=(
-                    cast(ReviewSide, root.side)
-                    if root.side is not None and positioned
-                    else None
-                ),
+                side=root.side if positioned else None,
                 start_line=root.start_line if positioned else None,
-                start_side=(
-                    cast(ReviewSide, root.start_side)
-                    if root.start_side is not None and positioned
-                    else None
-                ),
+                start_side=root.start_side if positioned else None,
                 author=root.author,
-                body=root.body,
+                body=body,
                 chronology=tuple(str(comment.comment_id) for comment in chronology),
-                limitations=(
-                    ("Comment no longer maps to a line in the current diff",)
-                    if outdated
-                    else ()
-                ),
+                limitations=limitations,
             )
         )
     return NormalizedReviewThreads(

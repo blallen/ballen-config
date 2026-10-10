@@ -131,3 +131,74 @@ def test_file_level_comment_stays_open_without_a_line() -> None:
     assert thread.path == PurePosixPath("src/example.py")
     assert thread.line is None
     assert thread.limitations == ()
+
+
+@pytest.mark.parametrize(
+    ("length", "limitations"),
+    [
+        pytest.param(10_000, (), id="at-limit"),
+        pytest.param(10_001, ("Body truncated to 10000 characters",), id="over-limit"),
+    ],
+)
+def test_long_body_is_truncated_with_a_limitation(
+    length: int, limitations: tuple[str, ...]
+) -> None:
+    """Fit an oversized comment body instead of aborting the snapshot."""
+    body = "x" * length
+
+    threads = normalize_github_comments(
+        identity=IDENTITY,
+        head_sha=IDENTITY.head_revision,
+        comments=[{"id": 40, "body": body, "user": {"login": "bot"}}],
+    )
+
+    thread = threads.threads[0]
+    assert thread.body == body[:10_000]
+    assert thread.limitations == limitations
+
+
+def test_truncation_joins_other_thread_limitations() -> None:
+    """Keep the outdated and truncation limitations on the same thread."""
+    threads = normalize_github_comments(
+        identity=IDENTITY,
+        head_sha=IDENTITY.head_revision,
+        comments=[
+            {
+                "id": 41,
+                "body": "x" * 10_001,
+                "path": "src/example.py",
+                "line": None,
+                "original_line": 12,
+                "side": "RIGHT",
+                "user": {"login": "bot"},
+            }
+        ],
+    )
+
+    assert threads.threads[0].limitations == (
+        "Comment no longer maps to a line in the current diff",
+        "Body truncated to 10000 characters",
+    )
+
+
+@pytest.mark.parametrize("field", ["side", "start_side"])
+def test_unknown_comment_side_is_rejected(field: str) -> None:
+    """Reject a diff side outside LEFT and RIGHT instead of casting it."""
+    comment: dict[str, object] = {
+        "id": 50,
+        "body": "Guard the empty case.",
+        "path": "src/example.py",
+        "start_line": 18,
+        "start_side": "RIGHT",
+        "line": 20,
+        "side": "RIGHT",
+        "user": {"login": "reviewer"},
+    }
+    comment[field] = "CENTER"
+
+    with pytest.raises(GitHubProviderError, match="side must be LEFT or RIGHT"):
+        normalize_github_comments(
+            identity=IDENTITY,
+            head_sha=IDENTITY.head_revision,
+            comments=[comment],
+        )
