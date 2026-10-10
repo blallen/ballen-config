@@ -1,8 +1,6 @@
 """Tests for GitLab publication preview and guarded execution."""
 
 import json
-from collections.abc import Sequence
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final
 
@@ -23,28 +21,12 @@ from ballen_review_tools.models import (
 from ballen_review_tools.providers.base import CompletedCommand
 from ballen_review_tools.providers.gitlab import GitLabProvider
 
+from tests.assistants.review_tools.doubles import RecordingRunner
+
 BASE_SHA: Final[str] = "a" * 40
 START_SHA: Final[str] = "b" * 40
 HEAD_SHA: Final[str] = "c" * 40
 NEW_HEAD: Final[str] = "d" * 40
-
-
-@dataclass
-class RecordingRunner:
-    """Return bounded responses and record mutation vectors."""
-
-    responses: list[CompletedCommand] = field(default_factory=list)
-    calls: list[tuple[Sequence[str], str | None]] = field(default_factory=list)
-
-    def run(
-        self,
-        argv: Sequence[str],
-        *,
-        input_text: str | None = None,
-    ) -> CompletedCommand:
-        """Record one fixed provider call."""
-        self.calls.append((tuple(argv), input_text))
-        return self.responses.pop(0)
 
 
 def _identity(head: str = HEAD_SHA) -> ReviewIdentity:

@@ -1,33 +1,15 @@
 """Tests for GitHub payloads and fixed transport vectors."""
 
 import json
-from collections.abc import Sequence
-from dataclasses import dataclass, field
 
 import pytest
 from ballen_review_tools.models import ReviewAction, ReviewCommentPlan, ReviewIdentity
 from ballen_review_tools.providers.base import CompletedCommand
 from ballen_review_tools.providers.github import GitHubProvider, GitHubProviderError
 
+from tests.assistants.review_tools.doubles import RecordingRunner
+
 HEAD_SHA = "b" * 40
-
-
-@dataclass
-class RecordingRunner:
-    """Return bounded command responses and retain argument vectors."""
-
-    responses: list[CompletedCommand] = field(default_factory=list)
-    calls: list[tuple[Sequence[str], str | None]] = field(default_factory=list)
-
-    def run(
-        self,
-        argv: Sequence[str],
-        *,
-        input_text: str | None = None,
-    ) -> CompletedCommand:
-        """Record one no-shell command invocation."""
-        self.calls.append((tuple(argv), input_text))
-        return self.responses.pop(0)
 
 
 def _identity() -> ReviewIdentity:
