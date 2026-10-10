@@ -23,7 +23,8 @@ commit, push, reply, or resolution decision.
 2. Discover repository standards and invoke native `receiving-code-review` when
    available.
 3. Evaluate technical validity before agreeing with feedback.
-4. Retain every thread, including resolved and informational evidence.
+4. Write a response section for every thread that is not resolved. Resolved
+   threads without a section are kept as `skip` evidence.
 5. Write only the ignored response plan, then stop.
 
 ## Boundaries

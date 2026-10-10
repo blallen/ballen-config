@@ -12,5 +12,10 @@ item requires at least one entry in `proposed_changes`.
 `source_threads_digest` is the canonical digest of the normalized-threads file
 as written, the value `review-plan digest --artifact` prints for that file.
 
+Every thread that is not resolved needs a response section in the draft.
+`review-plan compile-response` rejects a draft that omits one and names the
+missing thread IDs. A resolved thread without a section is kept as a `skip`
+item classified `resolved`.
+
 The plan does not authorize local edits, commits, pushes, replies, or thread
 resolution.

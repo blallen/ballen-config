@@ -335,14 +335,20 @@ def parse_response_markdown(
             verification=_list_field(metadata, "Verification"),
             selected_action=cast(ResponseAction, selected_action),
         )
+    missing = [
+        thread.thread_id
+        for thread in threads.threads
+        if thread.thread_id not in items and thread.state != "resolved"
+    ]
+    if missing:
+        raise ValueError(
+            f"response draft omits unresolved threads: {', '.join(missing)}"
+        )
     for thread in threads.threads:
         if thread.thread_id not in items:
-            classification = (
-                "resolved" if thread.state == "resolved" else "informational"
-            )
             items[thread.thread_id] = ReviewResponseItem(
                 thread_id=thread.thread_id,
-                classification=cast(ResponseClassification, classification),
+                classification="resolved",
                 evaluation="No response decision was supplied.",
                 evidence="Thread retained as missing response coverage.",
                 selected_action="skip",

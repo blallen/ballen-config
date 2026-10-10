@@ -274,3 +274,50 @@ def test_selected_action_requires_its_content(
                 "selected_action": selected_action,
             }
         )
+
+
+OPEN_THREAD_DRAFT = """### T001: Address the empty case
+
+**Classification:** actionable
+**Selected action:** propose-change
+**Evaluation:** The feedback is technically valid.
+**Evidence:** The current branch still dereferences an empty result.
+**Proposed changes:** Guard the empty result before iteration.
+**Verification:** focused unit test for the empty result
+"""
+
+
+def test_omitted_resolved_thread_is_kept_as_skipped_evidence() -> None:
+    """Retain a resolved thread that has no response section."""
+    response = parse_response_markdown(OPEN_THREAD_DRAFT, threads=_threads())
+
+    assert [item.thread_id for item in response] == ["T001", "T002"]
+    assert (response[1].classification, response[1].selected_action) == (
+        "resolved",
+        "skip",
+    )
+
+
+def test_draft_must_answer_every_unresolved_thread() -> None:
+    """Name each omitted unresolved thread, but not omitted resolved ones."""
+    threads = NormalizedReviewThreads(
+        contract_version="normalized-review-threads/v1",
+        identity=IDENTITY,
+        observed_head=IDENTITY.head_revision,
+        threads=(
+            *_threads().threads,
+            NormalizedThread(
+                thread_id="T003",
+                comment_ids=("C003",),
+                state="open",
+                author="reviewer",
+                body="Rename the helper.",
+                chronology=("C003",),
+            ),
+        ),
+    )
+
+    with pytest.raises(
+        ValueError, match=r"^response draft omits unresolved threads: T003$"
+    ):
+        parse_response_markdown(OPEN_THREAD_DRAFT, threads=threads)
