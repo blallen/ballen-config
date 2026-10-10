@@ -4,6 +4,7 @@ import hashlib
 import json
 import subprocess
 from pathlib import Path
+from typing import Final
 
 import pytest
 from ballen_review_tools.canonical import source_digest_bytes
@@ -167,14 +168,31 @@ def test_compile_review_binds_one_draft_byte_snapshot(tmp_path: Path) -> None:
     assert artifact["diagnostics"] == []
 
 
-def test_compile_response_writes_a_plan_bound_to_the_threads_file(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """Write the parsed plan with the digest `digest` prints for the threads."""
-    repo = tmp_path / "repo"
-    head = _git_repository(repo)
-    workspace = repo / ".reviews"
-    workspace.mkdir()
+RESPONSE_DRAFT: Final[str] = """### T001: Guard the empty case
+
+**Classification:** actionable
+**Selected action:** propose-change
+**Evaluation:** The feedback is valid.
+**Evidence:** The empty result is dereferenced.
+**Proposed changes:** Add a guard.
+**Proposed response:** I will add the guard.
+**Verification:** focused test
+"""
+
+
+def _write_response_inputs(
+    repo: Path, *, repository: str, head: str
+) -> tuple[Path, Path]:
+    """Write one open-thread snapshot and a response draft that answers it.
+
+    Args:
+        repo: Repository root that receives `threads.json` and `response.md`.
+        repository: Repository named by the snapshot identity.
+        head: Head revision the snapshot identity and observed head carry.
+
+    Returns:
+        The threads file and the draft file.
+    """
     threads = repo / "threads.json"
     threads.write_text(
         json.dumps(
@@ -183,7 +201,7 @@ def test_compile_response_writes_a_plan_bound_to_the_threads_file(
                 "identity": {
                     "provider": "github",
                     "host": "github.com",
-                    "repository": "ballen-config",
+                    "repository": repository,
                     "change_number": 17,
                     "base_revision": "a" * 40,
                     "head_revision": head,
@@ -204,18 +222,19 @@ def test_compile_response_writes_a_plan_bound_to_the_threads_file(
         )
     )
     draft = repo / "response.md"
-    draft.write_text(
-        """### T001: Guard the empty case
+    draft.write_text(RESPONSE_DRAFT)
+    return threads, draft
 
-**Classification:** actionable
-**Selected action:** propose-change
-**Evaluation:** The feedback is valid.
-**Evidence:** The empty result is dereferenced.
-**Proposed changes:** Add a guard.
-**Proposed response:** I will add the guard.
-**Verification:** focused test
-"""
-    )
+
+def test_compile_response_writes_a_plan_bound_to_the_threads_file(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Write the parsed plan with the digest `digest` prints for the threads."""
+    repo = tmp_path / "repo"
+    head = _git_repository(repo)
+    workspace = repo / ".reviews"
+    workspace.mkdir()
+    threads, draft = _write_response_inputs(repo, repository="ballen-config", head=head)
     output = workspace / "response-plan.json"
 
     assert (
@@ -261,47 +280,7 @@ def test_compile_response_rejects_a_mismatched_identity(
     workspace = repo / ".reviews"
     workspace.mkdir()
     observed = head_override or head
-    threads = repo / "threads.json"
-    threads.write_text(
-        json.dumps(
-            {
-                "contract_version": "normalized-review-threads/v1",
-                "identity": {
-                    "provider": "github",
-                    "host": "github.com",
-                    "repository": repository,
-                    "change_number": 17,
-                    "base_revision": "a" * 40,
-                    "head_revision": observed,
-                },
-                "observed_head": observed,
-                "limitations": [],
-                "threads": [
-                    {
-                        "thread_id": "T001",
-                        "comment_ids": ["C001"],
-                        "state": "open",
-                        "author": "reviewer",
-                        "body": "Guard the empty case.",
-                        "chronology": ["C001"],
-                    }
-                ],
-            }
-        )
-    )
-    draft = repo / "response.md"
-    draft.write_text(
-        """### T001: Guard the empty case
-
-**Classification:** actionable
-**Selected action:** propose-change
-**Evaluation:** The feedback is valid.
-**Evidence:** The empty result is dereferenced.
-**Proposed changes:** Add a guard.
-**Proposed response:** I will add the guard.
-**Verification:** focused test
-"""
-    )
+    threads, draft = _write_response_inputs(repo, repository=repository, head=observed)
     output = workspace / "response-plan.json"
 
     with pytest.raises(ValueError, match=reason):

@@ -47,80 +47,82 @@ def _position(
     return position
 
 
-DISCUSSIONS = [
-    {
-        "id": "discussion-012345",
-        "individual_note": False,
-        "notes": [
-            {
-                "id": 988,
-                "body": "A later reply.",
-                "author": {"username": "author"},
-                "system": False,
-                "created_at": "2026-07-30T12:01:00Z",
-            },
-            {
-                "id": 987,
-                "body": "Guard the empty case.",
-                "author": {"username": "reviewer"},
-                "system": False,
-                "created_at": "2026-07-30T12:00:00Z",
-                "resolvable": True,
-                "resolved": False,
-                "position": _position(old_line=41),
-            },
-        ],
-    },
-    {
-        "id": "discussion-resolved",
-        "individual_note": False,
-        "notes": [
-            {
-                "id": 989,
-                "body": "Already handled.",
-                "author": {"username": "reviewer"},
-                "system": False,
-                "created_at": "2026-07-30T12:02:00Z",
-                "resolvable": True,
-                "resolved": True,
-                "position": _position(),
-            }
-        ],
-    },
-    {
-        "id": "discussion-outdated",
-        "individual_note": False,
-        "notes": [
-            {
-                "id": 990,
-                "body": "This moved with the diff.",
-                "author": {"username": "reviewer"},
-                "system": False,
-                "created_at": "2026-07-30T12:03:00Z",
-                "position": _position(head_sha="d" * 40),
-            }
-        ],
-    },
-    {
-        "id": "discussion-system",
-        "individual_note": True,
-        "notes": [
-            {
-                "id": 991,
-                "body": "A system event.",
-                "author": {"username": "bot"},
-                "system": True,
-                "created_at": "2026-07-30T12:04:00Z",
-            }
-        ],
-    },
-]
+def _discussions() -> list[object]:
+    """Return fresh GitLab discussions covering each normalization case."""
+    return [
+        {
+            "id": "discussion-012345",
+            "individual_note": False,
+            "notes": [
+                {
+                    "id": 988,
+                    "body": "A later reply.",
+                    "author": {"username": "author"},
+                    "system": False,
+                    "created_at": "2026-07-30T12:01:00Z",
+                },
+                {
+                    "id": 987,
+                    "body": "Guard the empty case.",
+                    "author": {"username": "reviewer"},
+                    "system": False,
+                    "created_at": "2026-07-30T12:00:00Z",
+                    "resolvable": True,
+                    "resolved": False,
+                    "position": _position(old_line=41),
+                },
+            ],
+        },
+        {
+            "id": "discussion-resolved",
+            "individual_note": False,
+            "notes": [
+                {
+                    "id": 989,
+                    "body": "Already handled.",
+                    "author": {"username": "reviewer"},
+                    "system": False,
+                    "created_at": "2026-07-30T12:02:00Z",
+                    "resolvable": True,
+                    "resolved": True,
+                    "position": _position(),
+                }
+            ],
+        },
+        {
+            "id": "discussion-outdated",
+            "individual_note": False,
+            "notes": [
+                {
+                    "id": 990,
+                    "body": "This moved with the diff.",
+                    "author": {"username": "reviewer"},
+                    "system": False,
+                    "created_at": "2026-07-30T12:03:00Z",
+                    "position": _position(head_sha="d" * 40),
+                }
+            ],
+        },
+        {
+            "id": "discussion-system",
+            "individual_note": True,
+            "notes": [
+                {
+                    "id": 991,
+                    "body": "A system event.",
+                    "author": {"username": "bot"},
+                    "system": True,
+                    "created_at": "2026-07-30T12:04:00Z",
+                }
+            ],
+        },
+    ]
 
 
 def test_gitlab_normalization_preserves_discussion_identity_and_position() -> None:
     """Keep GitLab discussion IDs, chronology, and current text locations."""
     threads = normalize_gitlab_threads(
-        raw_discussions=DISCUSSIONS,
+        raw_discussions=_discussions(),
         identity=IDENTITY,
         revisions=DIFF_REFS,
     )
@@ -169,7 +171,7 @@ def test_gitlab_normalization_rejects_diff_refs_that_differ_from_identity(
         GitLabProviderError, match="GitLab diff refs do not match review identity"
     ):
         normalize_gitlab_threads(
-            raw_discussions=DISCUSSIONS,
+            raw_discussions=_discussions(),
             identity=IDENTITY,
             revisions=revisions,
         )
@@ -181,7 +183,7 @@ def test_gitlab_normalization_rejects_non_gitlab_identity() -> None:
         GitLabProviderError, match="GitLab normalization requires a GitLab identity"
     ):
         normalize_gitlab_threads(
-            raw_discussions=DISCUSSIONS,
+            raw_discussions=_discussions(),
             identity=IDENTITY.model_copy(update={"provider": "github"}),
             revisions=DIFF_REFS,
         )
@@ -251,7 +253,7 @@ def test_gitlab_normalization_truncates_long_note_bodies() -> None:
     }
 
     threads = normalize_gitlab_threads(
-        raw_discussions=[*DISCUSSIONS, long_discussion],
+        raw_discussions=[*_discussions(), long_discussion],
         identity=IDENTITY,
         revisions=DIFF_REFS,
     )
