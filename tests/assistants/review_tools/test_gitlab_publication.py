@@ -4,12 +4,18 @@ import json
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
+import pytest
 from ballen_review_tools.gitlab_publication import (
     execute_gitlab_publication,
     plan_digest,
     preview_gitlab_publication,
 )
-from ballen_review_tools.models import ReviewAction, ReviewCommentPlan, ReviewIdentity
+from ballen_review_tools.models import (
+    ReviewAction,
+    ReviewCommentPlan,
+    ReviewIdentity,
+    ReviewSide,
+)
 from ballen_review_tools.providers.base import CompletedCommand
 from ballen_review_tools.providers.gitlab import GitLabProvider
 
@@ -95,8 +101,33 @@ def _two_action_plan() -> ReviewCommentPlan:
     )
 
 
+def _inline_plan(
+    *, path: str = "src/example.py", line: int = 41, side: ReviewSide = "RIGHT"
+) -> ReviewCommentPlan:
+    """Return one selected single-line GitLab inline action."""
+    action = ReviewAction(
+        action_id="R001",
+        kind="inline",
+        selected=True,
+        body="Guard the empty case.",
+        path=path,
+        line=line,
+        side=side,
+        deduplication_key="b" * 64,
+        validation_state="valid",
+        intended_action="create-inline",
+        outcome="pending",
+    )
+    return ReviewCommentPlan(
+        contract_version="review-comment-plan/v1",
+        identity=_identity(),
+        source_draft_digest="f" * 64,
+        actions=(action,),
+    )
+
+
 def _reads(head: str = HEAD_SHA) -> list[CompletedCommand]:
-    """Return current MR, discussion, and note responses."""
+    """Return current MR, discussion, note, and diff responses."""
     return [
         CompletedCommand(
             0,
@@ -114,6 +145,27 @@ def _reads(head: str = HEAD_SHA) -> list[CompletedCommand]:
         ),
         CompletedCommand(0, "[]", ""),
         CompletedCommand(0, "[]", ""),
+        CompletedCommand(
+            0,
+            json.dumps(
+                [
+                    {
+                        "old_path": "src/example.py",
+                        "new_path": "src/example.py",
+                        "diff": (
+                            "@@ -40,2 +41,3 @@\n context\n-removed\n+added\n+second\n"
+                        ),
+                    },
+                    {
+                        "old_path": "src/large.py",
+                        "new_path": "src/large.py",
+                        "diff": "",
+                        "too_large": True,
+                    },
+                ]
+            ),
+            "",
+        ),
     ]
 
 
@@ -247,3 +299,49 @@ def test_partial_retry_skips_confirmed_note_and_posts_only_reply() -> None:
         for item in retry_runner.calls[-1][0]
     )
     assert all("PUT" not in call[0] for call in retry_runner.calls)
+
+
+def test_preview_sends_old_and_new_line_for_context_inline_action() -> None:
+    """Position an unchanged-line discussion with both current line numbers."""
+    plan = _inline_plan(line=41)
+    preview = preview_gitlab_publication(
+        plan,
+        GitLabProvider(identity=plan.identity, runner=RecordingRunner(_reads())),
+    )
+
+    assert preview.items[0].state == "eligible"
+    assert preview.items[0].payload is not None
+    assert preview.items[0].payload["position"] == {
+        "position_type": "text",
+        "base_sha": BASE_SHA,
+        "head_sha": HEAD_SHA,
+        "start_sha": START_SHA,
+        "old_path": "src/example.py",
+        "new_path": "src/example.py",
+        "old_line": 40,
+        "new_line": 41,
+    }
+
+
+@pytest.mark.parametrize(
+    ("path", "line", "side"),
+    [
+        pytest.param("src/example.py", 99, "RIGHT", id="line-outside-hunks"),
+        pytest.param("src/example.py", 43, "LEFT", id="line-on-other-side"),
+        pytest.param("src/large.py", 1, "RIGHT", id="file-without-diff-text"),
+    ],
+)
+def test_preview_blocks_inline_action_outside_current_diff(
+    path: str, line: int, side: ReviewSide
+) -> None:
+    """Block an inline location that the current MR diff does not contain."""
+    plan = _inline_plan(path=path, line=line, side=side)
+    preview = preview_gitlab_publication(
+        plan,
+        GitLabProvider(identity=plan.identity, runner=RecordingRunner(_reads())),
+    )
+
+    assert preview.items[0].state == "blocked"
+    assert preview.items[0].reason == (
+        "inline location is not present in the current GitLab diff"
+    )

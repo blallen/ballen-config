@@ -1,10 +1,11 @@
 """GitLab merge-request transport, payloads, and discussion normalization."""
 
 import json
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import PurePosixPath
-from typing import Literal, NotRequired, TypedDict
+from typing import Final, Literal, NotRequired, TypedDict
 from urllib.parse import quote
 
 from ballen_review_tools.models import (
@@ -12,11 +13,14 @@ from ballen_review_tools.models import (
     NormalizedThread,
     ReviewAction,
     ReviewIdentity,
+    ReviewSide,
     truncate_thread_body,
 )
 from ballen_review_tools.providers.base import CommandRunner
 
 GitLabThreadState = Literal["open", "resolved", "outdated"]
+DiffLineKey = tuple[str, int, ReviewSide]
+_HUNK: Final[re.Pattern[str]] = re.compile(r"^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@")
 
 
 @dataclass(frozen=True)
@@ -76,11 +80,18 @@ class GitLabRemoteDiscussion:
 
 @dataclass(frozen=True)
 class GitLabRemoteState:
-    """Current GitLab diff refs, discussions, and overview notes."""
+    """Current GitLab diff refs, discussions, overview notes, and diff lines.
+
+    Attributes:
+        diff_lines: Every commentable `(path, line, side)` in the current MR
+            diff, mapped to the GitLab `(old_line, new_line)` pair that a
+            discussion position on that line must send.
+    """
 
     diff_refs: GitLabDiffRefs
     discussions: tuple[GitLabRemoteDiscussion, ...]
     notes: tuple[_GitLabNote, ...]
+    diff_lines: Mapping[DiffLineKey, tuple[int | None, int | None]]
 
 
 class GitLabPositionPayload(TypedDict):
@@ -210,6 +221,80 @@ def _discussion(value: object) -> GitLabRemoteDiscussion:
     )
 
 
+def _diff_line_map(
+    old_path: str,
+    new_path: str,
+    diff: str,
+) -> dict[DiffLineKey, tuple[int | None, int | None]]:
+    """Map each commentable line of one file diff to its GitLab line pair.
+
+    Args:
+        old_path: File path before the change.
+        new_path: File path after the change.
+        diff: Unified diff hunks for the file, empty when GitLab omits them.
+
+    Returns:
+        A map from `(path, line, side)` to GitLab `(old_line, new_line)`. An
+        added line maps on the right only, a removed line on the left only, and
+        an unchanged context line on both sides with both numbers. Text before
+        the first hunk and `\\ No newline at end of file` markers advance
+        neither line counter.
+    """
+    lines: dict[DiffLineKey, tuple[int | None, int | None]] = {}
+    old_line: int | None = None
+    new_line: int | None = None
+    for text in diff.split("\n"):
+        hunk = _HUNK.match(text)
+        if hunk is not None:
+            old_line, new_line = int(hunk.group(1)), int(hunk.group(2))
+        elif old_line is None or new_line is None:
+            continue
+        elif text.startswith("+"):
+            lines[(new_path, new_line, "RIGHT")] = (None, new_line)
+            new_line += 1
+        elif text.startswith("-"):
+            lines[(old_path, old_line, "LEFT")] = (old_line, None)
+            old_line += 1
+        elif text.startswith(" "):
+            lines[(new_path, new_line, "RIGHT")] = (old_line, new_line)
+            lines[(old_path, old_line, "LEFT")] = (old_line, new_line)
+            old_line += 1
+            new_line += 1
+    return lines
+
+
+def _diff_lines(value: object) -> dict[DiffLineKey, tuple[int | None, int | None]]:
+    """Combine the diff line maps of every file in a GitLab MR diffs response.
+
+    Args:
+        value: Decoded `merge_requests/:iid/diffs` response.
+
+    Returns:
+        The combined line map. A file whose diff text GitLab omitted, such as a
+        too-large or collapsed file, contributes no lines.
+
+    Raises:
+        GitLabProviderError: If the response or one of its files is malformed.
+    """
+    if not isinstance(value, list):
+        raise GitLabProviderError("GitLab diff response was malformed")
+    lines: dict[DiffLineKey, tuple[int | None, int | None]] = {}
+    for item in value:
+        if not isinstance(item, Mapping):
+            raise GitLabProviderError("GitLab diff response was malformed")
+        old_path = item.get("old_path")
+        new_path = item.get("new_path")
+        diff = item.get("diff")
+        if not (
+            isinstance(old_path, str)
+            and isinstance(new_path, str)
+            and isinstance(diff, str)
+        ):
+            raise GitLabProviderError("GitLab diff response was malformed")
+        lines.update(_diff_line_map(old_path, new_path, diff))
+    return lines
+
+
 class GitLabProvider:
     """Use `glab api` as an injected, no-shell GitLab transport."""
 
@@ -264,7 +349,7 @@ class GitLabProvider:
             ) from error
 
     def fetch_remote_state(self) -> GitLabRemoteState:
-        """Fetch the current MR diff refs, discussions, and overview notes."""
+        """Fetch the current MR diff refs, discussions, notes, and diff lines."""
         root = (
             f"projects/{self._repository_path()}"
             f"/merge_requests/{self.identity.change_number}"
@@ -272,6 +357,7 @@ class GitLabProvider:
         merge_request = self._read(root)
         discussions = self._read(f"{root}/discussions", paginate=True)
         notes = self._read(f"{root}/notes", paginate=True)
+        diffs = self._read(f"{root}/diffs", paginate=True)
         if not isinstance(merge_request, Mapping):
             raise GitLabProviderError("GitLab merge request response was malformed")
         if merge_request.get("iid") != self.identity.change_number:
@@ -300,51 +386,72 @@ class GitLabProvider:
                 _note(item, note_index, resolved=False)
                 for note_index, item in enumerate(notes)
             ),
+            diff_lines=_diff_lines(diffs),
         )
 
     @staticmethod
-    def location_is_current(
+    def diff_line_numbers(
         action: ReviewAction,
         state: GitLabRemoteState,
-    ) -> bool:
-        """Return whether an inline action uses a current GitLab location."""
-        if action.kind != "inline" or action.path is None or action.line is None:
-            return False
-        if action.start_line is not None:
-            return False
-        return action.side in {"LEFT", "RIGHT"} and bool(
-            state.diff_refs.base_sha
-            and state.diff_refs.start_sha
-            and state.diff_refs.head_sha
-        )
+    ) -> tuple[int | None, int | None] | None:
+        """Look up an inline action's line in the current MR diff.
+
+        Args:
+            action: Inline review action.
+            state: Current GitLab state with its diff line map.
+
+        Returns:
+            The GitLab `(old_line, new_line)` pair for the action's path, line,
+            and side, or `None` when the current MR diff does not contain it.
+        """
+        if action.path is None or action.line is None or action.side is None:
+            return None
+        return state.diff_lines.get((action.path.as_posix(), action.line, action.side))
 
     def discussion_payload(
         self,
         action: ReviewAction,
-        revisions: GitLabDiffRefs,
+        state: GitLabRemoteState,
     ) -> GitLabDiscussionPayload:
-        """Build an MR discussion payload with a current text position."""
+        """Build an MR discussion payload with a current text position.
+
+        Args:
+            action: Single-line inline review action.
+            state: Current GitLab state with diff refs and diff lines.
+
+        Returns:
+            The discussion payload. Its position sends `new_line` for an added
+            line, `old_line` for a removed line, and both for a context line.
+
+        Raises:
+            GitLabProviderError: If the action is not inline, is a line range,
+                or targets a line absent from the current MR diff.
+        """
         if action.kind != "inline":
             raise GitLabProviderError("discussion payload requires inline action")
         if action.path is None or action.line is None or action.side is None:
             raise GitLabProviderError("inline action has no complete GitLab position")
+        if action.start_line is not None:
+            raise GitLabProviderError("GitLab line ranges require native line codes")
+        line_numbers = self.diff_line_numbers(action, state)
+        if line_numbers is None:
+            raise GitLabProviderError(
+                "inline location is not present in the current GitLab diff"
+            )
+        old_line, new_line = line_numbers
         path = action.path.as_posix()
         position: GitLabPositionPayload = {
             "position_type": "text",
-            "base_sha": revisions.base_sha,
-            "head_sha": revisions.head_sha,
-            "start_sha": revisions.start_sha,
+            "base_sha": state.diff_refs.base_sha,
+            "head_sha": state.diff_refs.head_sha,
+            "start_sha": state.diff_refs.start_sha,
             "old_path": path,
             "new_path": path,
         }
-        if action.side == "RIGHT":
-            position["new_line"] = action.line
-        elif action.side == "LEFT":
-            position["old_line"] = action.line
-        else:
-            raise GitLabProviderError("inline action has invalid GitLab line side")
-        if action.start_line is not None:
-            raise GitLabProviderError("GitLab line ranges require native line codes")
+        if old_line is not None:
+            position["old_line"] = old_line
+        if new_line is not None:
+            position["new_line"] = new_line
         return {"body": action.body, "position": position}
 
     @staticmethod
@@ -364,14 +471,14 @@ class GitLabProvider:
     def post_discussion(
         self,
         action: ReviewAction,
-        revisions: GitLabDiffRefs,
+        state: GitLabRemoteState,
     ) -> object:
         """Create one native MR discussion."""
         root = (
             f"projects/{self._repository_path()}"
             f"/merge_requests/{self.identity.change_number}/discussions"
         )
-        return self._post(root, self.discussion_payload(action, revisions))
+        return self._post(root, self.discussion_payload(action, state))
 
     def post_note(self, action: ReviewAction) -> object:
         """Create one top-level MR note."""

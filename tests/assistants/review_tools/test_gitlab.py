@@ -4,9 +4,16 @@ import json
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
+import pytest
 from ballen_review_tools.models import ReviewAction, ReviewCommentPlan, ReviewIdentity
 from ballen_review_tools.providers.base import CompletedCommand
-from ballen_review_tools.providers.gitlab import GitLabDiffRefs, GitLabProvider
+from ballen_review_tools.providers.gitlab import (
+    DiffLineKey,
+    GitLabDiffRefs,
+    GitLabProvider,
+    GitLabProviderError,
+    GitLabRemoteState,
+)
 
 BASE_SHA = "a" * 40
 START_SHA = "b" * 40
@@ -52,6 +59,36 @@ def _refs() -> GitLabDiffRefs:
     )
 
 
+def _state(
+    diff_lines: dict[DiffLineKey, tuple[int | None, int | None]],
+) -> GitLabRemoteState:
+    """Return current GitLab state whose MR diff holds only the given lines."""
+    return GitLabRemoteState(
+        diff_refs=_refs(),
+        discussions=(),
+        notes=(),
+        diff_lines=diff_lines,
+    )
+
+
+def _merge_request() -> CompletedCommand:
+    """Return the current MR response with complete diff refs."""
+    return CompletedCommand(
+        0,
+        json.dumps(
+            {
+                "iid": 17,
+                "diff_refs": {
+                    "base_sha": BASE_SHA,
+                    "start_sha": START_SHA,
+                    "head_sha": HEAD_SHA,
+                },
+            }
+        ),
+        "",
+    )
+
+
 def _inline_plan(
     *, side: str = "RIGHT", path: str = "src/example.py"
 ) -> ReviewCommentPlan:
@@ -82,8 +119,8 @@ def test_gitlab_discussion_payload_uses_current_text_position() -> None:
     provider = GitLabProvider(identity=_identity(), runner=RecordingRunner())
 
     payload = provider.discussion_payload(
-        action=_inline_plan().actions[0],
-        revisions=_refs(),
+        _inline_plan().actions[0],
+        _state({("src/example.py", 42, "RIGHT"): (None, 42)}),
     )
 
     assert payload == {
@@ -105,8 +142,8 @@ def test_gitlab_discussion_payload_maps_removed_line_to_old_side() -> None:
     provider = GitLabProvider(identity=_identity(), runner=RecordingRunner())
 
     payload = provider.discussion_payload(
-        action=_inline_plan(side="LEFT", path="src/old_example.py").actions[0],
-        revisions=_refs(),
+        _inline_plan(side="LEFT", path="src/old_example.py").actions[0],
+        _state({("src/old_example.py", 42, "LEFT"): (42, None)}),
     )
 
     assert payload["position"]["old_path"] == "src/old_example.py"
@@ -116,23 +153,11 @@ def test_gitlab_discussion_payload_maps_removed_line_to_old_side() -> None:
 
 
 def test_gitlab_read_vectors_encode_namespace_and_use_pagination() -> None:
-    """Use exact no-shell glab vectors for MR, discussions, and notes."""
+    """Use exact no-shell glab vectors for MR, discussions, notes, and diffs."""
     runner = RecordingRunner(
         responses=[
-            CompletedCommand(
-                0,
-                json.dumps(
-                    {
-                        "iid": 17,
-                        "diff_refs": {
-                            "base_sha": BASE_SHA,
-                            "start_sha": START_SHA,
-                            "head_sha": HEAD_SHA,
-                        },
-                    }
-                ),
-                "",
-            ),
+            _merge_request(),
+            CompletedCommand(0, "[]", ""),
             CompletedCommand(0, "[]", ""),
             CompletedCommand(0, "[]", ""),
         ]
@@ -156,6 +181,12 @@ def test_gitlab_read_vectors_encode_namespace_and_use_pagination() -> None:
             "projects/acme%2Fballen-config/merge_requests/17/notes",
             "--paginate",
         ),
+        (
+            "glab",
+            "api",
+            "projects/acme%2Fballen-config/merge_requests/17/diffs",
+            "--paginate",
+        ),
     ]
 
 
@@ -166,7 +197,7 @@ def test_gitlab_post_vectors_use_json_stdin() -> None:
 
     provider.post_discussion(
         _inline_plan().actions[0],
-        _refs(),
+        _state({("src/example.py", 42, "RIGHT"): (None, 42)}),
     )
 
     assert runner.calls == [
@@ -199,3 +230,77 @@ def test_gitlab_post_vectors_use_json_stdin() -> None:
             ),
         )
     ]
+
+
+def test_gitlab_discussion_payload_sends_both_lines_for_context_line() -> None:
+    """Send old_line and new_line for an unchanged line, as GitLab requires."""
+    provider = GitLabProvider(identity=_identity(), runner=RecordingRunner())
+
+    payload = provider.discussion_payload(
+        _inline_plan().actions[0],
+        _state({("src/example.py", 42, "RIGHT"): (40, 42)}),
+    )
+
+    assert payload["position"]["old_line"] == 40
+    assert payload["position"]["new_line"] == 42
+
+
+def test_gitlab_discussion_payload_rejects_line_outside_current_diff() -> None:
+    """Refuse a position for a path, line, and side the MR diff lacks."""
+    provider = GitLabProvider(identity=_identity(), runner=RecordingRunner())
+
+    with pytest.raises(GitLabProviderError, match="not present in the current"):
+        provider.discussion_payload(
+            _inline_plan().actions[0],
+            _state({("src/example.py", 42, "LEFT"): (42, None)}),
+        )
+
+
+def test_gitlab_diff_lines_map_renamed_file_and_skip_missing_diff_text() -> None:
+    """Map renamed-file hunks per side and give omitted diff text no lines."""
+    renamed = {
+        "old_path": "src/old_name.py",
+        "new_path": "src/new_name.py",
+        "diff": (
+            "@@ -2,2 +2,3 @@ class Example:\n"
+            " two\n"
+            "-three\n"
+            "+THREE\n"
+            "+four\n"
+            "@@ -9,2 +10,3 @@\n"
+            " nine\n"
+            "-ten\n"
+            "\\ No newline at end of file\n"
+            "+ten\n"
+            "+eleven\n"
+        ),
+    }
+    too_large = {
+        "old_path": "src/large.py",
+        "new_path": "src/large.py",
+        "diff": "",
+        "too_large": True,
+    }
+    runner = RecordingRunner(
+        responses=[
+            _merge_request(),
+            CompletedCommand(0, "[]", ""),
+            CompletedCommand(0, "[]", ""),
+            CompletedCommand(0, json.dumps([renamed, too_large]), ""),
+        ]
+    )
+
+    state = GitLabProvider(identity=_identity(), runner=runner).fetch_remote_state()
+
+    assert state.diff_lines == {
+        ("src/new_name.py", 2, "RIGHT"): (2, 2),
+        ("src/old_name.py", 2, "LEFT"): (2, 2),
+        ("src/old_name.py", 3, "LEFT"): (3, None),
+        ("src/new_name.py", 3, "RIGHT"): (None, 3),
+        ("src/new_name.py", 4, "RIGHT"): (None, 4),
+        ("src/new_name.py", 10, "RIGHT"): (9, 10),
+        ("src/old_name.py", 9, "LEFT"): (9, 10),
+        ("src/old_name.py", 10, "LEFT"): (10, None),
+        ("src/new_name.py", 11, "RIGHT"): (None, 11),
+        ("src/new_name.py", 12, "RIGHT"): (None, 12),
+    }

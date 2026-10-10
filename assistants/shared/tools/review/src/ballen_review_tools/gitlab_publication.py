@@ -107,7 +107,7 @@ def _preview_payload(
 ) -> dict[str, object] | None:
     """Build one exact ephemeral GitLab payload."""
     if action.kind == "inline":
-        return dict(provider.discussion_payload(action, state.diff_refs))
+        return dict(provider.discussion_payload(action, state))
     if action.kind == "general":
         return dict(provider.note_payload(action))
     return dict(provider.reply_payload(action))
@@ -158,7 +158,10 @@ def _preview_gitlab_publication_with_state(
                 )
             )
             continue
-        if action.kind == "inline" and not provider.location_is_current(action, state):
+        if (
+            action.kind == "inline"
+            and provider.diff_line_numbers(action, state) is None
+        ):
             items.append(
                 PublicationItemPreview(
                     action_id=action.action_id,
@@ -267,7 +270,7 @@ def execute_gitlab_publication(
             continue
         try:
             if action.kind == "inline":
-                response = provider.post_discussion(action, state.diff_refs)
+                response = provider.post_discussion(action, state)
             elif action.kind == "general":
                 response = provider.post_note(action)
             else:
