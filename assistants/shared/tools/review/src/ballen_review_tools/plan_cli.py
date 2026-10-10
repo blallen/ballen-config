@@ -150,12 +150,12 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _read_json(path: Path) -> object:
+def read_json(path: Path) -> object:
     """Read one UTF-8 JSON artifact without exposing its contents."""
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _write_json(path: Path, payload: object) -> None:
+def write_json(path: Path, payload: object) -> None:
     """Atomically write one UTF-8 JSON artifact."""
     with tempfile.NamedTemporaryFile(
         mode="w",
@@ -172,7 +172,7 @@ def _write_json(path: Path, payload: object) -> None:
 
 def _compile_review(args: argparse.Namespace) -> int:
     """Compile a Markdown draft after safe-workspace preflight."""
-    identity = ReviewIdentity.model_validate(_read_json(args.identity))
+    identity = ReviewIdentity.model_validate(read_json(args.identity))
     draft_bytes = args.draft.read_bytes()
     draft_text = draft_bytes.decode("utf-8")
     probe = GitWorkspaceProbe(args.repo_root)
@@ -195,13 +195,13 @@ def _compile_review(args: argparse.Namespace) -> int:
         actions=parsed.actions,
         diagnostics=parsed.diagnostics,
     )
-    _write_json(args.output, plan.model_dump(mode="json"))
+    write_json(args.output, plan.model_dump(mode="json"))
     return 0
 
 
 def _compile_response(args: argparse.Namespace) -> int:
     """Compile a non-mutating response plan after workspace preflight."""
-    threads_payload = _read_json(args.threads)
+    threads_payload = read_json(args.threads)
     threads = NormalizedReviewThreads.model_validate(threads_payload)
     draft_text = args.draft.read_text(encoding="utf-8")
     probe = GitWorkspaceProbe(args.repo_root)
@@ -224,14 +224,14 @@ def _compile_response(args: argparse.Namespace) -> int:
         observed_head=threads.observed_head,
         items=response,
     )
-    _write_json(args.output, plan.model_dump(mode="json"))
+    write_json(args.output, plan.model_dump(mode="json"))
     return 0
 
 
 def _normalize_threads(args: argparse.Namespace) -> int:
     """Normalize supplied forge observations after workspace preflight."""
-    identity = ReviewIdentity.model_validate(_read_json(args.identity))
-    payload = _read_json(args.input)
+    identity = ReviewIdentity.model_validate(read_json(args.identity))
+    payload = read_json(args.input)
     if not isinstance(payload, dict):
         raise ValueError("thread input must be a JSON object")
     check = validate_workspace(
@@ -273,7 +273,7 @@ def _normalize_threads(args: argparse.Namespace) -> int:
                 head_sha=_diff_ref("head_sha"),
             ),
         )
-    _write_json(args.output, normalized.model_dump(mode="json"))
+    write_json(args.output, normalized.model_dump(mode="json"))
     return 0
 
 
@@ -292,10 +292,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     """
     args = _parser().parse_args(argv)
     if args.command == "digest":
-        print(canonical_digest(_read_json(args.artifact)))
+        print(canonical_digest(read_json(args.artifact)))
         return 0
     if args.command == "validate":
-        payload = _read_json(args.artifact)
+        payload = read_json(args.artifact)
         if not isinstance(payload, dict):
             raise ValueError("artifact must be a JSON object")
         contract_version = payload.get("contract_version")

@@ -2,40 +2,18 @@
 
 import argparse
 import os
-import subprocess
 import sys
 from collections.abc import Sequence
 from pathlib import Path
 
 from ballen_review_tools.models import ReviewCommentPlan
-from ballen_review_tools.plan_cli import _read_json, _write_json
-from ballen_review_tools.providers.base import CompletedCommand
+from ballen_review_tools.plan_cli import read_json, write_json
+from ballen_review_tools.providers.base import SubprocessRunner
 from ballen_review_tools.providers.github import GitHubProvider, GitHubProviderError
 from ballen_review_tools.publication import (
     execute_github_publication,
     preview_github_publication,
 )
-
-
-class SubprocessRunner:
-    """Run fixed provider argument arrays without a shell."""
-
-    def run(
-        self,
-        argv: Sequence[str],
-        *,
-        input_text: str | None = None,
-    ) -> CompletedCommand:
-        """Return bounded subprocess output and status."""
-        result = subprocess.run(
-            list(argv),
-            input=input_text,
-            capture_output=True,
-            text=True,
-            check=False,
-            shell=False,
-        )
-        return CompletedCommand(result.returncode, result.stdout, result.stderr)
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -54,7 +32,7 @@ def _parser() -> argparse.ArgumentParser:
 
 def _load_plan(path: Path) -> ReviewCommentPlan:
     """Load and strictly validate one logical plan."""
-    return ReviewCommentPlan.model_validate(_read_json(path))
+    return ReviewCommentPlan.model_validate(read_json(path))
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -74,7 +52,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             if args.output is None:
                 raise ValueError("preview requires --output")
             preview = preview_github_publication(plan, provider)
-            _write_json(args.output, preview.model_dump(mode="json"))
+            write_json(args.output, preview.model_dump(mode="json"))
             print(preview.status)
             return 0 if preview.status == "ready" else 2
         if args.approved_plan_digest is None or args.expected_head is None:
@@ -88,7 +66,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             provider=provider,
         )
         if result.receipt is not None:
-            _write_json(args.receipt, result.receipt.model_dump(mode="json"))
+            write_json(args.receipt, result.receipt.model_dump(mode="json"))
         if result.reason:
             print(f"blocked: {result.reason}", file=sys.stderr)
         return 0 if result.status == "posted" else 2
