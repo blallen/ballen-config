@@ -139,17 +139,48 @@ def test_gitlab_normalization_preserves_discussion_identity_and_position() -> No
     )
 
 
-def test_gitlab_normalization_rejects_incomplete_diff_refs() -> None:
-    """Reject snapshots that cannot safely identify the MR diff."""
-    with pytest.raises(GitLabProviderError, match="diff refs"):
+def test_gitlab_diff_refs_reject_an_empty_sha() -> None:
+    """Reject diff refs that cannot identify the MR diff."""
+    with pytest.raises(GitLabProviderError, match="GitLab diff refs are incomplete"):
+        GitLabDiffRefs(base_sha=BASE_SHA, start_sha=START_SHA, head_sha="")
+
+
+@pytest.mark.parametrize(
+    "revisions",
+    [
+        pytest.param(
+            GitLabDiffRefs(base_sha="d" * 40, start_sha=START_SHA, head_sha=HEAD_SHA),
+            id="base",
+        ),
+        pytest.param(
+            GitLabDiffRefs(base_sha=BASE_SHA, start_sha=START_SHA, head_sha="d" * 40),
+            id="head",
+        ),
+    ],
+)
+def test_gitlab_normalization_rejects_diff_refs_that_differ_from_identity(
+    revisions: GitLabDiffRefs,
+) -> None:
+    """Reject complete diff refs whose base or head is not the identity's."""
+    with pytest.raises(
+        GitLabProviderError, match="GitLab diff refs do not match review identity"
+    ):
         normalize_gitlab_threads(
             raw_discussions=DISCUSSIONS,
             identity=IDENTITY,
-            revisions=GitLabDiffRefs(
-                base_sha=BASE_SHA,
-                start_sha=START_SHA,
-                head_sha="",
-            ),
+            revisions=revisions,
+        )
+
+
+def test_gitlab_normalization_rejects_non_gitlab_identity() -> None:
+    """Reject an identity from another provider."""
+    with pytest.raises(
+        GitLabProviderError, match="GitLab normalization requires a GitLab identity"
+    ):
+        normalize_gitlab_threads(
+            raw_discussions=DISCUSSIONS,
+            identity=IDENTITY.model_copy(update={"provider": "github"}),
+            revisions=DIFF_REFS,
         )
 
 
