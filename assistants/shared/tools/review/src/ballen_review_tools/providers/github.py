@@ -20,6 +20,7 @@ from ballen_review_tools.providers.base import CommandRunner
 
 API_VERSION: Final[str] = "2026-03-10"
 _ACCEPT: Final[str] = "Accept: application/vnd.github+json"
+_UNATTACHED_ID_LIMIT: Final = 20
 _HUNK: Final[re.Pattern[str]] = re.compile(r"^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@")
 
 
@@ -373,7 +374,9 @@ def normalize_github_comments(
     outdated: GitHub keeps it on the pull request, but it no longer maps to the
     current diff. File-level comments have neither line and stay open. A root
     body longer than `THREAD_BODY_LIMIT` is truncated, and its thread records
-    the limitation.
+    the limitation. A reply whose `in_reply_to_id` names no captured root
+    comment, including a reply to a reply, joins no thread; one snapshot
+    limitation lists their IDs, up to `_UNATTACHED_ID_LIMIT` of them.
 
     Args:
         identity: GitHub review identity the comments belong to.
@@ -391,6 +394,12 @@ def normalize_github_comments(
         raise GitHubProviderError("GitHub normalization requires a GitHub identity")
     normalized = [GitHubProvider._review_comment(item) for item in comments]
     roots = [comment for comment in normalized if comment.in_reply_to is None]
+    root_ids = {root.comment_id for root in roots}
+    unattached = [
+        str(comment.comment_id)
+        for comment in normalized
+        if comment.in_reply_to is not None and comment.in_reply_to not in root_ids
+    ]
     replies_by_root: dict[int, list[GitHubRemoteComment]] = {}
     for comment in normalized:
         if comment.in_reply_to is not None:
@@ -425,13 +434,18 @@ def normalize_github_comments(
                 limitations=limitations,
             )
         )
+    snapshot_limitations = ["REST input does not expose GraphQL resolution state"]
+    if unattached:
+        hidden = len(unattached) - _UNATTACHED_ID_LIMIT
+        snapshot_limitations.append(
+            "Replies not attached to a captured root comment: "
+            + ", ".join(unattached[:_UNATTACHED_ID_LIMIT])
+            + (f", and {hidden} more" if hidden > 0 else "")
+        )
     return NormalizedReviewThreads(
         contract_version="normalized-review-threads/v1",
         identity=identity,
         observed_head=head_sha,
-        limitations=(
-            "REST input does not expose GraphQL resolution state",
-            "Nested replies are retained only when directly attached to a root comment",
-        ),
+        limitations=tuple(snapshot_limitations),
         threads=tuple(threads),
     )

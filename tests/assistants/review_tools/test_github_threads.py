@@ -202,3 +202,67 @@ def test_unknown_comment_side_is_rejected(field: str) -> None:
             head_sha=IDENTITY.head_revision,
             comments=[comment],
         )
+
+
+@pytest.mark.parametrize(
+    ("extra_replies", "unattached"),
+    [
+        pytest.param(
+            [{"id": 21, "body": "Is this still open?", "in_reply_to_id": 20}],
+            "21",
+            id="orphan-reply",
+        ),
+        pytest.param(
+            [{"id": 12, "body": "Thanks.", "in_reply_to_id": 11}],
+            "12",
+            id="nested-reply",
+        ),
+        pytest.param(
+            [
+                {"id": 12, "body": "Thanks.", "in_reply_to_id": 11},
+                {"id": 21, "body": "Is this still open?", "in_reply_to_id": 20},
+            ],
+            "12, 21",
+            id="orphan-and-nested-replies",
+        ),
+    ],
+)
+def test_unattached_replies_are_listed_in_one_limitation(
+    extra_replies: list[dict[str, object]], unattached: str
+) -> None:
+    """Keep reply IDs whose root comment is not captured instead of dropping them."""
+    threads = normalize_github_comments(
+        identity=IDENTITY,
+        head_sha=IDENTITY.head_revision,
+        comments=[
+            {"id": 10, "body": "Guard the empty case.", "user": {"login": "reviewer"}},
+            {"id": 11, "body": "I will address this.", "in_reply_to_id": 10},
+            *extra_replies,
+        ],
+    )
+
+    assert [thread.comment_ids for thread in threads.threads] == [("10", "11")]
+    assert threads.limitations == (
+        "REST input does not expose GraphQL resolution state",
+        f"Replies not attached to a captured root comment: {unattached}",
+    )
+
+
+def test_unattached_reply_ids_are_capped() -> None:
+    """Bound the limitation however many replies lack a captured root."""
+    threads = normalize_github_comments(
+        identity=IDENTITY,
+        head_sha=IDENTITY.head_revision,
+        comments=[
+            {"id": 10, "body": "Guard the empty case.", "user": {"login": "reviewer"}},
+            *(
+                {"id": 100 + index, "body": "Orphan.", "in_reply_to_id": 99}
+                for index in range(25)
+            ),
+        ],
+    )
+
+    listed = ", ".join(str(100 + index) for index in range(20))
+    assert threads.limitations[1] == (
+        f"Replies not attached to a captured root comment: {listed}, and 5 more"
+    )
