@@ -1,5 +1,6 @@
 """Strict provider-neutral models for review artifacts."""
 
+from collections.abc import Mapping
 from pathlib import PurePosixPath
 from typing import Annotated, Final, Literal, Self
 
@@ -27,6 +28,11 @@ ActionOutcome = Literal[
     "not-attempted",
 ]
 IntendedAction = Literal["create-inline", "create-general", "reply"]
+INTENDED_ACTION_BY_KIND: Final[Mapping[str, IntendedAction]] = {
+    "inline": "create-inline",
+    "general": "create-general",
+    "reply": "reply",
+}
 PublicationItemState = Literal["eligible", "duplicate", "blocked", "skipped"]
 PublicationStatus = Literal["ready", "blocked", "posted", "partial", "failed"]
 NormalizedThreadState = Literal["open", "resolved", "outdated", "missing"]
@@ -131,12 +137,7 @@ class ReviewAction(BaseModel):
     @model_validator(mode="after")
     def _validate_kind(self) -> Self:
         """Require location and thread fields appropriate to the action kind."""
-        expected_intended = {
-            "inline": "create-inline",
-            "general": "create-general",
-            "reply": "reply",
-        }[self.kind]
-        if self.intended_action != expected_intended:
+        if self.intended_action != INTENDED_ACTION_BY_KIND[self.kind]:
             raise ValueError("intended_action does not match kind")
         if self.validation_state != "valid" and not self.validation_reason:
             raise ValueError("invalid action state requires validation_reason")
