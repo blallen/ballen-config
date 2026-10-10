@@ -1,6 +1,7 @@
 """Tests for read-only GitHub review-thread normalization."""
 
 from pathlib import PurePosixPath
+from typing import Final
 
 import pytest
 from ballen_review_tools.models import ReviewIdentity
@@ -9,7 +10,7 @@ from ballen_review_tools.providers.github import (
     normalize_github_comments,
 )
 
-IDENTITY = ReviewIdentity(
+IDENTITY: Final[ReviewIdentity] = ReviewIdentity(
     provider="github",
     host="github.com",
     repository="acme/ballen-config",
@@ -46,6 +47,7 @@ def test_normalization_preserves_root_and_reply_ids() -> None:
     assert threads.threads[0].thread_id == "10"
     assert threads.threads[0].comment_ids == ("10", "11")
     assert threads.threads[0].chronology == ("10", "11")
+    assert threads.threads[0].author == "reviewer"
     assert threads.limitations
 
 

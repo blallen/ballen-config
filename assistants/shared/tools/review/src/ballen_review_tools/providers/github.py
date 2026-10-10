@@ -91,7 +91,7 @@ class GitHubRemoteComment:
 
     comment_id: int
     body: str
-    author: str = "unknown"
+    author: str
     path: str | None = None
     line: int | None = None
     original_line: int | None = None
@@ -407,7 +407,7 @@ def normalize_github_comments(
     threads: list[NormalizedThread] = []
     for root in roots:
         replies = replies_by_root.get(root.comment_id, [])
-        chronology = (root, *replies)
+        comment_ids = tuple(str(comment.comment_id) for comment in (root, *replies))
         positioned = root.line is not None
         outdated = (
             root.path is not None and not positioned and root.original_line is not None
@@ -421,7 +421,7 @@ def normalize_github_comments(
         threads.append(
             NormalizedThread(
                 thread_id=str(root.comment_id),
-                comment_ids=tuple(str(comment.comment_id) for comment in chronology),
+                comment_ids=comment_ids,
                 state="outdated" if outdated else "open",
                 path=PurePosixPath(root.path) if root.path is not None else None,
                 line=root.line,
@@ -430,7 +430,7 @@ def normalize_github_comments(
                 start_side=root.start_side if positioned else None,
                 author=root.author,
                 body=body,
-                chronology=tuple(str(comment.comment_id) for comment in chronology),
+                chronology=comment_ids,
                 limitations=limitations,
             )
         )
