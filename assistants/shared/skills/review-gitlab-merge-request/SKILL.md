@@ -20,22 +20,53 @@ current MR identity cannot be verified.
 
 ## Quick Reference
 
+Run these steps from the repository root. The review-tools README at
+`~/.local/share/ballen-config/review-tools/README.md` defines the identity
+shape, the draft grammar, and each command's arguments.
+
 1. Use `using-gitlab` to resolve the host, project, MR IID, discussions, notes,
    and current `diff_refs` (`base_sha`, `start_sha`, and `head_sha`).
 2. Use `discover-project-standards` for the repository and selected paths.
-3. Write captured provider JSON only to a proven ignored workspace.
-4. Normalize the capture with:
+3. Use an existing ignored workspace such as `.reviews/`, and ask for one when
+   none is obvious. Prove it before writing any capture or artifact there:
+
+   ```text
+   ~/.local/share/ballen-config/review-tools/bin/review-plan workspace-check \
+     --repo-root . --destination .reviews --proposed-file .reviews/threads.json
+   ```
+
+4. Write `.reviews/IDENTITY.json` from the current MR: `provider` is `gitlab`,
+   `host` is the GitLab host, `repository` is the project path,
+   `change_number` is the MR IID, `base_revision` is `diff_refs.base_sha`, and
+   `head_revision` is `diff_refs.head_sha`. Normalization rejects any other
+   base or head.
+5. Save the `diff_refs` and every page of `discussions` as one JSON object in
+   `.reviews/gitlab-discussions.json`, then normalize and validate it:
 
    ```text
    ~/.local/share/ballen-config/review-tools/bin/review-plan normalize-threads \
-     --provider gitlab --identity IDENTITY.json \
-     --input gitlab-discussions.json --output .reviews/threads.json \
-     --repo-root REPOSITORY
+     --provider gitlab --identity .reviews/IDENTITY.json \
+     --input .reviews/gitlab-discussions.json --output .reviews/threads.json \
+     --repo-root .
+   ~/.local/share/ballen-config/review-tools/bin/review-plan validate \
+     --artifact .reviews/threads.json
    ```
 
-5. Validate the normalized artifact, then compile the human-edited Markdown
-   review with
-   `~/.local/share/ballen-config/review-tools/bin/review-plan compile-review`.
+6. Check out the MR head: `git fetch origin refs/merge-requests/IID/head`, then
+   `git switch --detach HEAD_SHA`, where `HEAD_SHA` is `diff_refs.head_sha`.
+   `compile-review` rejects a checkout whose `HEAD` is not `head_revision`.
+7. Review `git diff BASE_SHA HEAD_SHA`, where `BASE_SHA` is
+   `diff_refs.base_sha`, against the discovered standards and the normalized
+   threads. Write the findings as a Markdown draft in `.reviews/review.md`.
+8. Compile and validate the draft:
+
+   ```text
+   ~/.local/share/ballen-config/review-tools/bin/review-plan compile-review \
+     --draft .reviews/review.md --identity .reviews/IDENTITY.json \
+     --output .reviews/review-plan.json --repo-root .
+   ~/.local/share/ballen-config/review-tools/bin/review-plan validate \
+     --artifact .reviews/review-plan.json
+   ```
 
 ## Boundaries
 

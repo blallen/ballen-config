@@ -198,10 +198,19 @@ guessing:
 - Replies not attached to a captured root comment, such as a reply to a reply,
   are listed by ID in one snapshot limitation.
 
+### GitLab
+
 For GitLab, `using-gitlab` supplies a captured MR response containing
 `diff_refs` and `discussions`; normalization remains local and read-only:
 
 ```text
-review-plan normalize-threads --provider gitlab --identity PATH \
-  --input PATH --output PATH --repo-root PATH
+~/.local/share/ballen-config/review-tools/bin/review-plan normalize-threads \
+  --provider gitlab --identity .reviews/IDENTITY.json \
+  --input .reviews/gitlab-discussions.json --output .reviews/threads.json \
+  --repo-root .
 ```
+
+The input is one JSON object holding the MR's `diff_refs` (`base_sha`,
+`start_sha`, and `head_sha`) and its `discussions`, with every page combined.
+The identity's `base_revision` and `head_revision` must equal
+`diff_refs.base_sha` and `diff_refs.head_sha`.
