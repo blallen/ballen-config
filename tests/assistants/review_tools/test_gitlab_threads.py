@@ -71,7 +71,6 @@ DISCUSSIONS = [
     {
         "id": "discussion-resolved",
         "individual_note": False,
-        "resolved": True,
         "notes": [
             {
                 "id": 989,
@@ -79,6 +78,8 @@ DISCUSSIONS = [
                 "author": {"username": "reviewer"},
                 "system": False,
                 "created_at": "2026-07-30T12:02:00Z",
+                "resolvable": True,
+                "resolved": True,
                 "position": _position(),
             }
         ],
@@ -229,3 +230,48 @@ def test_gitlab_normalization_truncates_long_note_bodies() -> None:
     ]
     assert threads.threads[3].body == "x" * 10_000
     assert threads.threads[3].limitations == ("Body truncated to 10000 characters",)
+
+
+def test_gitlab_normalization_keeps_state_of_image_and_file_discussions() -> None:
+    """Keep current image and file discussions open or resolved without a line."""
+    threads = normalize_gitlab_threads(
+        raw_discussions=[
+            {
+                "id": "image-discussion",
+                "individual_note": False,
+                "notes": [
+                    {
+                        "id": 995,
+                        "body": "The screenshot is cropped.",
+                        "author": {"username": "reviewer"},
+                        "system": False,
+                        "position": {**_position(), "position_type": "image"},
+                    }
+                ],
+            },
+            {
+                "id": "file-discussion",
+                "individual_note": False,
+                "notes": [
+                    {
+                        "id": 996,
+                        "body": "This file should be generated.",
+                        "author": {"username": "reviewer"},
+                        "system": False,
+                        "resolvable": True,
+                        "resolved": True,
+                        "position": {**_position(), "position_type": "file"},
+                    }
+                ],
+            },
+        ],
+        identity=IDENTITY,
+        revisions=DIFF_REFS,
+    )
+
+    assert [thread.state for thread in threads.threads] == ["open", "resolved"]
+    for thread in threads.threads:
+        assert (thread.path, thread.line, thread.side) == (None, None, None)
+        assert thread.limitations == (
+            "GitLab image or file discussion has no line position",
+        )

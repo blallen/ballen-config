@@ -189,8 +189,7 @@ def normalize_gitlab_threads(
         position = root.position
         location = _current_position(position, revisions)
         position_outdated = position is not None and (
-            position.position_type != "text"
-            or position.base_sha != revisions.base_sha
+            position.base_sha != revisions.base_sha
             or position.start_sha != revisions.start_sha
             or position.head_sha != revisions.head_sha
         )
@@ -201,12 +200,16 @@ def normalize_gitlab_threads(
         else:
             state = "open"
         thread_limitations: list[str] = []
-        if position is not None and location is None and not position_outdated:
-            thread_limitations.append("GitLab text position is incomplete")
         if position_outdated:
             thread_limitations.append(
-                "GitLab text position does not match current diff refs"
+                "GitLab position does not match current diff refs"
             )
+        elif position is not None and position.position_type in ("image", "file"):
+            thread_limitations.append(
+                "GitLab image or file discussion has no line position"
+            )
+        elif position is not None and location is None:
+            thread_limitations.append("GitLab text position is incomplete")
         thread_id = str(discussion_id)
         if thread_id in seen_ids:
             raise GitLabProviderError("GitLab discussion IDs must be unique")
