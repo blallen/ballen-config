@@ -3,12 +3,20 @@
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Final
+from typing import Final, cast
 
 from pydantic import ValidationError
 
 from ballen_review_tools.canonical import deduplication_key
-from ballen_review_tools.models import ReviewAction, ReviewDiagnostic, ReviewIdentity
+from ballen_review_tools.models import (
+    NormalizedReviewThreads,
+    ResponseAction,
+    ResponseClassification,
+    ReviewAction,
+    ReviewDiagnostic,
+    ReviewIdentity,
+    ReviewResponseItem,
+)
 
 _HEADING: Final[re.Pattern[str]] = re.compile(
     r"^###\s+([A-Za-z0-9][A-Za-z0-9._-]*):\s+(.+?)\s*$"
@@ -25,6 +33,13 @@ _KNOWN_FIELDS: Final[frozenset[str]] = frozenset(
         "Discussion",
         "Thread",
         "POST",
+        "Classification",
+        "Selected action",
+        "Evaluation",
+        "Evidence",
+        "Proposed changes",
+        "Proposed response",
+        "Verification",
     }
 )
 _FENCE: Final[re.Pattern[str]] = re.compile(r"^ {0,3}(`{3,}|~{3,})")
@@ -96,7 +111,12 @@ def _sections(lines: list[str]) -> Iterable[tuple[str, list[str], str | None]]:
 
 
 def _metadata_and_body(lines: list[str]) -> tuple[dict[str, str], str]:
-    """Split leading bold metadata from the Markdown body."""
+    """Split the leading block of bold metadata fields from the Markdown body.
+
+    The field block ends at the first blank or non-field line after a field, so
+    body text that starts with bold text stays in the body. A body that starts
+    with a known field is rejected, because that field was meant as metadata.
+    """
     metadata: dict[str, str] = {}
     body_lines: list[str] = []
     metadata_mode = True
@@ -110,10 +130,16 @@ def _metadata_and_body(lines: list[str]) -> tuple[dict[str, str], str]:
                 raise ValueError(f"duplicate metadata field: {key}")
             metadata[key] = value.strip().strip("`").strip()
             continue
-        if metadata_mode and not line.strip():
+        if metadata_mode and not metadata and not line.strip():
             continue
         metadata_mode = False
         body_lines.append(line)
+    late_field = _FIELD.match(next((line for line in body_lines if line.strip()), ""))
+    if late_field is not None and late_field.group(1) in _KNOWN_FIELDS:
+        raise ValueError(
+            "metadata field must come before the first blank line: "
+            f"{late_field.group(1)}"
+        )
     return metadata, "\n".join(body_lines).strip()
 
 
@@ -258,3 +284,97 @@ def parse_review_markdown(
             )
         )
     return ParsedReview(actions=tuple(actions), diagnostics=tuple(diagnostics))
+
+
+def _optional_text(metadata: dict[str, str], key: str) -> str | None:
+    """Return one optional response field, treating `none` as absent."""
+    value = metadata.get(key)
+    if value is None or value.lower() in {"", "none", "null", "-"}:
+        return None
+    return value
+
+
+def _list_field(metadata: dict[str, str], key: str) -> tuple[str, ...]:
+    """Return one bounded single-line list field."""
+    value = _optional_text(metadata, key)
+    return () if value is None else (value,)
+
+
+def parse_response_markdown(
+    text: str,
+    *,
+    threads: NormalizedReviewThreads,
+) -> tuple[ReviewResponseItem, ...]:
+    """Parse a response draft into one item per normalized thread.
+
+    Args:
+        text: Human-editable response Markdown with one `### <thread-id>:`
+            section per answered thread.
+        threads: Validated normalized threads that the draft answers.
+
+    Returns:
+        One response item per normalized thread, in thread order. A resolved
+        thread without a section becomes a `skip` item classified `resolved`.
+
+    Raises:
+        ValueError: If a heading has no thread ID, a section names an unknown
+            or repeated thread, a field is unknown, repeated, or missing, a
+            classification or action is unsupported, a section gives the
+            proposed response both as a field and as text, an item fails model
+            validation, or a thread that is not resolved has no section.
+    """
+    thread_by_id = {thread.thread_id: thread for thread in threads.threads}
+    items: dict[str, ReviewResponseItem] = {}
+    for thread_id, lines, heading_error in _sections(text.splitlines()):
+        if heading_error is not None:
+            raise ValueError(f"{thread_id}: {heading_error}")
+        if thread_id not in thread_by_id:
+            raise ValueError(f"response references unknown thread: {thread_id}")
+        metadata, body = _metadata_and_body(lines)
+        if body and "Proposed response" in metadata:
+            raise ValueError(
+                f"{thread_id}: Proposed response field and section text are ambiguous"
+            )
+        classification = _required(metadata, "Classification").strip().lower()
+        if classification not in {
+            "actionable",
+            "question",
+            "discussion",
+            "resolved",
+            "informational",
+        }:
+            raise ValueError(f"unsupported response classification: {classification}")
+        selected_action = _required(metadata, "Selected action").strip().lower()
+        if selected_action not in {"skip", "propose-change", "propose-response"}:
+            raise ValueError(f"unsupported response action: {selected_action}")
+        if thread_id in items:
+            raise ValueError(f"duplicate response thread: {thread_id}")
+        items[thread_id] = ReviewResponseItem(
+            thread_id=thread_id,
+            classification=cast(ResponseClassification, classification),
+            evaluation=_required(metadata, "Evaluation"),
+            evidence=_required(metadata, "Evidence"),
+            proposed_changes=_list_field(metadata, "Proposed changes"),
+            proposed_response=body or _optional_text(metadata, "Proposed response"),
+            verification=_list_field(metadata, "Verification"),
+            selected_action=cast(ResponseAction, selected_action),
+        )
+    missing = [
+        thread.thread_id
+        for thread in threads.threads
+        if thread.thread_id not in items and thread.state != "resolved"
+    ]
+    if missing:
+        raise ValueError(
+            f"response draft omits unresolved threads: {', '.join(missing)}"
+        )
+    for thread in threads.threads:
+        if thread.thread_id not in items:
+            items[thread.thread_id] = ReviewResponseItem(
+                thread_id=thread.thread_id,
+                classification="resolved",
+                evaluation="No response decision was supplied.",
+                evidence="Thread retained as missing response coverage.",
+                selected_action="skip",
+            )
+    return tuple(items[thread.thread_id] for thread in threads.threads)

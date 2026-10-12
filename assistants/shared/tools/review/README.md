@@ -84,3 +84,64 @@ Git must ignore it and track nothing in it:
 ```
 
 The second command prints `valid`.
+
+## `compile-response`
+
+`review-plan compile-response` turns a Markdown response draft into a
+`review-response-plan/v1` artifact for one `normalized-review-threads/v1`
+file. It does not construct provider clients. It writes the plan only when the
+checkout's origin and head match the threads identity and the output is inside
+an ignored, untracked workspace directory.
+
+The draft has one section per thread. A section starts with a level-three
+heading, `### <thread-id>: <title>`, where `<thread-id>` is a `thread_id` from
+the threads file. Bold fields follow, one per line, with no blank line between
+them:
+
+| Field | Required | Value |
+| --- | --- | --- |
+| `**Classification:**` | Yes | `actionable`, `question`, `discussion`, `resolved`, or `informational` |
+| `**Selected action:**` | Yes | `skip`, `propose-change`, or `propose-response` |
+| `**Evaluation:**` | Yes | Whether the feedback is technically valid |
+| `**Evidence:**` | Yes | What the evaluation rests on |
+| `**Proposed changes:**` | For `propose-change` | One proposed change |
+| `**Proposed response:**` | For `propose-response`, unless the section has text | The reply to propose |
+| `**Verification:**` | No | One verification step |
+
+Text after the fields, separated by a blank line, is the proposed response and
+may span paragraphs. A section that has both that text and a
+`Proposed response` field is rejected. `none`, `null`, or `-` leaves an
+optional field empty.
+
+Every thread that is not resolved needs a section. A resolved thread without
+one is kept as a `skip` item classified `resolved`. The plan's
+`source_threads_digest` is the value `review-plan digest --artifact` prints for
+the threads file. Thread limitations stay in the threads file; the plan does
+not copy them.
+
+For example, with `.reviews/` ignored and `.reviews/threads.json` holding one
+open thread `T001`, write `.reviews/response.md`:
+
+```markdown
+### T001: Guard the empty case
+
+**Classification:** actionable
+**Selected action:** propose-change
+**Evaluation:** The feedback is valid.
+**Evidence:** `load_items` iterates the result without checking it.
+**Proposed changes:** Return early when the result is empty.
+**Verification:** focused unit test for the empty result
+
+I will add the guard and a focused test for the empty result.
+```
+
+Then validate the threads file and compile the plan from the repository root:
+
+```bash
+~/.local/share/ballen-config/review-tools/bin/review-plan validate --artifact .reviews/threads.json
+~/.local/share/ballen-config/review-tools/bin/review-plan compile-response \
+  --threads .reviews/threads.json \
+  --draft .reviews/response.md \
+  --output .reviews/response-plan.json \
+  --repo-root .
+```
