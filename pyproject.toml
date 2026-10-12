@@ -33,13 +33,14 @@ packages = ["src/ballen_config"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["src", "assistants/shared/tools/review/src"]
 addopts = ["-q"]
 
 [tool.mypy]
 python_version = "3.12"
 strict = true
-packages = ["ballen_config"]
-mypy_path = "src"
+packages = ["ballen_config", "ballen_review_tools"]
+mypy_path = "src:assistants/shared/tools/review/src"
 
 [tool.ruff]
 target-version = "py312"

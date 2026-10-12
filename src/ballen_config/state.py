@@ -26,6 +26,7 @@ class ManagedRecord(BaseModel):
     source_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     destination_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     destination: str
+    exclude: frozenset[str] = frozenset()
 
 
 class InstallRecord(BaseModel):

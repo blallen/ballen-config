@@ -1,0 +1,47 @@
+"""Managed installation contribution for shared review tooling."""
+
+from pathlib import Path
+from typing import Final
+
+from ballen_config.configure import (
+    ConfigurationContribution,
+    ManagedTreeSpec,
+    digest_tree,
+)
+
+_SOURCE: Final[Path] = Path("assistants/shared/tools/review")
+_GENERATED_ENTRIES: Final[frozenset[str]] = frozenset(
+    {".DS_Store", "__pycache__", ".venv", ".mypy_cache", ".pytest_cache", ".ruff_cache"}
+)
+
+
+def review_tools_contribution(
+    *,
+    repo_root: Path,
+    enabled: frozenset[str],
+) -> ConfigurationContribution:
+    """Install the shared review tool tree for any enabled agent.
+
+    Args:
+        repo_root: Approved checkout root.
+        enabled: Resolved enabled agent identifiers.
+
+    Returns:
+        A digest-bound managed tree contribution, or an empty contribution
+        when no agent is enabled.
+    """
+    if not enabled:
+        return ConfigurationContribution()
+    source = repo_root / _SOURCE
+    return ConfigurationContribution(
+        specs=(
+            ManagedTreeSpec(
+                id="shared-review-tools",
+                source=source,
+                destination=Path(".local/share/ballen-config/review-tools"),
+                component="shared",
+                expected_source_digest=digest_tree(source, exclude=_GENERATED_ENTRIES),
+                exclude=_GENERATED_ENTRIES,
+            ),
+        )
+    )
