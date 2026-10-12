@@ -55,6 +55,13 @@ shape, the draft grammar, and each command's arguments.
 6. Check out the MR head: `git fetch origin refs/merge-requests/IID/head`, then
    `git switch --detach HEAD_SHA`, where `HEAD_SHA` is `diff_refs.head_sha`.
    `compile-review` rejects a checkout whose `HEAD` is not `head_revision`.
+   Require a clean working tree first, and return afterwards with
+   `git switch -`. When `.jj/` is present, fetch with
+   `git fetch origin refs/merge-requests/IID/head:refs/tags/mr-IID` so jj can
+   see the head, record the current parent with
+   `jj log -r @- --no-graph -T change_id`, use `jj new HEAD_SHA` instead of
+   `git switch --detach`, and return with `jj new <that change>` and
+   `git tag -d mr-IID`.
 7. Review `git diff BASE_SHA HEAD_SHA`, where `BASE_SHA` is
    `diff_refs.base_sha`, against the discovered standards and the normalized
    threads. Write the findings as a Markdown draft in `.reviews/review.md`.
