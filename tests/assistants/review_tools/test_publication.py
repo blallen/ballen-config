@@ -1,8 +1,6 @@
 """Tests for GitHub preview and guarded execution."""
 
 import json
-from collections.abc import Sequence
-from dataclasses import dataclass, field
 from pathlib import Path
 
 import pytest
@@ -23,26 +21,10 @@ from ballen_review_tools.publication import (
     preview_github_publication,
 )
 
+from tests.assistants.review_tools.doubles import RecordingRunner
+
 HEAD_SHA = "b" * 40
 NEW_HEAD = "e" * 40
-
-
-@dataclass
-class RecordingRunner:
-    """Return bounded command responses and record mutation vectors."""
-
-    responses: list[CompletedCommand] = field(default_factory=list)
-    calls: list[tuple[Sequence[str], str | None]] = field(default_factory=list)
-
-    def run(
-        self,
-        argv: Sequence[str],
-        *,
-        input_text: str | None = None,
-    ) -> CompletedCommand:
-        """Record one command and return its next response."""
-        self.calls.append((tuple(argv), input_text))
-        return self.responses.pop(0)
 
 
 def _plan() -> ReviewCommentPlan:
@@ -250,6 +232,41 @@ def test_preview_blocks_inline_location_missing_from_current_diff() -> None:
     assert preview.status == "ready"
     assert preview.items[0].state == "blocked"
     assert "current diff" in (preview.items[0].reason or "")
+
+
+@pytest.mark.parametrize(
+    ("line", "state"),
+    [
+        pytest.param(6, "eligible", id="line-after-the-form-feed-line"),
+        pytest.param(7, "blocked", id="line-past-the-end-of-the-diff"),
+    ],
+)
+def test_preview_counts_a_form_feed_inside_a_diff_line_once(
+    line: int, state: str
+) -> None:
+    """Split patches on newlines only so a form feed adds no diff line."""
+    responses = _read_responses()
+    responses[3] = CompletedCommand(
+        0,
+        json.dumps(
+            [
+                [
+                    {
+                        "filename": "src/example.py",
+                        "patch": "@@ -5,1 +5,2 @@\n kept\x0c+inside one line\n+added\n",
+                    }
+                ]
+            ]
+        ),
+        "",
+    )
+    plan = _plan_with(_inline_plan().actions[0].model_copy(update={"line": line}))
+    preview = preview_github_publication(
+        plan,
+        GitHubProvider(identity=plan.identity, runner=RecordingRunner(responses)),
+    )
+
+    assert preview.items[0].state == state
 
 
 def test_execute_rejects_changed_head_before_any_write() -> None:

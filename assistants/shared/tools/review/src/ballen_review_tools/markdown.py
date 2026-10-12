@@ -3,12 +3,13 @@
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Final, cast
+from typing import Final, get_args
 
 from pydantic import ValidationError
 
 from ballen_review_tools.canonical import deduplication_key
 from ballen_review_tools.models import (
+    INTENDED_ACTION_BY_KIND,
     NormalizedReviewThreads,
     ResponseAction,
     ResponseClassification,
@@ -215,7 +216,8 @@ def parse_review_markdown(
             if not body:
                 raise ValueError("empty body")
             kind = _required(metadata, "Type").strip().lower()
-            if kind not in {"inline", "general", "reply"}:
+            intended = INTENDED_ACTION_BY_KIND.get(kind)
+            if intended is None:
                 raise ValueError(f"unsupported action type: {kind}")
             selected_value = _required(metadata, "POST").strip().lower()
             if selected_value not in {"yes", "no"}:
@@ -232,11 +234,6 @@ def parse_review_markdown(
             thread_id = discussion or thread
             if thread_id is not None and thread_id.lower() in {"none", "null", "-"}:
                 thread_id = None
-            intended = {
-                "inline": "create-inline",
-                "general": "create-general",
-                "reply": "reply",
-            }[kind]
             action = ReviewAction.model_validate(
                 {
                     "action_id": action_id,
@@ -336,28 +333,26 @@ def parse_response_markdown(
                 f"{thread_id}: Proposed response field and section text are ambiguous"
             )
         classification = _required(metadata, "Classification").strip().lower()
-        if classification not in {
-            "actionable",
-            "question",
-            "discussion",
-            "resolved",
-            "informational",
-        }:
+        if classification not in get_args(ResponseClassification):
             raise ValueError(f"unsupported response classification: {classification}")
         selected_action = _required(metadata, "Selected action").strip().lower()
-        if selected_action not in {"skip", "propose-change", "propose-response"}:
+        if selected_action not in get_args(ResponseAction):
             raise ValueError(f"unsupported response action: {selected_action}")
         if thread_id in items:
             raise ValueError(f"duplicate response thread: {thread_id}")
-        items[thread_id] = ReviewResponseItem(
-            thread_id=thread_id,
-            classification=cast(ResponseClassification, classification),
-            evaluation=_required(metadata, "Evaluation"),
-            evidence=_required(metadata, "Evidence"),
-            proposed_changes=_list_field(metadata, "Proposed changes"),
-            proposed_response=body or _optional_text(metadata, "Proposed response"),
-            verification=_list_field(metadata, "Verification"),
-            selected_action=cast(ResponseAction, selected_action),
+        items[thread_id] = ReviewResponseItem.model_validate(
+            {
+                "thread_id": thread_id,
+                "classification": classification,
+                "evaluation": _required(metadata, "Evaluation"),
+                "evidence": _required(metadata, "Evidence"),
+                "proposed_changes": _list_field(metadata, "Proposed changes"),
+                "proposed_response": (
+                    body or _optional_text(metadata, "Proposed response")
+                ),
+                "verification": _list_field(metadata, "Verification"),
+                "selected_action": selected_action,
+            }
         )
     missing = [
         thread.thread_id

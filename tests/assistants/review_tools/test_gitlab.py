@@ -1,8 +1,6 @@
 """Tests for GitLab payloads and fixed transport vectors."""
 
 import json
-from collections.abc import Sequence
-from dataclasses import dataclass, field
 from typing import Final
 
 import pytest
@@ -22,27 +20,11 @@ from ballen_review_tools.providers.gitlab import (
     GitLabRemoteState,
 )
 
+from tests.assistants.review_tools.doubles import RecordingRunner
+
 BASE_SHA: Final[str] = "a" * 40
 START_SHA: Final[str] = "b" * 40
 HEAD_SHA: Final[str] = "c" * 40
-
-
-@dataclass
-class RecordingRunner:
-    """Return bounded command responses and retain argument vectors."""
-
-    responses: list[CompletedCommand] = field(default_factory=list)
-    calls: list[tuple[Sequence[str], str | None]] = field(default_factory=list)
-
-    def run(
-        self,
-        argv: Sequence[str],
-        *,
-        input_text: str | None = None,
-    ) -> CompletedCommand:
-        """Record one no-shell command invocation."""
-        self.calls.append((tuple(argv), input_text))
-        return self.responses.pop(0)
 
 
 def _identity() -> ReviewIdentity:

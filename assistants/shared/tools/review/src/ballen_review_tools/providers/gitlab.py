@@ -1,11 +1,10 @@
 """GitLab merge-request transport, payloads, and discussion normalization."""
 
 import json
-import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import PurePosixPath
-from typing import Final, Literal, NamedTuple, NotRequired, TypedDict
+from typing import Literal, NamedTuple, NotRequired, TypedDict
 from urllib.parse import quote
 
 from ballen_review_tools.models import (
@@ -17,10 +16,10 @@ from ballen_review_tools.models import (
     truncate_thread_body,
 )
 from ballen_review_tools.providers.base import CommandRunner
+from ballen_review_tools.providers.diff import hunk_lines
 
 GitLabThreadState = Literal["open", "resolved", "outdated"]
 DiffLineKey = tuple[str, int, ReviewSide]
-_HUNK: Final[re.Pattern[str]] = re.compile(r"^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@")
 
 
 class DiffLine(NamedTuple):
@@ -246,30 +245,12 @@ def _diff_line_map(
         `\\ No newline at end of file` markers advance neither line counter.
     """
     lines: dict[DiffLineKey, DiffLine] = {}
-    old_line: int | None = None
-    new_line: int | None = None
-    for text in diff.split("\n"):
-        hunk = _HUNK.match(text)
-        if hunk is not None:
-            old_line, new_line = int(hunk.group(1)), int(hunk.group(2))
-        elif old_line is None or new_line is None:
-            continue
-        elif text.startswith("+"):
-            lines[(new_path, new_line, "RIGHT")] = DiffLine(
-                old_path, new_path, None, new_line
-            )
-            new_line += 1
-        elif text.startswith("-"):
-            lines[(old_path, old_line, "LEFT")] = DiffLine(
-                old_path, new_path, old_line, None
-            )
-            old_line += 1
-        elif text.startswith(" "):
-            context = DiffLine(old_path, new_path, old_line, new_line)
-            lines[(new_path, new_line, "RIGHT")] = context
-            lines[(old_path, old_line, "LEFT")] = context
-            old_line += 1
-            new_line += 1
+    for line in hunk_lines(diff):
+        entry = DiffLine(old_path, new_path, line.old_line, line.new_line)
+        if line.new_line is not None:
+            lines[(new_path, line.new_line, "RIGHT")] = entry
+        if line.old_line is not None:
+            lines[(old_path, line.old_line, "LEFT")] = entry
     return lines
 
 
