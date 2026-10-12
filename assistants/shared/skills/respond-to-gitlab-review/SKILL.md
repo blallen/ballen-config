@@ -24,12 +24,29 @@ replies or local changes that the user explicitly wants to execute.
 2. Run and inspect focused verification.
 3. Authorize the exact change description and commit.
 4. Authorize push to the reviewed remote and branch.
-5. Preview exact remote replies or status comments through
-   `publish-gitlab-review`.
+5. Preview and authorize exact remote replies or status comments:
+   1. Recapture the MR's current `diff_refs` and every page of its
+      `discussions` with `using-gitlab`, and set the identity's
+      `base_revision` and `head_revision` to the new `diff_refs.base_sha` and
+      `diff_refs.head_sha`.
+   2. Refresh the threads with
+      `~/.local/share/ballen-config/review-tools/bin/review-plan normalize-threads --provider gitlab`.
+   3. Recompile the response plan against the refreshed threads with
+      `~/.local/share/ballen-config/review-tools/bin/review-plan compile-response`.
+   4. Write a review draft in the ignored workspace with one item for each
+      selected response item: `**Type:** reply`, `**Discussion:**` set to its
+      discussion ID, and its proposed response as the body.
+   5. Compile that draft with
+      `~/.local/share/ballen-config/review-tools/bin/review-plan compile-review`.
+   6. Preview with
+      `~/.local/share/ballen-config/review-tools/bin/publish-gitlab-review preview`.
+      Execute only after a separate approval of the exact preview and receipt
+      boundary, with
+      `~/.local/share/ballen-config/review-tools/bin/publish-gitlab-review execute`,
+      and report its receipt.
 
-Before the final reply gate, re-fetch the MR identity, complete `diff_refs`,
-selected discussions, and current note state. Then approve the exact preview
-and receipt boundary separately.
+Arguments, input shapes, and the draft grammar are in
+`~/.local/share/ballen-config/review-tools/README.md`.
 
 ## Boundaries
 
