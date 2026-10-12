@@ -537,6 +537,42 @@ def test_cli_execute_writes_posted_receipt(
 
 
 @pytest.mark.parametrize(
+    ("command", "flag"),
+    [
+        pytest.param("preview", "--output", id="preview"),
+        pytest.param("execute", "--receipt", id="execute"),
+    ],
+)
+def test_cli_blocks_missing_output_directory_before_any_request(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    command: str,
+    flag: str,
+) -> None:
+    """Block before reading or posting when the output cannot be written."""
+    runner = RecordingRunner(
+        [*_read_responses(), CompletedCommand(0, '{"id": 12}', "")]
+    )
+    _use_runner(monkeypatch, runner)
+    missing = tmp_path / "missing"
+    arguments = (
+        _approved_execute(tmp_path)
+        if command == "execute"
+        else ["preview", "--plan", str(_plan_file(tmp_path))]
+    )
+
+    code = publish_github_review([*arguments, flag, str(missing / "out.json")])
+
+    assert code == 2
+    assert all("--method" not in call[0] for call in runner.calls)
+    assert runner.calls == []
+    assert capsys.readouterr().err == (
+        f"blocked: {flag} directory must exist and be writable: {missing}\n"
+    )
+
+
+@pytest.mark.parametrize(
     ("review_comments", "states"),
     [
         pytest.param(
