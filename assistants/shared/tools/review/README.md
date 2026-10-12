@@ -32,7 +32,8 @@ JSON plan. It takes an identity file that names the change under review:
 - `provider` is `github` or `gitlab`, and `change_number` is the pull-request
   or merge-request number.
 - `host` and `repository` must match the checkout's `origin` remote.
-  `repository` is the full repository path or its final segment.
+  `repository` should be the full `owner/name` (GitHub) or
+  `namespace/project` (GitLab) path, because publication requires it.
 - `head_revision` must equal the checked-out `HEAD`.
 - No value may start with `/` or contain a backslash or whitespace.
 
