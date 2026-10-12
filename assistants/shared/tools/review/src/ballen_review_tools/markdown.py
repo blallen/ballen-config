@@ -114,7 +114,8 @@ def _metadata_and_body(lines: list[str]) -> tuple[dict[str, str], str]:
     """Split the leading block of bold metadata fields from the Markdown body.
 
     The field block ends at the first blank or non-field line after a field, so
-    body text that starts with bold text stays in the body.
+    body text that starts with bold text stays in the body. A body that starts
+    with a known field is rejected, because that field was meant as metadata.
     """
     metadata: dict[str, str] = {}
     body_lines: list[str] = []
@@ -133,6 +134,12 @@ def _metadata_and_body(lines: list[str]) -> tuple[dict[str, str], str]:
             continue
         metadata_mode = False
         body_lines.append(line)
+    late_field = _FIELD.match(next((line for line in body_lines if line.strip()), ""))
+    if late_field is not None and late_field.group(1) in _KNOWN_FIELDS:
+        raise ValueError(
+            "metadata field must come before the first blank line: "
+            f"{late_field.group(1)}"
+        )
     return metadata, "\n".join(body_lines).strip()
 
 

@@ -305,6 +305,17 @@ OPEN_THREAD_DRAFT = """### T001: Address the empty case
 """
 
 
+def test_known_field_after_the_field_block_is_rejected() -> None:
+    """Refuse to read a blank-line-separated field as the proposed response."""
+    draft = OPEN_THREAD_DRAFT.replace("**Verification:**", "\n**Verification:**")
+
+    with pytest.raises(
+        ValueError,
+        match=r"^metadata field must come before the first blank line: Verification$",
+    ):
+        parse_response_markdown(draft, threads=_threads())
+
+
 def test_omitted_resolved_thread_is_kept_as_skipped_evidence() -> None:
     """Retain a resolved thread that has no response section."""
     response = parse_response_markdown(OPEN_THREAD_DRAFT, threads=_threads())

@@ -215,3 +215,17 @@ def test_parser_diagnostics_omit_input_values_and_urls(
     assert [
         (diagnostic.action_id, diagnostic.reason) for diagnostic in parsed.diagnostics
     ] == [("R001", reason)]
+
+
+def test_parser_rejects_a_known_field_after_the_field_block() -> None:
+    """Report a range field that a blank line pushed into the comment body."""
+    draft = REVIEW.replace(
+        "**POST:** YES\n\nGuard", "**POST:** YES\n\n**Start line:** 19\n\nGuard"
+    )
+
+    parsed = parse_review_markdown(draft, identity=IDENTITY)
+
+    assert [action.action_id for action in parsed.actions] == ["R002"]
+    assert [
+        (diagnostic.action_id, diagnostic.reason) for diagnostic in parsed.diagnostics
+    ] == [("R001", "metadata field must come before the first blank line: Start line")]
