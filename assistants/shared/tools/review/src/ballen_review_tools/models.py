@@ -1,7 +1,7 @@
 """Strict provider-neutral models for review artifacts."""
 
 from pathlib import PurePosixPath
-from typing import Annotated, Literal, Self
+from typing import Annotated, Final, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -30,6 +30,7 @@ ResponseClassification = Literal[
     "informational",
 ]
 ResponseAction = Literal["skip", "propose-change", "propose-response"]
+THREAD_BODY_LIMIT: Final = 10_000
 
 
 def _repository_relative_path(value: object) -> PurePosixPath | None:
@@ -205,6 +206,23 @@ class ReviewCommentPlan(BaseModel):
         return self
 
 
+def truncate_thread_body(body: str) -> tuple[str, tuple[str, ...]]:
+    """Fit one provider comment body within the normalized thread limit.
+
+    Args:
+        body: Provider comment body of any length.
+
+    Returns:
+        The body, cut to `THREAD_BODY_LIMIT` characters when longer, and the
+        thread limitation recording the cut, or no limitation.
+    """
+    if len(body) <= THREAD_BODY_LIMIT:
+        return body, ()
+    return body[:THREAD_BODY_LIMIT], (
+        f"Body truncated to {THREAD_BODY_LIMIT} characters",
+    )
+
+
 class NormalizedThread(BaseModel):
     """Provider-neutral view of one native review thread."""
 
@@ -219,7 +237,7 @@ class NormalizedThread(BaseModel):
     start_line: int | None = Field(default=None, gt=0)
     start_side: ReviewSide | None = None
     author: str = Field(min_length=1, max_length=256)
-    body: str = Field(min_length=1, max_length=10000)
+    body: str = Field(min_length=1, max_length=THREAD_BODY_LIMIT)
     chronology: tuple[str, ...] = Field(min_length=1)
     limitations: tuple[Annotated[str, Field(max_length=2000)], ...] = ()
 

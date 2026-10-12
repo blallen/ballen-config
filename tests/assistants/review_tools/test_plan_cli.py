@@ -316,3 +316,140 @@ def test_compile_response_rejects_a_mismatched_identity(
             ]
         )
     assert not output.exists()
+
+
+@pytest.mark.parametrize(
+    ("payload", "output_directory", "reason"),
+    [
+        pytest.param(
+            ["not", "an", "object"],
+            ".reviews",
+            "thread input must be a JSON object",
+            id="non-object-payload",
+        ),
+        pytest.param(
+            {"review_comments": []},
+            ".reviews",
+            "thread input must contain head_sha and review_comments",
+            id="missing-head-sha",
+        ),
+        pytest.param(
+            {"head_sha": "b" * 40},
+            ".reviews",
+            "thread input must contain head_sha and review_comments",
+            id="missing-review-comments",
+        ),
+        pytest.param(
+            {"head_sha": "b" * 40, "review_comments": []},
+            "notes",
+            "workspace path is not ignored",
+            id="unignored-output-directory",
+        ),
+    ],
+)
+def test_normalize_threads_command_rejects_unsafe_input_or_output(
+    tmp_path: Path,
+    payload: object,
+    output_directory: str,
+    reason: str,
+) -> None:
+    """Refuse malformed captures and unsafe destinations before writing."""
+    repo = tmp_path / "repo"
+    _git_repository(repo)
+    (repo / output_directory).mkdir()
+    identity = repo / "identity.json"
+    identity.write_text(
+        json.dumps(
+            {
+                "provider": "github",
+                "host": "github.com",
+                "repository": "ballen-config",
+                "change_number": 17,
+                "base_revision": "a" * 40,
+                "head_revision": "b" * 40,
+            }
+        )
+    )
+    source = repo / "github-comments.json"
+    source.write_text(json.dumps(payload))
+    output = repo / output_directory / "threads.json"
+
+    with pytest.raises(ValueError, match=reason):
+        main(
+            [
+                "normalize-threads",
+                "--provider",
+                "github",
+                "--identity",
+                str(identity),
+                "--input",
+                str(source),
+                "--output",
+                str(output),
+                "--repo-root",
+                str(repo),
+            ]
+        )
+    assert not output.exists()
+
+
+def test_normalize_threads_command_writes_provider_neutral_snapshot(
+    tmp_path: Path,
+) -> None:
+    """Normalize supplied GitHub observations without provider mutation."""
+    repo = tmp_path / "repo"
+    head = _git_repository(repo)
+    workspace = repo / ".reviews"
+    workspace.mkdir()
+    identity = repo / "identity.json"
+    identity.write_text(
+        json.dumps(
+            {
+                "provider": "github",
+                "host": "github.com",
+                "repository": "ballen-config",
+                "change_number": 17,
+                "base_revision": "a" * 40,
+                "head_revision": head,
+            }
+        )
+    )
+    source = repo / "github-comments.json"
+    source.write_text(
+        json.dumps(
+            {
+                "head_sha": head,
+                "review_comments": [
+                    {
+                        "id": 10,
+                        "body": "Guard the empty case.",
+                        "user": {"login": "reviewer"},
+                    }
+                ],
+            }
+        )
+    )
+    output = workspace / "threads.json"
+
+    assert (
+        main(
+            [
+                "normalize-threads",
+                "--provider",
+                "github",
+                "--identity",
+                str(identity),
+                "--input",
+                str(source),
+                "--output",
+                str(output),
+                "--repo-root",
+                str(repo),
+            ]
+        )
+        == 0
+    )
+    artifact = json.loads(output.read_text())
+
+    assert artifact["contract_version"] == "normalized-review-threads/v1"
+    assert artifact["threads"][0]["thread_id"] == "10"
