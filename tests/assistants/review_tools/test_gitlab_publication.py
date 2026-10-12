@@ -526,6 +526,39 @@ def test_cli_execute_writes_posted_receipt(
     ]
 
 
+@pytest.mark.parametrize(
+    ("command", "flag"),
+    [
+        pytest.param("preview", "--output", id="preview"),
+        pytest.param("execute", "--receipt", id="execute"),
+    ],
+)
+def test_cli_blocks_missing_output_directory_before_any_request(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    command: str,
+    flag: str,
+) -> None:
+    """Block before reading or posting when the output cannot be written."""
+    runner = RecordingRunner([*_reads(), CompletedCommand(0, '{"id": 77}', "")])
+    monkeypatch.setattr(gitlab_cli, "SubprocessRunner", lambda: runner)
+    missing = tmp_path / "missing"
+    execute_argv = _execute_argv(tmp_path, _plan())
+    arguments = (
+        execute_argv[:-2] if command == "execute" else ["preview", *execute_argv[1:3]]
+    )
+
+    exit_code = gitlab_cli.main([*arguments, flag, str(missing / "out.json")])
+
+    assert exit_code == 2
+    assert all("--method" not in call[0] for call in runner.calls)
+    assert runner.calls == []
+    assert capsys.readouterr().err == (
+        f"blocked: {flag} directory must exist and be writable: {missing}\n"
+    )
+
+
 def test_execute_skips_left_side_context_duplicate() -> None:
     """Recognize a retried left-side comment on an unchanged line."""
     plan = _inline_plan(line=40, side="LEFT")

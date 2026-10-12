@@ -1,6 +1,7 @@
 """CLI for GitLab publication preview and guarded execution."""
 
 import argparse
+import os
 import subprocess
 import sys
 from collections.abc import Sequence
@@ -60,6 +61,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Run a read-only preview or separately gated execution."""
     args = _parser().parse_args(argv)
     try:
+        for flag, path in (("--output", args.output), ("--receipt", args.receipt)):
+            if path is not None and not (
+                path.parent.is_dir() and os.access(path.parent, os.W_OK)
+            ):
+                raise ValueError(
+                    f"{flag} directory must exist and be writable: {path.parent}"
+                )
         plan = _load_plan(args.plan)
         provider = GitLabProvider(identity=plan.identity, runner=SubprocessRunner())
         if args.command == "preview":
