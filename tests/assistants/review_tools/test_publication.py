@@ -379,7 +379,7 @@ def test_partial_retry_skips_successful_general_comment() -> None:
 
     assert retry.receipt is not None
     assert [item.outcome for item in retry.receipt.items] == ["duplicate", "posted"]
-    assert retry_runner.calls[-1][0][4].endswith("/pulls/comments/10/replies")
+    assert retry_runner.calls[-1][0][4].endswith("/pulls/17/comments/10/replies")
 
 
 @pytest.mark.parametrize(

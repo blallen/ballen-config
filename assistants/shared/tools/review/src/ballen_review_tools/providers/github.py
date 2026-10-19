@@ -341,7 +341,8 @@ class GitHubProvider:
     def post_reply(self, action: ReviewAction) -> object:
         """Post one reply to a top-level review comment."""
         return self._post(
-            f"repos/{self._repository_path()}/pulls/comments/{action.thread_id}/replies",
+            f"repos/{self._repository_path()}/pulls/{self.identity.change_number}"
+            f"/comments/{action.thread_id}/replies",
             self.reply_payload(action),
         )
 
