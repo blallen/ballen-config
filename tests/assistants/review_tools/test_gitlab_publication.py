@@ -254,6 +254,34 @@ def test_partial_retry_skips_confirmed_note_and_posts_only_reply() -> None:
     assert all("PUT" not in call[0] for call in retry_runner.calls)
 
 
+def test_failed_note_receipt_keeps_the_first_stderr_line() -> None:
+    """Record why a note failed without copying the response body."""
+    plan = _plan()
+    runner = RecordingRunner(
+        [
+            *_reads(),
+            CompletedCommand(
+                1,
+                '{"message": "403 Forbidden"}',
+                'glab: 403 Forbidden (HTTP 403)\n{"message": "403 Forbidden"}\n',
+            ),
+        ]
+    )
+
+    result = execute_gitlab_publication(
+        plan=plan,
+        approved_plan_digest=plan_digest(plan),
+        expected_head=HEAD_SHA,
+        provider=GitLabProvider(identity=plan.identity, runner=runner),
+    )
+
+    assert result.status == "failed"
+    assert result.receipt is not None
+    assert result.receipt.items[0].reason == (
+        "GitLab mutation request failed: glab: 403 Forbidden (HTTP 403)"
+    )
+
+
 def test_preview_sends_old_and_new_line_for_context_inline_action() -> None:
     """Position an unchanged-line discussion with both current line numbers."""
     plan = _inline_plan(line=41)

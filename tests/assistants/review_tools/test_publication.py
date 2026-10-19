@@ -382,6 +382,34 @@ def test_partial_retry_skips_successful_general_comment() -> None:
     assert retry_runner.calls[-1][0][4].endswith("/pulls/17/comments/10/replies")
 
 
+def test_failed_reply_receipt_keeps_the_first_stderr_line() -> None:
+    """Record why a reply failed without copying the response body."""
+    plan = _plan_with(_reply("10"))
+    runner = RecordingRunner(
+        [
+            *_read_responses(),
+            CompletedCommand(
+                1,
+                '{"message": "Not Found"}',
+                'gh: Not Found (HTTP 404)\n{"message": "Not Found"}\n',
+            ),
+        ]
+    )
+
+    result = execute_github_publication(
+        plan=plan,
+        approved_plan_digest=plan_digest(plan),
+        expected_head=HEAD_SHA,
+        provider=GitHubProvider(identity=plan.identity, runner=runner),
+    )
+
+    assert result.status == "failed"
+    assert result.receipt is not None
+    assert result.receipt.items[0].reason == (
+        "GitHub mutation request failed: gh: Not Found (HTTP 404)"
+    )
+
+
 @pytest.mark.parametrize(
     "thread_id",
     [

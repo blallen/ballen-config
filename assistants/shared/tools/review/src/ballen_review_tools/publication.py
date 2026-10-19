@@ -293,7 +293,7 @@ def execute_github_publication(
                     )
                 )
             posted_any = True
-        except GitHubProviderError:
+        except GitHubProviderError as error:
             failed = True
             for action in inline_actions:
                 receipt_items.append(
@@ -301,7 +301,7 @@ def execute_github_publication(
                         action_id=action.action_id,
                         deduplication_key=action.deduplication_key,
                         outcome="failed",
-                        reason="GitHub inline review request failed",
+                        reason=str(error),
                     )
                 )
 
@@ -327,14 +327,14 @@ def execute_github_publication(
                 )
             )
             posted_any = True
-        except GitHubProviderError:
+        except GitHubProviderError as error:
             failed = True
             receipt_items.append(
                 PublicationReceiptItem(
                     action_id=action.action_id,
                     deduplication_key=action.deduplication_key,
                     outcome="failed",
-                    reason="GitHub publication request failed",
+                    reason=str(error),
                 )
             )
             break

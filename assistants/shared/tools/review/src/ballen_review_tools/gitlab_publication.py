@@ -292,14 +292,14 @@ def execute_gitlab_publication(
                 )
             )
             posted_any = True
-        except GitLabProviderError:
+        except GitLabProviderError as error:
             failed = True
             receipt_items.append(
                 PublicationReceiptItem(
                     action_id=action.action_id,
                     deduplication_key=action.deduplication_key,
                     outcome="failed",
-                    reason="GitLab publication request failed",
+                    reason=str(error),
                 )
             )
 
