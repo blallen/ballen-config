@@ -46,3 +46,23 @@ class SubprocessRunner:
             shell=False,
         )
         return CompletedCommand(result.returncode, result.stdout, result.stderr)
+
+
+def failure_detail(result: CompletedCommand, *, limit: int = 200) -> str:
+    """Summarize a failed command without its response body.
+
+    `gh` and `glab` print the HTTP status line first on stderr and the
+    response body after it, so only that first line is kept.
+
+    Args:
+        result: The failed command result.
+        limit: Maximum characters kept from the stderr line.
+
+    Returns:
+        The first non-empty stderr line, truncated to `limit`, or the exit
+        status when stderr is empty.
+    """
+    line = next(
+        (line.strip() for line in result.stderr.splitlines() if line.strip()), ""
+    )
+    return line[:limit] or f"exit status {result.returncode}"

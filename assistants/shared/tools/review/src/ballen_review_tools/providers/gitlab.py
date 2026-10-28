@@ -15,7 +15,7 @@ from ballen_review_tools.models import (
     ReviewSide,
     truncate_thread_body,
 )
-from ballen_review_tools.providers.base import CommandRunner
+from ballen_review_tools.providers.base import CommandRunner, failure_detail
 from ballen_review_tools.providers.diff import hunk_lines
 
 GitLabThreadState = Literal["open", "resolved", "outdated"]
@@ -121,7 +121,7 @@ class GitLabDiscussionPayload(TypedDict):
 
 
 class GitLabProviderError(ValueError):
-    """Bounded GitLab normalization error without raw provider content."""
+    """Bounded GitLab provider or response error without a raw response body."""
 
 
 def _string(value: object) -> str | None:
@@ -307,7 +307,9 @@ class GitLabProvider:
             arguments.append("--paginate")
         result = self._runner.run(arguments)
         if result.returncode != 0:
-            raise GitLabProviderError("GitLab read request failed")
+            raise GitLabProviderError(
+                f"GitLab read request failed: {failure_detail(result)}"
+            )
         try:
             return json.loads(result.stdout)
         except json.JSONDecodeError as error:
@@ -331,7 +333,9 @@ class GitLabProvider:
             input_text=json.dumps(payload, sort_keys=True),
         )
         if result.returncode != 0:
-            raise GitLabProviderError("GitLab mutation request failed")
+            raise GitLabProviderError(
+                f"GitLab mutation request failed: {failure_detail(result)}"
+            )
         try:
             return json.loads(result.stdout)
         except json.JSONDecodeError as error:

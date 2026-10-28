@@ -16,7 +16,7 @@ from ballen_review_tools.models import (
     ReviewSide,
     truncate_thread_body,
 )
-from ballen_review_tools.providers.base import CommandRunner
+from ballen_review_tools.providers.base import CommandRunner, failure_detail
 from ballen_review_tools.providers.diff import hunk_lines
 
 API_VERSION: Final[str] = "2026-03-10"
@@ -104,7 +104,7 @@ class GitHubRemoteState:
 
 
 class GitHubProviderError(ValueError):
-    """Bounded provider or response error without raw response content."""
+    """Bounded provider or response error without a raw response body."""
 
 
 @dataclass(frozen=True)
@@ -146,7 +146,9 @@ class GitHubProvider:
         )
         result = self.runner.run(arguments)
         if result.returncode != 0:
-            raise GitHubProviderError("GitHub read request failed")
+            raise GitHubProviderError(
+                f"GitHub read request failed: {failure_detail(result)}"
+            )
         try:
             payload: object = json.loads(result.stdout)
         except json.JSONDecodeError as error:
@@ -316,7 +318,9 @@ class GitHubProvider:
             arguments, input_text=json.dumps(payload, sort_keys=True)
         )
         if result.returncode != 0:
-            raise GitHubProviderError("GitHub mutation request failed")
+            raise GitHubProviderError(
+                f"GitHub mutation request failed: {failure_detail(result)}"
+            )
         try:
             return json.loads(result.stdout)
         except json.JSONDecodeError as error:
@@ -341,7 +345,8 @@ class GitHubProvider:
     def post_reply(self, action: ReviewAction) -> object:
         """Post one reply to a top-level review comment."""
         return self._post(
-            f"repos/{self._repository_path()}/pulls/comments/{action.thread_id}/replies",
+            f"repos/{self._repository_path()}/pulls/{self.identity.change_number}"
+            f"/comments/{action.thread_id}/replies",
             self.reply_payload(action),
         )
 
