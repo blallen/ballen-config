@@ -25,8 +25,11 @@ local and auditable before any publication decision.
    not guess a branch or reuse an old head.
 3. Ask for a repository-local destination that is already ignored and
    untracked when no safe workspace is obvious. Prove it before writing.
-4. Write the identity JSON and the Markdown draft into that workspace. From
-   the repository root, compile and then validate the plan:
+4. Write the identity JSON and the Markdown draft into that workspace. Keep
+   each comment prose paragraph on one physical line, with blank lines between
+   paragraphs. Preserve structural newlines in code blocks, tables, lists, and
+   intentional Markdown line breaks. GitHub comments render single newlines as
+   line breaks. From the repository root, compile and then validate the plan:
 
    ```text
    ~/.local/share/ballen-config/review-tools/bin/review-plan compile-review \

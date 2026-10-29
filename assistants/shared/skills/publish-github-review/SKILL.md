@@ -19,7 +19,8 @@ when the user separately asks to preview or publish those exact findings.
 
 ## Quick Reference
 
-1. Re-read the current draft and recompile the logical plan.
+1. Re-read the current draft and check selected comment bodies for unintended
+   hard wraps in prose. Correct the draft before recompiling the logical plan.
 2. Run the read-only preview and show eligible, blocked, duplicate, and skipped
    actions with the plan digest and observed head.
 3. Obtain approval for that exact preview.
