@@ -235,6 +235,16 @@ skills:
       promotion.
     portability_status: reviewed-generic
 
+  - name: writing-pr-descriptions
+    source: assistants/shared/skills/writing-pr-descriptions
+    targets: [cursor, claude-code, codex]
+    profiles: [default]
+    dependencies: [editing-technical-prose]
+    provenance: >-
+      Authored from reviewed PR-description rewrites and repository PR guidance;
+      Sentry pr-writer and Cursor pstack informed the writing conventions.
+    portability_status: reviewed-generic
+
 renames:
   - from: jujutsu-workflow
     to: using-jujutsu
