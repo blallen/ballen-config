@@ -31,6 +31,16 @@ skills:
       promotion.
     portability_status: reviewed-generic
 
+  - name: editing-technical-prose
+    source: assistants/shared/skills/editing-technical-prose
+    targets: [cursor, claude-code, codex]
+    profiles: [default]
+    dependencies: []
+    provenance: >-
+      Authored from reviewed ASD-STE100 principles and the public
+      danyuchn/asd-ste100-skill and Cursor pstack writing guidance.
+    portability_status: reviewed-generic
+
   - name: resolve-change-scope
     source: assistants/shared/skills/resolve-change-scope
     targets: [cursor, claude-code, codex]
@@ -218,7 +228,7 @@ skills:
     source: assistants/shared/skills/writing-executive-communications
     targets: [cursor, claude-code, codex]
     profiles: [default]
-    dependencies: []
+    dependencies: [editing-technical-prose]
     provenance: >-
       Genericized from plato/skills/reports-consultant-style at commit
       f3b91eead0eff7d0c9cada3bc8e689f7610fba55; commit history records the
