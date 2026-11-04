@@ -65,16 +65,9 @@ This requires refactoring the session management
 to be stateless."
 ```
 
-## Action-Oriented Language
+## Wording
 
-Use direct, actionable verbs:
-
-| Avoid                              | Use Instead                |
-| ---------------------------------- | -------------------------- |
-| "We could potentially consider..." | "We recommend..."          |
-| "It might be good to..."           | "Implement..."             |
-| "There seems to be..."             | "The data shows..."        |
-| "I think maybe..."                 | "Based on X, we should..." |
+**REQUIRED COMPANION:** Use editing-technical-prose for the final wording pass after structuring the message. Preserve the recommendation, evidence, and confidence levels established for this audience.
 
 ## The "So What?" Test
 
@@ -134,14 +127,6 @@ For longer communications, include a structured summary:
 3. **Investment**: Time, cost, resources required
 4. **Timeline**: Key milestones and delivery date
 5. **Risks**: Top 1-2 risks and mitigations
-
-## Crisp Writing Rules
-
-1. **One idea per sentence** - Complex sentences obscure meaning
-2. **Active voice** - "The team completed the migration" not "The migration was completed"
-3. **Eliminate filler words** - Remove "basically," "actually," "really," "very," "just"
-4. **Use parallel structure** - Lists should follow the same grammatical pattern
-5. **Front-load key information** - Put the most important word at the start of sentences
 
 ## Presenting Options
 
