@@ -22,12 +22,18 @@ choice.
 
 ## Repository snapshots
 
-The repository-rule template supports two passive copy modes. Default copies
-one concise `AGENTS.md` baseline for Codex and Cursor, plus a delegating
-`CLAUDE.md` entry when Claude Code is used. All adds this index and every
-canonical topic; tooling remains a separate opt-in bundle. Copied files become
-repository-owned snapshots. Maintainers inspect and merge future upstream
-changes rather than assuming automatic synchronization.
+The repository-rule starter supports two passive copy modes. Default copies
+one concise `AGENTS.md` baseline for Codex, Cursor, and current Claude Code.
+An optional `CLAUDE.md` entry supports compatibility cases or Claude-specific
+instructions. All adds this index and every canonical topic; tooling remains
+a separate opt-in bundle.
+
+ballen-config is the canonical source for reusable guidance. Downstream copies
+are vendored snapshots: copy the declared files unchanged and record the source
+revision in the downstream guidance commit message. Make generic corrections upstream first;
+keep repository-specific instructions and explicit exceptions outside the
+vendored topic files. Inspect local changes before refreshing a bundle so
+intentional overrides are preserved. Refreshes are deliberate, not automatic.
 
 These files are plain Markdown. Their presence implies no installer, selector,
 or runtime loading mechanism.

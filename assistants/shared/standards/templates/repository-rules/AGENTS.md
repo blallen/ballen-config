@@ -8,7 +8,7 @@ verification before claiming completion.
 
 For Python repositories unless their own configuration says otherwise:
 
-- Use Python 3.12.
+- Use Python 3.15.
 - Use type hints, `TypedDict` for controlled mapping shapes, and Pydantic v2 for
   validated models.
 - Use Google-style docstrings and pytest fixtures.

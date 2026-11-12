@@ -124,7 +124,7 @@ def test_python_tooling_bundle_has_expected_files(repo_root: Path) -> None:
 def _assert_ruff_template(path: Path) -> None:
     """Parse the Ruff template and enforce its reviewed defaults."""
     ruff = tomllib.loads(path.read_text(encoding="utf-8"))
-    assert ruff["target-version"] == "py312"
+    assert ruff["target-version"] == "py315"
     assert ruff["line-length"] == 100
     assert ruff["indent-width"] == 4
     assert ruff["format"] == {

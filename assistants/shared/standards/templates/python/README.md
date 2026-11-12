@@ -13,20 +13,24 @@ file by path. Copy `.pre-commit-config.yaml` with `ruff.toml` and
 `.markdownlint.json`, because its hooks reference both companion files.
 
 Pre-commit requires Git repository metadata. In a pure-Jujutsu repository
-without a colocated `.git/`, omit `.pre-commit-config.yaml` and run Ruff, mypy,
+without a colocated `.git/`, omit `.pre-commit-config.yaml` and run Ruff, the selected type checker,
 pytest, and Markdownlint through the repository's own task or CI entry. The
 individual tool configurations do not depend on Git.
 
 ## Required tools
 
-The baseline assumes Python 3.12, Ruff, mypy, pytest, pre-commit, and
-Markdownlint. The destination repository chooses how those tools are installed
-and invoked.
+The guidance defaults to Python 3.15, Ruff, ty, pytest, pre-commit, and
+Markdownlint for new repositories. The destination repository's configuration
+selects the tools and how they are installed and invoked.
+
+The bundled `mypy.ini` is an optional compatibility seed for repositories that
+already select mypy. Do not copy it into a ty project; configure ty in that
+project's `pyproject.toml` when its defaults need adjustment.
 
 ## Adaptation points
 
 Review the supported Python version, source and test paths, pytest markers,
-Ruff rule selection, mypy strictness, and repository-specific exclusions.
+Ruff rule selection, type-checker policy, and repository-specific exclusions.
 Retain a setting only when it matches the destination's dependencies and
 delivery policy.
 
@@ -36,7 +40,8 @@ test layout and configures pytest discovery accordingly.
 
 ## Optional configuration
 
-Enable the Pydantic mypy plugin only when Pydantic is a declared dependency.
+ty has built-in Pydantic v2 support. For repositories that retain mypy, enable
+its Pydantic plugin only when Pydantic is a declared dependency.
 Add a uv-lock hook only when the repository selects uv and tracks its lockfile.
 Add conventional commits enforcement only when that repository has adopted
 the policy.

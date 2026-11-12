@@ -2,9 +2,10 @@
 
 ## Scope and version
 
-Use Python 3.12 unless repository configuration selects another supported
+Use Python 3.15 unless repository configuration selects another supported
 version. Treat executable configuration as authoritative for interpreter,
-formatter, linter, and type-checker behavior.
+formatter, linter, and type-checker behavior. For new repositories, prefer ty
+unless another checker is explicitly selected.
 
 ## Types and contracts
 
@@ -16,9 +17,11 @@ formatter, linter, and type-checker behavior.
 - Distinguish omitted mapping keys from keys whose value may be `None`; use
   `NotRequired` when callers may omit a key.
 - Use named return types when multiple returned values need semantic names.
-- On Python 3.12, do not use `from __future__ import annotations`. Prefer
-  `Self` for methods that return the current class, and quote only unavoidable
-  forward references caused by definition order or circular imports.
+- On Python 3.15, rely on default deferred annotation evaluation. Omit
+  `from __future__ import annotations` unless the repository documents a
+  compatibility requirement. Prefer `Self` for methods that return the current
+  class, and leave forward references unquoted where deferred evaluation
+  supports them.
 - Preserve object identity when callers may depend on a supplied instance.
   Derive duplicated identity fields instead of storing values that can diverge.
 - Disable generated equality when a value contains arrays or other objects
