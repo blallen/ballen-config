@@ -30,6 +30,10 @@ Ruff rule selection, mypy strictness, and repository-specific exclusions.
 Retain a setting only when it matches the destination's dependencies and
 delivery policy.
 
+The Ruff template applies the same test-specific exceptions to root `tests/`
+and colocated `__tests__/` directories. The destination repository selects its
+test layout and configures pytest discovery accordingly.
+
 ## Optional configuration
 
 Enable the Pydantic mypy plugin only when Pydantic is a declared dependency.

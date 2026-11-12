@@ -12,18 +12,14 @@ docstring-code-format = true
 [lint]
 select = ["ALL"]
 ignore = [
-  "COM",
-  "CPY",
-  "FIX",
-  "TC",
-  "D401",
-  "N803",
-  "N806",
-  "TD003",
-  "ISC001",
-  "RET504",
-  "TRY300",
-  "PLR0913",
+  "COM", # Formatter owns trailing commas.
+  "CPY", # Repository files do not require copyright headers.
+  "FIX", # Task comments may remain in source.
+  "TC", # Keep imports explicit at runtime.
+  "D401", # Google docstrings need not use imperative mood.
+  "TD003", # Task comments do not require issue links.
+  "ISC001", # Avoid conflicts with the formatter.
+  "RET504", # Named intermediate results can aid readability.
 ]
 
 [lint.pydocstyle]
@@ -41,3 +37,4 @@ mark-parentheses = true
 
 [lint.per-file-ignores]
 "tests/**/*.py" = ["ARG", "FBT001", "PLR2004", "S101", "SLF001"]
+"**/__tests__/**/*.py" = ["ARG", "FBT001", "PLR2004", "S101", "SLF001"]

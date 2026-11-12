@@ -68,13 +68,9 @@ RETAINED_RUFF_IGNORES = {
     "FIX",
     "TC",
     "D401",
-    "N803",
-    "N806",
     "TD003",
     "ISC001",
     "RET504",
-    "TRY300",
-    "PLR0913",
 }
 REQUIRED_DOCSTRING_RULES = {
     "D100",
