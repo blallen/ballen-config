@@ -25,11 +25,12 @@ local and auditable before any publication decision.
    not guess a branch or reuse an old head.
 3. Ask for a repository-local destination that is already ignored and
    untracked when no safe workspace is obvious. Prove it before writing.
-4. Write the identity JSON and the Markdown draft into that workspace. Keep
-   each comment prose paragraph on one physical line, with blank lines between
-   paragraphs. Preserve structural newlines in code blocks, tables, lists, and
-   intentional Markdown line breaks. GitHub comments render single newlines as
-   line breaks. From the repository root, compile and then validate the plan:
+4. Write the identity JSON and the Markdown draft into that workspace using
+   the finding format below. Within each section, keep each prose paragraph
+   on one physical line, with blank lines between paragraphs. Preserve
+   structural newlines in code blocks, tables, lists, and intentional
+   Markdown line breaks. GitHub comments render single newlines as line
+   breaks. From the repository root, compile and then validate the plan:
 
    ```text
    ~/.local/share/ballen-config/review-tools/bin/review-plan compile-review \
@@ -43,6 +44,24 @@ local and auditable before any publication decision.
    JSON shape and the draft grammar.
 5. Retain selected and skipped items, missing local coverage, validation
    failures, and provider limitations in the artifact.
+
+## Finding format
+
+Write each finding with three separate bold labels, in this order:
+
+1. **What is wrong**: current behavior, triggering conditions, evidence, and
+   why it matters.
+2. **How to fix**: the concrete change first, followed by a short code or
+   prose example by default. Omit the example when it is infeasible,
+   misleading, or adds no useful clarity.
+3. **What changes as a result**: expected behavior after the fix, with a
+   before-and-after example when useful. Distinguish verified results from
+   predictions and state unresolved details.
+
+Separate labels, paragraphs, and code blocks with blank lines. Keep each
+section proportional to the finding; a sentence can be enough. Coverage
+notes, open questions, and replies use the format appropriate to their purpose.
+The review-tools README includes a complete draft example.
 
 ## Boundaries
 

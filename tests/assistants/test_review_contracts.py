@@ -227,15 +227,29 @@ def _render_self_review_markdown(result: dict[str, Any], json_name: str) -> list
         if not findings:
             continue
         lines += ["", f"## {heading}", ""]
-        for finding in findings:
+        for index, finding in enumerate(findings):
+            if index:
+                lines.append("")
+            category = finding["category"]
+            if finding["rule"] is not None:
+                category += f"/`{finding['rule']}`"
             lines += [
-                f"- `{finding['finding_id'][:12]}` "
+                f"### `{finding['finding_id'][:12]}` "
                 f"`{_render_finding_location(finding)}` "
-                f"· {finding['category']}/`{finding['rule']}` "
+                f"· {category} "
                 f"· {', '.join(finding['contributors'])}",
-                f"  - Evidence: {finding['evidence']}",
-                f"  - Remediation: {finding['remediation']}",
+                "",
+                "**What is wrong**",
+                "",
+                *finding["evidence"].splitlines(),
             ]
+            if finding["remediation"] is not None:
+                lines += [
+                    "",
+                    "**How to fix**",
+                    "",
+                    *finding["remediation"].splitlines(),
+                ]
     lines += [
         "",
         "## Coverage",

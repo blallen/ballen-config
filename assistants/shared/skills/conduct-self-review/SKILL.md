@@ -153,6 +153,13 @@ evidence-backed `not_applicable` results. Preserve unknown applicability,
 incomplete analysis, missing tools, skips, and blocked work without converting
 them into success.
 
+Ask specialists to follow the common result contract's finding-prose
+convention: problem in `evidence`; concrete fix, example by default, and
+expected result in `remediation`. The artifact template presents these as
+**What is wrong**, **How to fix**, and **What changes as a result**. Keep
+sections separate and proportional to the finding. Preserve an existing
+plain or null remediation verbatim during aggregation.
+
 When `review-project-tests` is applicable and reports outcome `completed`,
 verify that its coverage lists every required check that skill declares, each
 with `required: true` and completion `completed`; do not copy or extend its
