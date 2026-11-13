@@ -1,8 +1,8 @@
 {
   "contract_version": "v1",
-  "result_id": "f1f2159be6c0c27267eb36be7e33594b736aedf82536777674462f3e388d2421",
+  "result_id": "6b11e64af30cbc46531f208668e59c4b73b6f2edd52b4e4077e6681a1eadd806",
   "created_at": "2026-07-30T20:00:00Z",
-  "result_digest": "63eda5b4775d92685585a865f5cdacd5cac5eed91661102fe295cc61aca74751",
+  "result_digest": "e49e22ea032ad633df76c20237156814e5efd593760e754ab991d518abf3d949",
   "repository_identity": {
     "state": "complete",
     "vcs": "jujutsu",
@@ -81,7 +81,7 @@
           },
           "rule": "DOCSTRING-SUMMARY",
           "evidence": "The public function uses an expanded docstring for a single-sentence contract.",
-          "remediation": "Use a one-line summary for this simple public function.",
+          "remediation": "Collapse the docstring to a single summary line. For example:\n\n```python\n\"\"\"Return the review result.\"\"\"\n```\n\n**What changes as a result**\n\nThe one-sentence contract uses the required docstring format without changing runtime behavior.",
           "contributors": [
             "review-project-standards"
           ]
@@ -95,7 +95,7 @@
           "location": null,
           "rule": "assistants/shared/standards/documentation.md#repository-documentation",
           "evidence": "The change introduces an ignored review directory that no repository documentation describes.",
-          "remediation": "Describe the ignored review directory in the repository README.",
+          "remediation": "Describe the ignored review directory in the repository README. For example:\n\n```markdown\nReview artifacts are stored locally in `.reviews/` and are ignored by Git.\n```\n\n**What changes as a result**\n\nContributors can find saved reviews and understand that the artifacts stay local.",
           "contributors": [
             "review-project-standards"
           ]
@@ -144,7 +144,7 @@
           },
           "rule": "DOCSTRING-SUMMARY",
           "evidence": "The public function uses an expanded docstring for a single-sentence contract.",
-          "remediation": "Collapse the docstring to a single summary line.",
+          "remediation": "Collapse the docstring to a single summary line. For example:\n\n```python\n\"\"\"Return the review result.\"\"\"\n```\n\n**What changes as a result**\n\nThe one-sentence contract uses the required docstring format without changing runtime behavior.",
           "contributors": [
             "review-project-quality"
           ]
@@ -245,7 +245,7 @@
           },
           "rule": "tdd-residue",
           "evidence": "The import-only test detects no owned regression that the behavioral contract tests would not also catch.",
-          "remediation": "Delete the import-only test; the behavioral contract tests already fail for every regression it detects.",
+          "remediation": "Delete the import-only test and retain the behavioral contract tests. For example, remove a test like this:\n\n```python\ndef test_module_imports() -> None:\n    import review\n```\n\n**What changes as a result**\n\nThe suite stops counting a redundant import check while retaining the tests that detect meaningful contract regressions.",
           "contributors": [
             "review-project-tests"
           ]
@@ -323,7 +323,7 @@
       },
       "rule": "DOCSTRING-SUMMARY",
       "evidence": "The public function uses an expanded docstring for a single-sentence contract.",
-      "remediation": "Collapse the docstring to a single summary line.",
+      "remediation": "Collapse the docstring to a single summary line. For example:\n\n```python\n\"\"\"Return the review result.\"\"\"\n```\n\n**What changes as a result**\n\nThe one-sentence contract uses the required docstring format without changing runtime behavior.",
       "contributors": [
         "review-project-quality",
         "review-project-standards"
@@ -341,7 +341,7 @@
       },
       "rule": "tdd-residue",
       "evidence": "The import-only test detects no owned regression that the behavioral contract tests would not also catch.",
-      "remediation": "Delete the import-only test; the behavioral contract tests already fail for every regression it detects.",
+      "remediation": "Delete the import-only test and retain the behavioral contract tests. For example, remove a test like this:\n\n```python\ndef test_module_imports() -> None:\n    import review\n```\n\n**What changes as a result**\n\nThe suite stops counting a redundant import check while retaining the tests that detect meaningful contract regressions.",
       "contributors": [
         "review-project-tests"
       ]
@@ -355,7 +355,7 @@
       "location": null,
       "rule": "assistants/shared/standards/documentation.md#repository-documentation",
       "evidence": "The change introduces an ignored review directory that no repository documentation describes.",
-      "remediation": "Describe the ignored review directory in the repository README.",
+      "remediation": "Describe the ignored review directory in the repository README. For example:\n\n```markdown\nReview artifacts are stored locally in `.reviews/` and are ignored by Git.\n```\n\n**What changes as a result**\n\nContributors can find saved reviews and understand that the artifacts stay local.",
       "contributors": [
         "review-project-standards"
       ]

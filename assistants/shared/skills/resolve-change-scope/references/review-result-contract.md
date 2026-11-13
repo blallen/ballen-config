@@ -100,7 +100,7 @@ Each finding has exactly:
 | `location` | Tight line object or `null` |
 | `rule` | Stable rule or check identifier, or `null` |
 | `evidence` | Concise sanitized evidence |
-| `remediation` | Concise recommendation or `null` |
+| `remediation` | Recommendation, example, and expected result, or `null` |
 | `contributors` | Ordered canonical reviewer names |
 
 A location is `{start_line, end_line}` with positive inclusive line numbers.
@@ -115,6 +115,25 @@ Severity means:
 
 Retain an original label such as `error`, `warning`, `Critical`,
 `Suggestion`, or `Nit` in `source_severity` when it helps interpretation.
+
+### Finding prose
+
+Author findings for three separately labeled parts: **What is wrong**,
+**How to fix**, and **What changes as a result**, in that order.
+
+Put current behavior, triggering conditions, evidence, and relevant
+consequences in `evidence`. Begin `remediation` with the concrete fix, then
+include a short code or prose example by default. Omit the example when it
+is infeasible, misleading, or adds no useful clarity. Finish that same
+string with a blank line, the bold label `**What changes as a result**`,
+another blank line, and the expected behavior after the fix. Distinguish
+verified results from predictions and state unresolved details rather than
+inventing a patch or result.
+
+The self-review template supplies the first two labels and copies the
+strings verbatim, preserving paragraphs and code fences. This is an
+authoring convention within existing fields, not a new schema or parsing
+requirement. Existing plain recommendations and `null` remain valid.
 
 ### Stable finding identity
 
