@@ -39,7 +39,7 @@ JSON plan. It takes an identity file that names the change under review:
 
 The draft holds one section per review action:
 
-```markdown
+````markdown
 ### R001: Guard the empty case
 
 **Type:** inline
@@ -48,8 +48,30 @@ The draft holds one section per review action:
 **Side:** RIGHT
 **POST:** YES
 
-The empty result is dereferenced. Return early when it is empty.
+**What is wrong**
+
+The helper reads `items[0]` even when the list is empty. It raises `IndexError` instead of returning the documented `None` result.
+
+**How to fix**
+
+Return `None` before indexing an empty list:
+
+```python
+if not items:
+    return None
+return items[0]
 ```
+
+**What changes as a result**
+
+An empty list returns `None`; a non-empty list still returns its first item.
+````
+
+Findings use these three bold labels in order, with blank lines between
+labels, paragraphs, and code blocks. State the fix before its example and
+the expected result. Include a short code or prose example of the fix by
+default; omit it when infeasible, misleading, or unhelpful. The Python snippet
+above illustrates the replacement body of the helper.
 
 - Each action starts with a level-three heading, `### <ID>: <title>`, outside
   fenced code blocks. The ID starts with a letter or digit and continues with

@@ -64,7 +64,8 @@ shape, the draft grammar, and each command's arguments.
    `git tag -d mr-IID`.
 7. Review `git diff BASE_SHA HEAD_SHA`, where `BASE_SHA` is
    `diff_refs.base_sha`, against the discovered standards and the normalized
-   threads. Write the findings as a Markdown draft in `.reviews/review.md`.
+   threads. Write the findings as a Markdown draft in `.reviews/review.md`
+   using the finding format below.
 8. Compile and validate the draft:
 
    ```text
@@ -74,6 +75,24 @@ shape, the draft grammar, and each command's arguments.
    ~/.local/share/ballen-config/review-tools/bin/review-plan validate \
      --artifact .reviews/review-plan.json
    ```
+
+## Finding format
+
+Write each finding with three separate bold labels, in this order:
+
+1. **What is wrong**: current behavior, triggering conditions, evidence, and
+   why it matters.
+2. **How to fix**: the concrete change first, followed by a short code or
+   prose example by default. Omit the example when it is infeasible,
+   misleading, or adds no useful clarity.
+3. **What changes as a result**: expected behavior after the fix, with a
+   before-and-after example when useful. Distinguish verified results from
+   predictions and state unresolved details.
+
+Separate labels, paragraphs, and code blocks with blank lines. Keep each
+section proportional to the finding; a sentence can be enough. Coverage
+notes, open questions, and replies use the format appropriate to their purpose.
+The review-tools README includes a complete draft example.
 
 ## Boundaries
 

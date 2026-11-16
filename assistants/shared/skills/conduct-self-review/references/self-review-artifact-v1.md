@@ -75,9 +75,15 @@ Render the Markdown from the final JSON with this template:
 
 ## Blockers
 
-- `<finding-id-prefix>` `<location>` · <category>/`<rule>` · <contributors>
-  - Evidence: <evidence>
-  - Remediation: <remediation>
+### `<finding-id-prefix>` `<location>` · <category>/`<rule>` · <contributors>
+
+**What is wrong**
+
+<evidence>
+
+**How to fix**
+
+<remediation>
 
 ## Actionable
 
@@ -98,10 +104,17 @@ Rendering rules:
   shortest longer length that makes every prefix unique.
 - Render `<location>` as `<path>:<line>` for one line, `<path>:<start>-<end>`
   for a range, `<path>` without a location, and `repository` without a path.
-- Render the category alone when `rule` is null, and omit the Remediation line
-  when `remediation` is null.
+- Render the category alone when `rule` is null. When `remediation` is null,
+  omit **How to fix** and its body.
 - Join contributors with `, ` in JSON order.
 - Copy evidence, remediation, reasons, and details verbatim.
+- Keep paragraphs and code fences within evidence and remediation intact.
+  For newly authored findings, follow the common result contract's
+  finding-prose convention: remediation begins with the fix and an example
+  by default, then contains the separate **What changes as a result** label
+  and expected behavior. Copy that subsection as part of remediation; add no
+  result that is absent from JSON. Existing plain remediation renders under
+  **How to fix** without an invented result subsection.
 - Order severity sections blocker, actionable, advisory, and omit empty ones.
   Keep JSON finding order within a section.
 - In Limitations, list reviewers whose outcome is not `completed`, then
