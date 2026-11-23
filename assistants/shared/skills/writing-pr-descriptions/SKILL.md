@@ -25,6 +25,8 @@ Mark breaking changes with `!` immediately before the colon or an uppercase `BRE
 
 Follow the repository's required format. Otherwise, lead with a short, carefully selected explanation of what deserves the reviewer's attention. Add only the supporting sections the change needs; a small fix can be two paragraphs.
 
+Use declarative sentences to describe what the PR changes and what verification established. Start with “This PR…” or name the affected component.
+
 1. **Orient the reviewer.** Establish what the affected system or model does, the current problem, and the result of this PR. Introduce domain terms, acronyms, and symbols through their role in that explanation. A cold reader should understand why the change matters before encountering paths or flags.
 2. **Explain the change.** Connect the important mechanism to its effect. State relevant defaults, opt-in behavior, affected outputs, and compatibility. For a stack, describe this PR's slice and what its neighbors supply, linking PR numbers. Include a usable configuration example or a short linked review path when it helps someone run or assess the change.
 3. **Give meaningful evidence.** Say what ran and what it establishes. Separate current code checks, measured numerical results, and scientific or methodological acceptance. For numerical claims, name the quantity, units, comparison baseline, input/configuration basis, and relevant version. State material gaps beside the claims they limit.
